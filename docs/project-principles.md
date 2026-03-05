@@ -37,3 +37,5 @@ Build an enterprise-grade, modular, scalable OHS (İSG) management SaaS platform
 - Then Risk MVP
 - Then Incident / Document / Regulation modules
 - Keep the product modular and extensible
+
+<!-- CI test -->
