@@ -10,9 +10,6 @@ on:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -26,7 +23,7 @@ jobs:
           pip install -r backend/requirements-dev.txt
 
       - name: Ruff
-        run: ruff check .
+        run: ruff check backend
 
       - name: Black
-        run: black --check .
+        run: black --check backend
