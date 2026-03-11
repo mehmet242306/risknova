@@ -11,7 +11,7 @@ function isPublic(pathname: string) {
   return false;
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   const token = await getToken({
