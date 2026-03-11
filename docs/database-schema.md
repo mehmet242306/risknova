@@ -3,7 +3,8 @@
 ## Purpose
 
 This document defines the conceptual database foundation for RiskNova.
-At this stage:
+
+Current decisions:
 
 - Primary app auth strategy: Auth.js
 - Infrastructure target: Supabase project + Postgres
@@ -18,27 +19,25 @@ Represents a company, OSGB, institution, or customer account in the system.
 
 ### Core fields
 
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | Primary key |
-| name | text | Organization display name |
-| slug | text | Unique short identifier |
-| organization_type | text | Example: osgb, employer, public_institution |
-| tax_number | text | Optional |
-| country | text | Default TR for now |
-| city | text | Optional |
-| address | text | Optional |
-| phone | text | Optional |
-| email | text | Optional |
-| is_active | boolean | Soft active status |
-| created_at | timestamptz | Record creation time |
-| updated_at | timestamptz | Record update time |
+- id (uuid, primary key)
+- name (text)
+- slug (text, unique)
+- organization_type (text)
+- tax_number (text, optional)
+- country (text)
+- city (text, optional)
+- address (text, optional)
+- phone (text, optional)
+- email (text, optional)
+- is_active (boolean)
+- created_at (timestamptz)
+- updated_at (timestamptz)
 
 ### Notes
 
-- This is the top-level tenant entity.
-- Most business tables should eventually include `organization_id`.
-- One organization can have many users, audits, findings, reports, and documents.
+- Top-level tenant entity
+- Most business tables should include organization_id
+- One organization can have many users, audits, findings, reports, and documents
 
 ---
 
@@ -48,26 +47,24 @@ Application-level user profile linked to authentication identity.
 
 ### Core fields
 
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | Primary key |
-| auth_user_id | uuid/text | External auth identity reference |
-| organization_id | uuid | FK -> Organization.id |
-| email | text | Cached convenience field |
-| full_name | text | Display name |
-| title | text | Example: OHS Specialist, Physician, DSP |
-| phone | text | Optional |
-| avatar_url | text | Optional |
-| is_active | boolean | Soft active status |
-| created_at | timestamptz | Record creation time |
-| updated_at | timestamptz | Record update time |
+- id (uuid, primary key)
+- auth_user_id (uuid/text, external auth identity reference)
+- organization_id (uuid, FK -> Organization.id)
+- email (text)
+- full_name (text)
+- title (text)
+- phone (text, optional)
+- avatar_url (text, optional)
+- is_active (boolean)
+- created_at (timestamptz)
+- updated_at (timestamptz)
 
 ### Notes
 
-- This table stores app profile data, not credential data.
-- If Supabase Auth is adopted later, `auth_user_id` should map to the Auth user id.
-- If Auth.js remains primary, `auth_user_id` still remains the stable auth identity reference.
-- A user profile belongs to one organization in the first version.
+- Stores app profile data, not credential data
+- If Supabase Auth is adopted later, auth_user_id maps to the Auth user id
+- If Auth.js remains primary, auth_user_id remains the stable auth identity reference
+- First version: one user profile belongs to one organization
 
 ---
 
@@ -77,13 +74,11 @@ Basic authorization model.
 
 ### Core fields
 
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | Primary key |
-| code | text | Unique code |
-| name | text | Human-readable role name |
-| description | text | Optional |
-| created_at | timestamptz | Record creation time |
+- id (uuid, primary key)
+- code (text, unique)
+- name (text)
+- description (text, optional)
+- created_at (timestamptz)
 
 ### Suggested starter roles
 
@@ -104,19 +99,16 @@ Join table for assigning roles to users.
 
 ### Core fields
 
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | Primary key |
-| user_profile_id | uuid | FK -> UserProfile.id |
-| role_id | uuid | FK -> Role.id |
-| assigned_at | timestamptz | Assignment timestamp |
-| assigned_by | uuid | Optional FK -> UserProfile.id |
+- id (uuid, primary key)
+- user_profile_id (uuid, FK -> UserProfile.id)
+- role_id (uuid, FK -> Role.id)
+- assigned_at (timestamptz)
+- assigned_by (uuid, optional FK -> UserProfile.id)
 
 ### Notes
 
-- First version can support multiple roles per user if needed.
-- If simplicity is preferred, this can later be collapsed into a single role field on UserProfile.
-- Join table is more flexible for enterprise expansion.
+- Supports multiple roles per user if needed
+- Can later be simplified into a single role field if desired
 
 ---
 
@@ -126,24 +118,22 @@ Tracks important application actions.
 
 ### Core fields
 
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | Primary key |
-| organization_id | uuid | FK -> Organization.id |
-| actor_user_profile_id | uuid | FK -> UserProfile.id, nullable |
-| action_type | text | Example: user.created, report.generated |
-| entity_type | text | Example: organization, report, finding |
-| entity_id | text | ID of affected record |
-| severity | text | info, warning, critical |
-| metadata_json | jsonb | Extra details |
-| ip_address | text | Optional |
-| user_agent | text | Optional |
-| created_at | timestamptz | Event time |
+- id (uuid, primary key)
+- organization_id (uuid, FK -> Organization.id)
+- actor_user_profile_id (uuid, FK -> UserProfile.id, nullable)
+- action_type (text)
+- entity_type (text)
+- entity_id (text)
+- severity (text)
+- metadata_json (jsonb)
+- ip_address (text, optional)
+- user_agent (text, optional)
+- created_at (timestamptz)
 
 ### Notes
 
-- This is intentionally schema-level only for now.
-- AuditLog should be append-only in production design.
+- Schema-level only for now
+- Append-only in production design
 
 ---
 
@@ -176,15 +166,15 @@ A small role model is enough to start, and can later evolve into permission-base
 
 Current decision:
 
-- App authentication flow remains Auth.js for now.
-- Supabase is introduced first as hosted Postgres infrastructure.
-- Supabase Auth may be adopted later if the product moves fully into Supabase-native auth and RLS patterns.
+- App authentication flow remains Auth.js for now
+- Supabase is introduced first as hosted Postgres infrastructure
+- Supabase Auth may be adopted later if the product moves fully into Supabase-native auth and RLS patterns
 
 ---
 
 ## 9. Future Tables (Not in this phase)
 
-These are expected later and should reference `organization_id`:
+These are expected later and should reference organization_id:
 
 - Company / Workplace
 - Location / Branch
@@ -199,4 +189,3 @@ These are expected later and should reference `organization_id`:
 - Notification
 - GeneratedDocument
 - FileAsset
-
