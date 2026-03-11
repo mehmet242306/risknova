@@ -35,10 +35,12 @@ src_backup_*/
 app_backup_*/
 auth_reset_backup_*/
 *.bak
-*.backup*.backup-*
+*.backup
+*.backup-*
 *.clean-backup
 *.textfix
 project-structure-report.txt
 project-structure-report.json
 dev.db
 *_backup_*/
+
