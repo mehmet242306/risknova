@@ -44,3 +44,7 @@ project-structure-report.json
 dev.db
 *_backup_*/
 
+*.authjs-backup
+*.authjs-disabled
+*.authjs-backup
+*.authjs-disabled
