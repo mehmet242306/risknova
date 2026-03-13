@@ -1,5 +1,5 @@
-﻿import os
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,7 +14,9 @@ class Settings:
     env: str = os.getenv("ENV", "development")
     app_name: str = os.getenv("APP_NAME", "RiskNova Backend")
     app_version: str = os.getenv("APP_VERSION", "v1")
-    frontend_origins: list[str] = None
+    supabase_url: str = os.getenv("SUPABASE_URL", "")
+    supabase_service_role_key: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    frontend_origins: list[str] = field(default_factory=list)
 
     def __post_init__(self):
         raw_origins = os.getenv(
