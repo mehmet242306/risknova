@@ -60,3 +60,10 @@ temp/
 # Misc
 *.bak
 *.tmp
+*.sqlite
+*.sqlite3
+*.backup
+*.backup*
+*.bak*
+src/generated/
+generated/
