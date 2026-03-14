@@ -156,3 +156,8 @@ dist/
 # IDE
 .vscode/
 .idea/
+backend/.env
+frontend/.env.local
+backend/.venv/
+frontend/node_modules/
+frontend/.next/
