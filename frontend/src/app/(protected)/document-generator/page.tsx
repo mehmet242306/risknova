@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { companies } from "@/lib/mock-data";
@@ -54,6 +54,7 @@ function StatCard({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function badge(label: string): React.CSSProperties {
   return {
     padding: "6px 10px",

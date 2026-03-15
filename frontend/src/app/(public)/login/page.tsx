@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { login } from "./actions";
 
 export default async function LoginPage({
@@ -15,7 +15,7 @@ export default async function LoginPage({
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">Giriş Yap</h1>
         <p className="text-sm text-gray-600">
-          Hesabınla giriş yap ve dashboard'a geç.
+          Hesabınla giriş yap ve dashboard&apos;a geç.
         </p>
       </div>
 

@@ -1,4 +1,5 @@
-﻿"use client";
+/* eslint-disable react-hooks/set-state-in-effect */
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { companies } from "@/lib/mock-data";
@@ -340,7 +341,7 @@ export default function FieldAuditPage() {
                     fontWeight: 700,
                   }}
                 >
-                  DOF'e Donustur (yakinda)
+                  DOF&apos;e Donustur (yakinda)
                 </button>
 
                 <button

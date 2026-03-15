@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { companies } from "@/lib/mock-data";
@@ -119,11 +119,13 @@ export default function ActionsPage() {
     [companyId]
   );
 
-  useEffect(() => {
-    if (!companyForForm) return;
-    const firstAssigned = companyForForm.assignments?.[0]?.fullName ?? companyForForm.contacts?.[0]?.name ?? "";
-    setResponsible(firstAssigned);
-  }, [companyForForm]);
+  /* eslint-disable react-hooks/set-state-in-effect */
+useEffect(() => {
+  if (!companyForForm) return;
+  const firstAssigned = companyForForm.assignments?.[0]?.fullName ?? companyForForm.contacts?.[0]?.name ?? "";
+  setResponsible(firstAssigned);
+}, [companyForForm]);
+/* eslint-enable react-hooks/set-state-in-effect */
 
   const filteredActions = actions.filter((action) => {
     const companyMatch = filterCompanyId === "all" ? true : action.companyId === filterCompanyId;

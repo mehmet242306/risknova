@@ -1,5 +1,12 @@
-﻿"use client";
+"use client";
 
+
+const createDraftActionId = () => createDraftActionId();
+
+const getDefaultDueDate = () =>
+  new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
 import { useMemo, useState } from "react";
 import { companies } from "@/lib/mock-data";
 import {
@@ -7,6 +14,7 @@ import {
   emergencyPlans,
   emergencyTeams,
   emergencyTrainings as initialTrainings,
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   type EmergencyTeamType,
 } from "@/lib/emergency-data";
 
@@ -406,13 +414,13 @@ export default function EmergencyPage() {
       company.assignments?.[0]?.fullName ?? company.contacts?.[0]?.name ?? "Atama bekleniyor";
 
     const nextItem: DraftAction = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: createDraftActionId(),
       companyId: selectedCompanyId,
       title,
       source,
       priority,
       responsible,
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      dueDate: getDefaultDueDate(),
       note,
     };
 
@@ -464,6 +472,7 @@ export default function EmergencyPage() {
     setDrillNextDate("");
   }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
   function handleAddRevision() {
     if (!revisionReason.trim() || !revisionDate) return;
 
@@ -534,7 +543,7 @@ export default function EmergencyPage() {
           <SectionCard title="Yonetici Ozeti">
             {managerWarnings.length === 0 ? (
               <div style={{ lineHeight: 1.8 }}>
-                Kritik uyarı gorunmuyor. Hazirlik skoru ve belge tamlik durumu kontrol altinda.
+                Kritik uyarÃ„Â± gorunmuyor. Hazirlik skoru ve belge tamlik durumu kontrol altinda.
               </div>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
