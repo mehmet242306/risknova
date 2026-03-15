@@ -1,4 +1,4 @@
-﻿# Local Calistirma Rehberi
+# Local Calistirma Rehberi
 
 Bu proje localde iki servis olarak calisir:
 
@@ -63,7 +63,6 @@ BACKEND_API_URL=http://127.0.0.1:8000
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 
-DATABASE_URL=file:./dev.db
 ```
 
 ### backend/.env
@@ -76,7 +75,6 @@ APP_VERSION=v1
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 
-DATABASE_URL=
 JWT_SECRET=
 
 FRONTEND_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://guvenligimcepte.vercel.app
