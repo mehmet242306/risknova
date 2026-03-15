@@ -1,7 +1,7 @@
 "use client";
 
 
-const createDraftActionId = () => createDraftActionId();
+const createDraftActionId = (): number => Date.now() + Math.floor(Math.random() * 1000);
 
 const getDefaultDueDate = () =>
   new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -543,7 +543,7 @@ export default function EmergencyPage() {
           <SectionCard title="Yonetici Ozeti">
             {managerWarnings.length === 0 ? (
               <div style={{ lineHeight: 1.8 }}>
-                Kritik uyarÃ„Â± gorunmuyor. Hazirlik skoru ve belge tamlik durumu kontrol altinda.
+                Kritik uyarÃƒâ€Ã‚Â± gorunmuyor. Hazirlik skoru ve belge tamlik durumu kontrol altinda.
               </div>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
