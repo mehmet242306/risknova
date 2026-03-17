@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -31,22 +31,22 @@ function buildMockDocuments(company: CompanyRecord) {
     {
       title: `${company.shortName || company.name} Risk Analizi Raporu`,
       type: "Risk Analizi",
-      status: "Güncel",
+      status: "GÃ¼ncel",
     },
     {
-      title: `${company.shortName || company.name} Acil Durum Planı`,
+      title: `${company.shortName || company.name} Acil Durum PlanÄ±`,
       type: "Acil Durum",
       status: "Kontrol Gerekli",
     },
     {
-      title: `${company.shortName || company.name} Eğitim Planı`,
-      type: "Eğitim",
+      title: `${company.shortName || company.name} EÄŸitim PlanÄ±`,
+      type: "EÄŸitim",
       status: "Aktif",
     },
     {
       title: `${company.shortName || company.name} Periyodik Kontrol Takibi`,
       type: "Periyodik Kontrol",
-      status: "İzleniyor",
+      status: "Ä°zleniyor",
     },
   ];
 }
@@ -54,22 +54,22 @@ function buildMockDocuments(company: CompanyRecord) {
 function buildMockActivities(company: CompanyRecord) {
   return [
     {
-      actor: "Mehmet Yıldırım",
-      role: "İş Güvenliği Uzmanı",
-      action: `${company.shortName || company.name} için risk analizi gözden geçirildi.`,
-      time: "Bugün · 14:20",
+      actor: "Mehmet YÄ±ldÄ±rÄ±m",
+      role: "Ä°ÅŸ GÃ¼venliÄŸi UzmanÄ±",
+      action: `${company.shortName || company.name} iÃ§in risk analizi gÃ¶zden geÃ§irildi.`,
+      time: "BugÃ¼n Â· 14:20",
     },
     {
-      actor: "Ayşe Demir",
-      role: "İşyeri Hekimi",
-      action: "Sağlık gözetimi ve eğitim planı notları güncellendi.",
-      time: "Bugün · 10:05",
+      actor: "AyÅŸe Demir",
+      role: "Ä°ÅŸyeri Hekimi",
+      action: "SaÄŸlÄ±k gÃ¶zetimi ve eÄŸitim planÄ± notlarÄ± gÃ¼ncellendi.",
+      time: "BugÃ¼n Â· 10:05",
     },
     {
       actor: "Ali Kaya",
-      role: "İşveren Vekili",
-      action: "2 adet aksiyon için termin onayı verildi.",
-      time: "Dün · 16:40",
+      role: "Ä°ÅŸveren Vekili",
+      action: "2 adet aksiyon iÃ§in termin onayÄ± verildi.",
+      time: "DÃ¼n Â· 16:40",
     },
   ];
 }
@@ -87,14 +87,10 @@ export function CompanyWorkspaceClient({
 }: {
   companyId: string;
 }) {
-  const [companies, setCompanies] = useState<CompanyRecord[]>([]);
+  const [companies, setCompanies] = useState<CompanyRecord[]>(() => loadCompanyDirectory());
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error" | "">("");
-
-  useEffect(() => {
-    setCompanies(loadCompanyDirectory());
-  }, []);
 
   const company = useMemo(
     () => companies.find((item) => item.id === companyId) ?? null,
@@ -257,39 +253,39 @@ export function CompanyWorkspaceClient({
     if (!company) return;
 
     if (!company.name.trim()) {
-      setMessage("Firma / kurum adı boş bırakılamaz.");
+      setMessage("Firma / kurum adÄ± boÅŸ bÄ±rakÄ±lamaz.");
       setMessageType("error");
       return;
     }
 
     saveCompanyDirectory(companies);
-    setMessage("İşyeri çalışma alanı bilgileri kaydedildi.");
+    setMessage("Ä°ÅŸyeri Ã§alÄ±ÅŸma alanÄ± bilgileri kaydedildi.");
     setMessageType("success");
   }
 
   const tabs: Array<{ id: WorkspaceTab; label: string }> = [
     { id: "overview", label: "Genel Durum" },
-    { id: "structure", label: "Yerleşke / Yapı" },
+    { id: "structure", label: "YerleÅŸke / YapÄ±" },
     { id: "risk", label: "Risk ve Saha" },
     { id: "people", label: "Personel" },
     { id: "tracking", label: "Takip" },
-    { id: "documents", label: "Dokümanlar" },
-    { id: "history", label: "Geçmiş" },
-    { id: "digital_twin", label: "Dijital İkiz" },
+    { id: "documents", label: "DokÃ¼manlar" },
+    { id: "history", label: "GeÃ§miÅŸ" },
+    { id: "digital_twin", label: "Dijital Ä°kiz" },
   ];
 
   if (!company) {
     return (
       <div className="rounded-[32px] border border-slate-200 bg-white p-8 shadow-[0_24px_60px_rgba(15,23,42,0.06)]">
-        <h1 className="text-3xl font-semibold text-slate-950">Kayıt bulunamadı</h1>
+        <h1 className="text-3xl font-semibold text-slate-950">KayÄ±t bulunamadÄ±</h1>
         <p className="mt-3 text-sm leading-7 text-slate-600">
-          İstenen firma / kurum kaydı bulunamadı.
+          Ä°stenen firma / kurum kaydÄ± bulunamadÄ±.
         </p>
         <Link
           href="/companies"
           className="mt-6 inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-[var(--shadow-soft)] transition-opacity hover:opacity-95"
         >
-          Firma Listesine Dön
+          Firma Listesine DÃ¶n
         </Link>
       </div>
     );
@@ -302,7 +298,7 @@ export function CompanyWorkspaceClient({
           <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-4xl space-y-4">
               <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
-                İşyeri çalışma alanı
+                Ä°ÅŸyeri Ã§alÄ±ÅŸma alanÄ±
               </span>
 
               <div className="space-y-3">
@@ -312,25 +308,25 @@ export function CompanyWorkspaceClient({
 
                 <p className="max-w-3xl text-sm leading-8 text-slate-600 sm:text-base">
                   {company.notes ||
-                    "Bu ekran işyerinin İSG operasyon merkezi olarak kullanılır."}
+                    "Bu ekran iÅŸyerinin Ä°SG operasyon merkezi olarak kullanÄ±lÄ±r."}
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                  {company.kind || "Tür yok"}
+                  {company.kind || "TÃ¼r yok"}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                  {company.hazardClass || "Tehlike sınıfı yok"}
+                  {company.hazardClass || "Tehlike sÄ±nÄ±fÄ± yok"}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                  Çalışan: {company.employeeCount}
+                  Ã‡alÄ±ÅŸan: {company.employeeCount}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
                   Lokasyon: {company.locations.filter(Boolean).length}
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                  Bölüm: {company.departments.filter(Boolean).length}
+                  BÃ¶lÃ¼m: {company.departments.filter(Boolean).length}
                 </span>
               </div>
             </div>
@@ -340,21 +336,21 @@ export function CompanyWorkspaceClient({
                 href="/risk-analysis"
                 className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-[var(--shadow-soft)] transition-opacity hover:opacity-95"
               >
-                Risk Analizi Başlat
+                Risk Analizi BaÅŸlat
               </Link>
 
               <Link
                 href="/reports"
                 className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
-                Dokümanlar
+                DokÃ¼manlar
               </Link>
 
               <Link
                 href="/companies"
                 className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
-                Listeye Dön
+                Listeye DÃ¶n
               </Link>
             </div>
           </div>
@@ -371,7 +367,7 @@ export function CompanyWorkspaceClient({
                   className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${riskState.className}`}
                 >
                   {riskState.label}
-                  {riskState.score !== null ? ` · ${riskState.score}/100` : ""}
+                  {riskState.score !== null ? ` Â· ${riskState.score}/100` : ""}
                 </span>
               ) : null}
             </div>
@@ -379,7 +375,7 @@ export function CompanyWorkspaceClient({
 
           <div className="border-b border-slate-200/70 p-5 xl:border-b-0 xl:border-r">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Açık Aksiyon
+              AÃ§Ä±k Aksiyon
             </p>
             <p className="mt-3 text-2xl font-semibold text-slate-950">
               {company.openActions}
@@ -388,7 +384,7 @@ export function CompanyWorkspaceClient({
 
           <div className="border-b border-slate-200/70 p-5 md:border-r xl:border-b-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Geciken İş
+              Geciken Ä°ÅŸ
             </p>
             <p className="mt-3 text-2xl font-semibold text-slate-950">
               {company.overdueActions}
@@ -412,10 +408,10 @@ export function CompanyWorkspaceClient({
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-2xl font-semibold text-slate-950">
-                  Bugün ne yapmalıyım?
+                  BugÃ¼n ne yapmalÄ±yÄ±m?
                 </h2>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  Sistem bu işyeri için öncelikli işleri öne çıkarır.
+                  Sistem bu iÅŸyeri iÃ§in Ã¶ncelikli iÅŸleri Ã¶ne Ã§Ä±karÄ±r.
                 </p>
               </div>
 
@@ -424,7 +420,7 @@ export function CompanyWorkspaceClient({
                   className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${riskState.className}`}
                 >
                   {riskState.label}
-                  {riskState.score !== null ? ` · ${riskState.score}/100` : ""}
+                  {riskState.score !== null ? ` Â· ${riskState.score}/100` : ""}
                 </span>
               ) : null}
             </div>
@@ -447,10 +443,10 @@ export function CompanyWorkspaceClient({
                         }`}
                       >
                         {task.priority === "high"
-                          ? "Yüksek Öncelik"
+                          ? "YÃ¼ksek Ã–ncelik"
                           : task.priority === "medium"
-                            ? "Orta Öncelik"
-                            : "Düşük Öncelik"}
+                            ? "Orta Ã–ncelik"
+                            : "DÃ¼ÅŸÃ¼k Ã–ncelik"}
                       </span>
 
                       <p className="text-base font-semibold text-slate-950">
@@ -496,22 +492,22 @@ export function CompanyWorkspaceClient({
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Input
-                    label="Firma / Kurum Adı"
+                    label="Firma / Kurum AdÄ±"
                     value={company.name}
                     onChange={(event) => updateTextField("name", event.target.value)}
                   />
                   <Input
-                    label="Kısa Ad"
+                    label="KÄ±sa Ad"
                     value={company.shortName}
                     onChange={(event) => updateTextField("shortName", event.target.value)}
                   />
                   <Input
-                    label="Tür"
+                    label="TÃ¼r"
                     value={company.kind}
                     onChange={(event) => updateTextField("kind", event.target.value)}
                   />
                   <Input
-                    label="Sektör / Faaliyet"
+                    label="SektÃ¶r / Faaliyet"
                     value={company.sector}
                     onChange={(event) => updateTextField("sector", event.target.value)}
                   />
@@ -523,7 +519,7 @@ export function CompanyWorkspaceClient({
 
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-medium text-slate-900">
-                      Tehlike Sınıfı
+                      Tehlike SÄ±nÄ±fÄ±
                     </label>
                     <select
                       value={company.hazardClass}
@@ -532,20 +528,20 @@ export function CompanyWorkspaceClient({
                       }
                       className={fieldClass()}
                     >
-                      <option value="">Seç</option>
+                      <option value="">SeÃ§</option>
                       <option value="Az Tehlikeli">Az Tehlikeli</option>
                       <option value="Tehlikeli">Tehlikeli</option>
-                      <option value="Çok Tehlikeli">Çok Tehlikeli</option>
+                      <option value="Ã‡ok Tehlikeli">Ã‡ok Tehlikeli</option>
                     </select>
                   </div>
 
                   <Input
-                    label="Adres / İl / Bölge"
+                    label="Adres / Ä°l / BÃ¶lge"
                     value={company.address}
                     onChange={(event) => updateTextField("address", event.target.value)}
                   />
                   <Input
-                    label="Çalışan Sayısı"
+                    label="Ã‡alÄ±ÅŸan SayÄ±sÄ±"
                     type="number"
                     value={String(company.employeeCount)}
                     onChange={(event) =>
@@ -553,28 +549,28 @@ export function CompanyWorkspaceClient({
                     }
                   />
                   <Input
-                    label="Vardiya Düzeni"
+                    label="Vardiya DÃ¼zeni"
                     value={company.shiftModel}
                     onChange={(event) =>
                       updateTextField("shiftModel", event.target.value)
                     }
                   />
                   <Input
-                    label="İletişim Kişisi"
+                    label="Ä°letiÅŸim KiÅŸisi"
                     value={company.contactPerson}
                     onChange={(event) =>
                       updateTextField("contactPerson", event.target.value)
                     }
                   />
                   <Input
-                    label="İşveren"
+                    label="Ä°ÅŸveren"
                     value={company.employerName}
                     onChange={(event) =>
                       updateTextField("employerName", event.target.value)
                     }
                   />
                   <Input
-                    label="İşveren Vekili"
+                    label="Ä°ÅŸveren Vekili"
                     value={company.employerRepresentative}
                     onChange={(event) =>
                       updateTextField("employerRepresentative", event.target.value)
@@ -627,7 +623,7 @@ export function CompanyWorkspaceClient({
                             updateArrayField("locations", index, event.target.value)
                           }
                           className={fieldClass()}
-                          placeholder="Lokasyon adı"
+                          placeholder="Lokasyon adÄ±"
                         />
                         <Button
                           type="button"
@@ -644,7 +640,7 @@ export function CompanyWorkspaceClient({
                 <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                   <div className="mb-4 flex items-center justify-between">
                     <h3 className="text-base font-semibold text-slate-950">
-                      Bölümler / Birimler
+                      BÃ¶lÃ¼mler / Birimler
                     </h3>
                     <Button
                       type="button"
@@ -652,7 +648,7 @@ export function CompanyWorkspaceClient({
                       size="sm"
                       onClick={() => addArrayItem("departments")}
                     >
-                      Bölüm Ekle
+                      BÃ¶lÃ¼m Ekle
                     </Button>
                   </div>
 
@@ -665,7 +661,7 @@ export function CompanyWorkspaceClient({
                             updateArrayField("departments", index, event.target.value)
                           }
                           className={fieldClass()}
-                          placeholder="Bölüm / birim adı"
+                          placeholder="BÃ¶lÃ¼m / birim adÄ±"
                         />
                         <Button
                           type="button"
@@ -686,7 +682,7 @@ export function CompanyWorkspaceClient({
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Açık Risk Analizi
+                      AÃ§Ä±k Risk Analizi
                     </p>
                     <p className="mt-3 text-2xl font-semibold text-slate-950">
                       {company.openRiskAssessments}
@@ -695,7 +691,7 @@ export function CompanyWorkspaceClient({
 
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Açık Aksiyon
+                      AÃ§Ä±k Aksiyon
                     </p>
                     <p className="mt-3 text-2xl font-semibold text-slate-950">
                       {company.openActions}
@@ -704,7 +700,7 @@ export function CompanyWorkspaceClient({
 
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Gecikmiş Aksiyon
+                      GecikmiÅŸ Aksiyon
                     </p>
                     <p className="mt-3 text-2xl font-semibold text-slate-950">
                       {company.overdueActions}
@@ -713,7 +709,7 @@ export function CompanyWorkspaceClient({
 
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Açık Risk Baskısı
+                      AÃ§Ä±k Risk BaskÄ±sÄ±
                     </p>
                     <p className="mt-3 text-2xl font-semibold text-slate-950">
                       %{company.openRiskScore}
@@ -723,10 +719,10 @@ export function CompanyWorkspaceClient({
 
                 <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
                   <h3 className="text-base font-semibold text-slate-950">
-                    Risk ve saha yönetimi
+                    Risk ve saha yÃ¶netimi
                   </h3>
                   <p className="mt-3 text-sm leading-7 text-slate-600">
-                    Risk analizi, saha tespiti, görsel yükleme ve ileride canlı saha taraması bu işyeri bağlamında çalışır.
+                    Risk analizi, saha tespiti, gÃ¶rsel yÃ¼kleme ve ileride canlÄ± saha taramasÄ± bu iÅŸyeri baÄŸlamÄ±nda Ã§alÄ±ÅŸÄ±r.
                   </p>
 
                   <div className="mt-4 flex flex-col gap-3 sm:flex-row">
@@ -734,11 +730,11 @@ export function CompanyWorkspaceClient({
                       href="/risk-analysis"
                       className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-medium text-primary-foreground shadow-[var(--shadow-soft)] transition-opacity hover:opacity-95"
                     >
-                      Risk Analizi Modülüne Git
+                      Risk Analizi ModÃ¼lÃ¼ne Git
                     </Link>
 
                     <span className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-500">
-                      Canlı saha taraması · Yakında
+                      CanlÄ± saha taramasÄ± Â· YakÄ±nda
                     </span>
                   </div>
                 </div>
@@ -756,7 +752,7 @@ export function CompanyWorkspaceClient({
                   }
                 />
                 <Input
-                  label="Çalışan Temsilcisi"
+                  label="Ã‡alÄ±ÅŸan Temsilcisi"
                   type="number"
                   value={String(company.employeeRepresentativeCount)}
                   onChange={(event) =>
@@ -767,7 +763,7 @@ export function CompanyWorkspaceClient({
                   }
                 />
                 <Input
-                  label="Destek Elemanı"
+                  label="Destek ElemanÄ±"
                   type="number"
                   value={String(company.supportStaffCount)}
                   onChange={(event) =>
@@ -775,7 +771,7 @@ export function CompanyWorkspaceClient({
                   }
                 />
                 <Input
-                  label="İletişim Kişisi"
+                  label="Ä°letiÅŸim KiÅŸisi"
                   value={company.contactPerson}
                   onChange={(event) =>
                     updateTextField("contactPerson", event.target.value)
@@ -787,7 +783,7 @@ export function CompanyWorkspaceClient({
             {activeTab === "tracking" ? (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Input
-                  label="Tamamlanan Eğitim"
+                  label="Tamamlanan EÄŸitim"
                   type="number"
                   value={String(company.completedTrainingCount)}
                   onChange={(event) =>
@@ -798,7 +794,7 @@ export function CompanyWorkspaceClient({
                   }
                 />
                 <Input
-                  label="Yenileme Yaklaşan Eğitim"
+                  label="Yenileme YaklaÅŸan EÄŸitim"
                   type="number"
                   value={String(company.expiringTrainingCount)}
                   onChange={(event) =>
@@ -809,7 +805,7 @@ export function CompanyWorkspaceClient({
                   }
                 />
                 <Input
-                  label="Periyodik Kontrol Sayısı"
+                  label="Periyodik Kontrol SayÄ±sÄ±"
                   type="number"
                   value={String(company.periodicControlCount)}
                   onChange={(event) =>
@@ -855,7 +851,7 @@ export function CompanyWorkspaceClient({
                   }
                 />
                 <Input
-                  label="Doküman Sayısı"
+                  label="DokÃ¼man SayÄ±sÄ±"
                   type="number"
                   value={String(company.documentCount)}
                   onChange={(event) =>
@@ -878,7 +874,7 @@ export function CompanyWorkspaceClient({
                           {document.title}
                         </p>
                         <p className="mt-1 text-sm text-slate-600">
-                          Tür: {document.type}
+                          TÃ¼r: {document.type}
                         </p>
                       </div>
 
@@ -919,17 +915,17 @@ export function CompanyWorkspaceClient({
               <div className="space-y-4">
                 <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-5">
                   <h3 className="text-base font-semibold text-slate-950">
-                    Dijital ikiz yaklaşımı
+                    Dijital ikiz yaklaÅŸÄ±mÄ±
                   </h3>
                   <p className="mt-3 text-sm leading-7 text-slate-600">
-                    Bu işyeri için dijital ikiz; lokasyon, bölüm, risk analizi, saha taraması, doküman ve işlem geçmişinin tek kurumsal hafızada birleşmesiyle kurulacaktır.
+                    Bu iÅŸyeri iÃ§in dijital ikiz; lokasyon, bÃ¶lÃ¼m, risk analizi, saha taramasÄ±, dokÃ¼man ve iÅŸlem geÃ§miÅŸinin tek kurumsal hafÄ±zada birleÅŸmesiyle kurulacaktÄ±r.
                   </p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="rounded-[24px] border border-slate-200 bg-white p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Bugün
+                      BugÃ¼n
                     </p>
                     <p className="mt-2 text-sm font-semibold text-slate-950">
                       Operasyonel dijital ikiz temeli
@@ -938,10 +934,10 @@ export function CompanyWorkspaceClient({
 
                   <div className="rounded-[24px] border border-slate-200 bg-white p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Sonraki Aşama
+                      Sonraki AÅŸama
                     </p>
                     <p className="mt-2 text-sm font-semibold text-slate-950">
-                      Canlı saha taraması + alan eşleme
+                      CanlÄ± saha taramasÄ± + alan eÅŸleme
                     </p>
                   </div>
 
@@ -950,7 +946,7 @@ export function CompanyWorkspaceClient({
                       Nihai Hedef
                     </p>
                     <p className="mt-2 text-sm font-semibold text-slate-950">
-                      Dinamik risk haritası
+                      Dinamik risk haritasÄ±
                     </p>
                   </div>
                 </div>
@@ -959,14 +955,14 @@ export function CompanyWorkspaceClient({
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Button type="button" size="lg" onClick={handleSave}>
-                Değişiklikleri Kaydet
+                DeÄŸiÅŸiklikleri Kaydet
               </Button>
 
               <Link
                 href="/companies"
                 className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
               >
-                Listeye Dön
+                Listeye DÃ¶n
               </Link>
             </div>
 
@@ -988,14 +984,14 @@ export function CompanyWorkspaceClient({
           {riskState ? (
             <div className={sectionCardClass()}>
               <h2 className="text-xl font-semibold text-slate-950">
-                İşyeri Durumu
+                Ä°ÅŸyeri Durumu
               </h2>
 
               <div
                 className={`mt-4 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${riskState.className}`}
               >
                 {riskState.label}
-                {riskState.score !== null ? ` · ${riskState.score}/100` : ""}
+                {riskState.score !== null ? ` Â· ${riskState.score}/100` : ""}
               </div>
 
               <p className="mt-4 text-sm leading-7 text-slate-600">
@@ -1005,7 +1001,7 @@ export function CompanyWorkspaceClient({
               <div className="mt-5 grid grid-cols-2 gap-3">
                 <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Yapısal Risk
+                    YapÄ±sal Risk
                   </p>
                   <p className="mt-2 text-xl font-semibold text-slate-950">
                     {riskState.structural}/100
@@ -1032,7 +1028,7 @@ export function CompanyWorkspaceClient({
 
                 <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Açık Risk Baskısı
+                    AÃ§Ä±k Risk BaskÄ±sÄ±
                   </p>
                   <p className="mt-2 text-xl font-semibold text-slate-950">
                     %{riskState.openPressure}
@@ -1044,7 +1040,7 @@ export function CompanyWorkspaceClient({
 
           <div className={sectionCardClass()}>
             <h2 className="text-xl font-semibold text-slate-950">
-              Yaklaşan İşler
+              YaklaÅŸan Ä°ÅŸler
             </h2>
 
             <div className="mt-4 space-y-3">

@@ -1,7 +1,14 @@
 ﻿import type { ButtonHTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
-type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
+type ButtonVariant =
+  | "primary"
+  | "accent"
+  | "secondary"
+  | "outline"
+  | "ghost"
+  | "danger";
+
 type ButtonSize = "sm" | "md" | "lg";
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -11,12 +18,17 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-primary text-primary-foreground shadow-[var(--shadow-soft)] hover:opacity-95",
+    "border border-red-400/40 bg-[linear-gradient(135deg,#0b5fc1_0%,#2788ff_100%)] text-white shadow-[0_0_0_1px_rgba(239,68,68,0.16),0_16px_34px_rgba(11,95,193,0.28),0_0_24px_rgba(239,68,68,0.16)] hover:brightness-[1.04]",
+  accent:
+    "border border-red-400/40 bg-[linear-gradient(135deg,#97c51f_0%,#b9e22f_100%)] text-accent-foreground shadow-[0_0_0_1px_rgba(239,68,68,0.16),0_16px_34px_rgba(151,197,31,0.28),0_0_24px_rgba(239,68,68,0.16)] hover:brightness-[1.03]",
   secondary:
-    "bg-secondary text-secondary-foreground hover:bg-[#dde7f2]",
-  outline: "border border-border bg-card text-foreground hover:bg-secondary",
-  ghost: "bg-transparent text-foreground hover:bg-secondary",
-  danger: "bg-danger text-white hover:bg-[#b91c1c]",
+    "bg-secondary text-secondary-foreground hover:bg-[#dce8f5]",
+  outline:
+    "border border-primary/25 bg-white/90 text-primary shadow-[0_0_0_1px_rgba(239,68,68,0.08)] hover:bg-secondary",
+  ghost:
+    "bg-transparent text-foreground hover:bg-secondary",
+  danger:
+    "bg-danger text-white hover:bg-[#b91c1c]",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -32,9 +44,12 @@ export function Button({
   type,
   ...props
 }: ButtonProps) {
+  const resolvedType =
+    type ?? (props.formAction !== undefined ? "submit" : "button");
+
   return (
     <button
-      type={type ?? "button"}
+      type={resolvedType}
       className={cn(
         "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors transition-shadow",
         "focus-visible:shadow-[0_0_0_4px_var(--ring)]",

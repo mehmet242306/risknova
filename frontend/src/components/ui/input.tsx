@@ -44,8 +44,11 @@ export function Input({
         aria-invalid={Boolean(error)}
         aria-describedby={describedBy || undefined}
         className={cn(
-          "h-11 w-full rounded-2xl border border-border bg-input px-4 text-sm text-foreground shadow-[var(--shadow-soft)] transition-colors transition-shadow",
-          "focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring)]",
+          "h-12 w-full rounded-2xl border px-4 text-sm text-foreground transition-colors transition-shadow",
+          "border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)]",
+          "shadow-[0_8px_20px_rgba(15,23,42,0.05)]",
+          "hover:border-primary/30",
+          "focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]",
           error &&
             "border-danger focus-visible:shadow-[0_0_0_4px_rgba(220,38,38,0.12)]",
           className,

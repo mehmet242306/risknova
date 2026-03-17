@@ -9,6 +9,10 @@ import {
   type CSSProperties,
   type ChangeEvent,
 } from "react";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusAlert } from "@/components/ui/status-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
@@ -550,8 +554,8 @@ export function RiskAnalysisClient() {
   );
   const [method, setMethod] = useState<AnalysisMethod>("r_skor");
 
-  const [companies, setCompanies] = useState<CompanyRecord[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [companies, setCompanies] = useState<CompanyRecord[]>(() => loadCompanyDirectory());
+  const [selectedCompanyId, setSelectedCompanyId] = useState(() => loadCompanyDirectory()[0]?.id ?? "");
   const [selectedLocation, setSelectedLocation] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
 
@@ -578,12 +582,6 @@ export function RiskAnalysisClient() {
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  useEffect(() => {
-    const loaded = loadCompanyDirectory();
-    setCompanies(loaded);
-    setSelectedCompanyId(loaded[0]?.id ?? "");
-  }, []);
 
   const selectedCompany = useMemo(
     () => companies.find((item) => item.id === selectedCompanyId) ?? null,
@@ -812,7 +810,7 @@ export function RiskAnalysisClient() {
     setIsAnalyzing(true);
     setResults([]);
 
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await new Promise((resolve) => setTimeout(resolve, 1800));
 
     const built = buildMockResults(lines, method);
     setResults(built.results);
@@ -871,7 +869,7 @@ export function RiskAnalysisClient() {
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="space-y-6">
-          <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
             <div className="mb-5">
               <h2 className="text-xl font-semibold text-foreground">
                 Analiz Bağlamı
@@ -895,7 +893,7 @@ export function RiskAnalysisClient() {
                     setSetupMessage("");
                     setSetupMessageType("");
                   }}
-                  className="h-11 rounded-2xl border border-border bg-input px-4 text-sm text-foreground shadow-[var(--shadow-soft)]"
+                  className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
                 >
                   <option value="">Firma / kurum seç</option>
                   {companies.map((company) => (
@@ -913,21 +911,21 @@ export function RiskAnalysisClient() {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <Button
                     type="button"
-                    variant={method === "r_skor" ? "primary" : "outline"}
+                    variant={method === "r_skor" ? "accent" : "outline"}
                     onClick={() => setMethod("r_skor")}
                   >
                     R-SKOR
                   </Button>
                   <Button
                     type="button"
-                    variant={method === "fine_kinney" ? "primary" : "outline"}
+                    variant={method === "fine_kinney" ? "accent" : "outline"}
                     onClick={() => setMethod("fine_kinney")}
                   >
                     Fine Kinney
                   </Button>
                   <Button
                     type="button"
-                    variant={method === "l_matrix" ? "primary" : "outline"}
+                    variant={method === "l_matrix" ? "accent" : "outline"}
                     onClick={() => setMethod("l_matrix")}
                   >
                     L Tipi Matris
@@ -942,7 +940,7 @@ export function RiskAnalysisClient() {
                 <select
                   value={selectedLocation}
                   onChange={(event) => setSelectedLocation(event.target.value)}
-                  className="h-11 rounded-2xl border border-border bg-input px-4 text-sm text-foreground shadow-[var(--shadow-soft)]"
+                  className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
                 >
                   <option value="">Lokasyon seç</option>
                   {(selectedCompany?.locations ?? []).map((location) => (
@@ -960,7 +958,7 @@ export function RiskAnalysisClient() {
                 <select
                   value={selectedDepartment}
                   onChange={(event) => setSelectedDepartment(event.target.value)}
-                  className="h-11 rounded-2xl border border-border bg-input px-4 text-sm text-foreground shadow-[var(--shadow-soft)]"
+                  className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
                 >
                   <option value="">Bölüm seç</option>
                   {(selectedCompany?.departments ?? []).map((department) => (
@@ -995,7 +993,7 @@ export function RiskAnalysisClient() {
             </div>
 
             {selectedCompany ? (
-              <div className="mt-5 rounded-2xl border border-border bg-muted px-4 py-4">
+              <div className="mt-5 rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Seçili Kurum Özeti
                 </p>
@@ -1009,7 +1007,7 @@ export function RiskAnalysisClient() {
             ) : null}
           </div>
 
-          <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">
@@ -1029,7 +1027,7 @@ export function RiskAnalysisClient() {
               {participants.map((participant, index) => (
                 <div
                   key={participant.id}
-                  className="rounded-[1.25rem] border border-border bg-white p-4"
+                  className="rounded-[1.25rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(248,251,255,0.96)_100%)] p-4 shadow-[0_10px_22px_rgba(15,23,42,0.05)]"
                 >
                   <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -1067,7 +1065,7 @@ export function RiskAnalysisClient() {
                         onChange={(event) =>
                           updateParticipant(participant.id, "roleCode", event.target.value)
                         }
-                        className="h-11 rounded-2xl border border-border bg-input px-4 text-sm text-foreground shadow-[var(--shadow-soft)]"
+                        className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
                       >
                         <option value="">Rol seç</option>
                         {participantRoleCatalog.map((role) => (
@@ -1101,7 +1099,7 @@ export function RiskAnalysisClient() {
             </div>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-              <Button type="button" size="lg" onClick={handlePrepareSetup}>
+              <Button type="button" size="lg" variant="accent" onClick={handlePrepareSetup}>
                 Ekip ve Kurum Bilgilerini Hazırla
               </Button>
 
@@ -1120,19 +1118,16 @@ export function RiskAnalysisClient() {
             </div>
 
             {setupMessage ? (
-              <div
-                className={`mt-5 rounded-2xl px-4 py-3 text-sm font-medium ${
-                  setupMessageType === "success"
-                    ? "border border-green-200 bg-green-50 text-green-700"
-                    : "border border-red-200 bg-red-50 text-red-700"
-                }`}
-              >
-                {setupMessage}
-              </div>
-            ) : null}
+  <StatusAlert
+    tone={setupMessageType === "success" ? "success" : "danger"}
+    className="mt-5"
+  >
+    {setupMessage}
+  </StatusAlert>
+) : null}
           </div>
 
-          <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-xl font-semibold text-foreground">
@@ -1152,7 +1147,7 @@ export function RiskAnalysisClient() {
               {lines.map((line, index) => (
                 <div
                   key={line.id}
-                  className="rounded-[1.5rem] border border-border bg-white p-5 shadow-[var(--shadow-soft)]"
+                  className="rounded-[1.5rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(248,251,255,0.97)_100%)] p-5 shadow-[var(--shadow-soft)]"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -1223,7 +1218,7 @@ export function RiskAnalysisClient() {
                     }
                   />
 
-                  <div className="mt-5 rounded-[1.25rem] border border-dashed border-border bg-muted/40 p-5">
+                  <div className="mt-5 rounded-[1.25rem] border border-dashed border-primary/20 bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.95)_55%,rgba(151,197,31,0.12)_100%)] p-5">
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <Button
                         type="button"
@@ -1247,7 +1242,7 @@ export function RiskAnalysisClient() {
                   </div>
 
                   {line.images.length === 0 ? (
-                    <div className="mt-4 rounded-2xl border border-border bg-muted px-4 py-4 text-sm leading-7 text-muted-foreground">
+                    <div className="mt-4 rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] text-sm leading-7 text-muted-foreground">
                       Bu satıra henüz görsel eklenmedi.
                     </div>
                   ) : (
@@ -1255,7 +1250,7 @@ export function RiskAnalysisClient() {
                       {line.images.map((image) => (
                         <div
                           key={image.id}
-                          className="overflow-hidden rounded-[1.25rem] border border-border bg-card"
+                          className="overflow-hidden rounded-[1.25rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(248,251,255,0.96)_100%)] shadow-[0_10px_22px_rgba(15,23,42,0.05)]"
                         >
                           <div className="aspect-[4/3] bg-slate-100">
                             <img
@@ -1293,7 +1288,7 @@ export function RiskAnalysisClient() {
         </section>
 
         <aside className="space-y-6">
-          <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
             <h2 className="text-xl font-semibold text-foreground">
               Analiz Paneli
             </h2>
@@ -1302,7 +1297,7 @@ export function RiskAnalysisClient() {
             </p>
 
             <div className="mt-5 grid gap-3">
-              <div className="rounded-2xl border border-border bg-muted px-4 py-4">
+              <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                   Firma / Kurum
                 </p>
@@ -1312,7 +1307,7 @@ export function RiskAnalysisClient() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-border bg-muted px-4 py-4">
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Lokasyon
                   </p>
@@ -1321,7 +1316,7 @@ export function RiskAnalysisClient() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-border bg-muted px-4 py-4">
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Bölüm
                   </p>
@@ -1330,7 +1325,7 @@ export function RiskAnalysisClient() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-border bg-muted px-4 py-4">
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Görevli Sayısı
                   </p>
@@ -1339,7 +1334,7 @@ export function RiskAnalysisClient() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-border bg-muted px-4 py-4">
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Görsel Sayısı
                   </p>
@@ -1348,7 +1343,7 @@ export function RiskAnalysisClient() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl border border-border bg-muted px-4 py-4 sm:col-span-2">
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] sm:col-span-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Yöntem
                   </p>
@@ -1412,16 +1407,20 @@ export function RiskAnalysisClient() {
             </div>
           </div>
 
-          <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
             <h2 className="text-xl font-semibold text-foreground">
               Analiz Ekibi Özeti
             </h2>
 
             {validParticipants.length === 0 ? (
-              <p className="mt-3 text-sm leading-7 text-muted-foreground">
-                Henüz tamamlanmış görevli bilgisi yok.
-              </p>
-            ) : (
+  <div className="mt-4">
+    <EmptyState
+      compact
+      title="Henüz tamamlanmış görevli bilgisi yok"
+      description="Kişi adı ve rol seçildiğinde ekip özeti burada görünür."
+    />
+  </div>
+) : (
               <div className="mt-4 space-y-3">
                 {validParticipants.map((participant, index) => {
                   const role =
@@ -1457,7 +1456,7 @@ export function RiskAnalysisClient() {
         </aside>
       </div>
 
-      <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)]">
+      <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
         <div className="mb-5">
           <h2 className="text-2xl font-semibold text-foreground">
             Anotasyonlu Tespit Sonuçları
@@ -1467,11 +1466,31 @@ export function RiskAnalysisClient() {
           </p>
         </div>
 
-        {results.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-muted px-4 py-4 text-sm leading-7 text-muted-foreground">
-            Henüz sonuç yok. Önce kurum ve ekip bilgilerini tamamlayıp sonra satırlara görsel ekleyerek analizi başlat.
-          </div>
-        ) : (
+        {isAnalyzing ? (
+  <div className="grid gap-4 xl:grid-cols-2">
+    <div className="rounded-[1.5rem] border border-border bg-white p-5 shadow-[var(--shadow-soft)]">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="mt-4 h-64 w-full rounded-[1.25rem]" />
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    </div>
+
+    <div className="rounded-[1.5rem] border border-border bg-white p-5 shadow-[var(--shadow-soft)]">
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="mt-4 h-28 w-full" />
+      <Skeleton className="mt-3 h-28 w-full" />
+      <Skeleton className="mt-3 h-28 w-full" />
+    </div>
+  </div>
+) : results.length === 0 ? (
+  <EmptyState
+    title="Henüz sonuç üretilmedi"
+    description="Önce kurum ve ekip bilgilerini tamamlayıp ardından satırlara görsel ekleyerek analizi başlat. Sonuç kartları ve anotasyonlar burada görünecek."
+  />
+) : (
           <div className="space-y-6">
             {results.map((result, resultIndex) => {
               const sourceLine = lineMap.get(result.rowId);
@@ -1533,7 +1552,7 @@ export function RiskAnalysisClient() {
                               className={`overflow-hidden rounded-2xl border text-left transition-colors ${
                                 active
                                   ? "border-primary shadow-[var(--shadow-soft)]"
-                                  : "border-border hover:border-primary/40"
+                                  : "border-border hover:border-primary/40 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
                               }`}
                             >
                               <div className="aspect-[4/3] bg-slate-100">
@@ -1561,7 +1580,7 @@ export function RiskAnalysisClient() {
                       </div>
 
                       {selectedImage ? (
-                        <div className="overflow-hidden rounded-[1.5rem] border border-border bg-slate-50">
+                        <div className="overflow-hidden rounded-[1.5rem] border border-red-300/25 bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.97)_55%,rgba(151,197,31,0.14)_100%)] shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
                           <div className="relative aspect-[4/3]">
                             <img
                               src={selectedImage.previewUrl}
@@ -1592,7 +1611,7 @@ export function RiskAnalysisClient() {
 
                     <div className="space-y-3">
                       {visibleFindings.length === 0 ? (
-                        <div className="rounded-2xl border border-border bg-muted px-4 py-4 text-sm leading-7 text-muted-foreground">
+                        <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] text-sm leading-7 text-muted-foreground">
                           Seçilen görsel için tespit bulunamadı.
                         </div>
                       ) : (
@@ -1616,8 +1635,8 @@ export function RiskAnalysisClient() {
                               }}
                               className={`w-full rounded-2xl border p-4 text-left transition-colors ${
                                 active
-                                  ? "border-primary bg-primary/5 shadow-[var(--shadow-soft)]"
-                                  : "border-border bg-muted/50 hover:border-primary/40"
+                                  ? "border-red-400/35 bg-[linear-gradient(135deg,rgba(11,95,193,0.10)_0%,rgba(255,255,255,0.97)_58%,rgba(151,197,31,0.14)_100%)] shadow-[0_0_0_1px_rgba(239,68,68,0.12),0_18px_36px_rgba(11,95,193,0.16),0_0_20px_rgba(239,68,68,0.10)]"
+                                  : "border-border bg-muted/50 hover:border-primary/40 hover:bg-white hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
                               }`}
                             >
                               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1695,3 +1714,19 @@ export function RiskAnalysisClient() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

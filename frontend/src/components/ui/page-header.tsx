@@ -21,7 +21,8 @@ export function PageHeader({
   return (
     <section
       className={cn(
-        "rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)] sm:p-8",
+        "rounded-[1.75rem] border border-border p-6 shadow-[var(--shadow-card)] sm:p-8",
+        "bg-[linear-gradient(135deg,rgba(11,95,193,0.11)_0%,rgba(255,255,255,0.97)_55%,rgba(151,197,31,0.16)_100%)]",
         className,
       )}
     >

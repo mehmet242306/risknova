@@ -57,13 +57,9 @@ function createEmptyCompany(): CompanyRecord {
 
 export function CompaniesListClient() {
   const router = useRouter();
-  const [companies, setCompanies] = useState<CompanyRecord[]>([]);
+  const [companies, setCompanies] = useState<CompanyRecord[]>(() => loadCompanyDirectory());
   const [search, setSearch] = useState("");
   const [hazardFilter, setHazardFilter] = useState("");
-
-  useEffect(() => {
-    setCompanies(loadCompanyDirectory());
-  }, []);
 
   const filteredCompanies = useMemo(() => {
     return companies.filter((company) => {
@@ -308,3 +304,5 @@ export function CompaniesListClient() {
     </div>
   );
 }
+
+

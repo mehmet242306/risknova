@@ -57,10 +57,10 @@ const reasons = [
 ];
 
 const primaryLinkClass =
-  "inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-6 text-sm font-medium text-primary-foreground shadow-[var(--shadow-soft)] transition-opacity hover:opacity-95";
+  "inline-flex h-12 items-center justify-center rounded-2xl border border-red-400/40 bg-[linear-gradient(135deg,#97c51f_0%,#b9e22f_100%)] px-6 text-sm font-medium text-[#10220a] shadow-[0_0_0_1px_rgba(239,68,68,0.16),0_16px_34px_rgba(151,197,31,0.28),0_0_24px_rgba(239,68,68,0.16)] transition-colors hover:brightness-[1.03]";
 
 const secondaryLinkClass =
-  "inline-flex h-12 items-center justify-center rounded-2xl border border-border bg-card px-6 text-sm font-medium text-foreground transition-colors hover:bg-secondary";
+  "inline-flex h-12 items-center justify-center rounded-2xl border border-red-400/30 bg-[linear-gradient(135deg,#0b5fc1_0%,#2788ff_100%)] px-6 text-sm font-medium text-white shadow-[0_0_0_1px_rgba(239,68,68,0.14),0_16px_34px_rgba(11,95,193,0.24),0_0_20px_rgba(239,68,68,0.14)] transition-colors hover:brightness-[1.04]";
 
 export default function LandingPage() {
   return (
@@ -99,7 +99,7 @@ export default function LandingPage() {
               {highlights.map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]"
+                  className="rounded-3xl border border-border bg-white/88 p-5 shadow-[var(--shadow-soft)] backdrop-blur-sm"
                 >
                   <p className="metric-label">{item.label}</p>
                   <p className="mt-2 text-base font-semibold leading-7 text-foreground">
@@ -112,7 +112,9 @@ export default function LandingPage() {
 
           <Card>
             <CardHeader className="p-7">
-              <Badge className="w-fit">Ürün Özeti</Badge>
+              <Badge variant="accent" className="w-fit">
+                Ürün Özeti
+              </Badge>
               <CardTitle className="text-2xl">
                 Tek ürün, tek görsel dil, net operasyon deneyimi
               </CardTitle>
@@ -138,11 +140,11 @@ export default function LandingPage() {
                 </div>
               ))}
 
-              <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+              <div className="rounded-3xl border border-border bg-white/90 p-5 shadow-[var(--shadow-soft)]">
                 <p className="text-sm leading-7 text-muted-foreground">
                   Bu landing yapısı; ürünü daha güvenilir, daha okunur ve
                   dönüşüm odaklı göstermeye başlar. Özellikle kayıt/giriş
-                  akışına geçen kullanıcıda “profesyonel SaaS” hissi oluşturur.
+                  akışına geçen kullanıcıda profesyonel SaaS hissi oluşturur.
                 </p>
               </div>
             </CardContent>
@@ -176,9 +178,9 @@ export default function LandingPage() {
                 Güven veren ama ağırlaşmayan bir ürün görünümü
               </CardTitle>
               <CardDescription className="text-sm leading-7 sm:text-base">
-                Mavi güven hissini, teal tonları ise analiz ve yapay zekâ
-                vurgusunu taşır. Açık yüzeyler ve yumuşak kontrast da profesyonel
-                bir SaaS deneyimi oluşturur.
+                Mavi güven hissini, canlı yeşil ise güçlü aksiyon vurgusunu
+                taşır. Açık yüzeyler ve yumuşak kontrast da profesyonel bir SaaS
+                deneyimi oluşturur.
               </CardDescription>
             </CardHeader>
 
@@ -194,7 +196,7 @@ export default function LandingPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_60%,#ecfeff_100%)]">
+          <Card className="bg-[linear-gradient(135deg,rgba(11,95,193,0.14)_0%,#ffffff_62%,rgba(151,197,31,0.20)_100%)]">
             <CardHeader className="p-7">
               <Badge className="w-fit">Hazır CTA Alanı</Badge>
               <CardTitle className="text-2xl">
