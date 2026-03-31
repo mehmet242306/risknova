@@ -1,35 +1,39 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { Brand } from "./brand";
 
 const navLinkClass =
-  "text-sm font-medium text-white/88 transition-colors hover:text-white";
+  "text-sm font-medium text-white/70 transition-colors hover:text-white";
 
 const ghostButtonClass =
-  "inline-flex h-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-5 text-sm font-medium text-white transition-colors hover:bg-white/20";
+  "inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] px-5 text-sm font-medium text-white transition-colors hover:bg-white/[0.10]";
 
 const accentButtonClass =
-  "inline-flex h-11 items-center justify-center rounded-2xl border border-[#97c51f]/40 bg-[linear-gradient(135deg,#97c51f_0%,#b9e22f_100%)] px-5 text-sm font-medium text-[#10220a] shadow-[0_16px_34px_rgba(151,197,31,0.28)] transition-colors hover:brightness-[1.03]";
+  "inline-flex h-11 items-center justify-center rounded-2xl border border-amber-500/30 bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] px-5 text-sm font-medium text-white shadow-[0_16px_34px_rgba(184,134,11,0.28)] transition-colors hover:brightness-[1.05]";
 
 export function PublicHeader() {
   return (
-    <header className="sticky top-0 z-30 border-b border-white/10 bg-[linear-gradient(90deg,#0b5fc1_0%,#0f6dd2_48%,#084c9a_100%)] backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[var(--navy-deep)]/95 backdrop-blur-xl">
+      <div className="h-0.5 w-full bg-[linear-gradient(90deg,transparent,var(--gold),transparent)]" />
       <div className="page-shell py-4">
         <div className="flex items-center justify-between gap-4">
           <Brand href="/" inverted />
 
           <div className="flex items-center gap-3">
             <nav className="hidden items-center gap-6 lg:flex">
-              <Link href="/" className={navLinkClass}>
-                Ana Sayfa
+              <Link href="/#features" className={navLinkClass}>
+                Ozellikler
+              </Link>
+              <Link href="/#how-it-works" className={navLinkClass}>
+                Nasıl Calısır
               </Link>
             </nav>
 
             <Link href="/login" className={ghostButtonClass}>
-              Giriş Yap
+              Giris Yap
             </Link>
 
             <Link href="/register" className={accentButtonClass}>
-              Hesap Oluştur
+              Hemen Basla
             </Link>
           </div>
         </div>

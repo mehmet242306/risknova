@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { PublicHeader } from "./public-header";
 import {
@@ -37,9 +37,9 @@ export function AuthShell({
 
       <section className="page-shell py-8 lg:py-12">
         <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <Card className="overflow-hidden border-transparent bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_26%),linear-gradient(135deg,#0b5fc1_0%,#126fd9_42%,#0e52a8_68%,#97c51f_100%)] text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
+          <Card className="overflow-hidden border-transparent bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_30%),linear-gradient(135deg,#0F172A_0%,#1E293B_50%,#0F172A_75%)] text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
             <CardHeader className="gap-4 p-8 sm:p-10">
-              <Badge className="w-fit border-white/20 bg-white/12 text-white">
+              <Badge className="w-fit border-amber-500/20 bg-amber-500/12 text-amber-200">
                 {eyebrow}
               </Badge>
 
@@ -59,14 +59,14 @@ export function AuthShell({
                 {benefits.map((item) => (
                   <div
                     key={item}
-                    className="rounded-2xl border border-white/18 bg-white/12 p-4 text-sm leading-6 text-white backdrop-blur-sm"
+                    className="rounded-2xl border border-amber-500/15 bg-white/8 p-4 text-sm leading-6 text-white backdrop-blur-sm"
                   >
                     {item}
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-3xl border border-white/15 bg-slate-950/18 p-5">
+              <div className="rounded-3xl border border-amber-500/10 bg-black/20 p-5">
                 <p className="text-sm leading-7 text-white/92">
                   RiskNova, yalnızca bir panel değil; risk analizi, yorumlama,
                   kayıt ve operasyon takibini aynı ürün dili içinde birleştiren
@@ -76,7 +76,7 @@ export function AuthShell({
                 <div className="mt-4">
                   <Link
                     href="/"
-                    className="text-sm font-medium text-white underline underline-offset-4"
+                    className="text-sm font-medium text-amber-200 underline underline-offset-4"
                   >
                     Ana sayfaya dön
                   </Link>

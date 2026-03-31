@@ -111,11 +111,11 @@ export default async function DashboardPage() {
         {metricCards.map((item, index) => {
           const accentClass =
             index % 4 === 0
-              ? "bg-[linear-gradient(90deg,#0b5fc1_0%,#2788ff_100%)]"
+              ? "bg-[linear-gradient(90deg,#B8860B_0%,#D4A017_100%)]"
               : index % 4 === 1
-                ? "bg-[linear-gradient(90deg,#97c51f_0%,#b9e22f_100%)]"
+                ? "bg-[linear-gradient(90deg,#D4A017_0%,#FBBF24_100%)]"
                 : index % 4 === 2
-                  ? "bg-[linear-gradient(90deg,#f59e0b_0%,#fbbf24_100%)]"
+                  ? "bg-[linear-gradient(90deg,#F59E0B_0%,#FB923C_100%)]"
                   : "bg-[linear-gradient(90deg,#ef4444_0%,#f87171_100%)]";
 
           return (
@@ -199,7 +199,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1fr_0.85fr]">
-        <Card className="bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,#ffffff_62%,rgba(149,193,31,0.15)_100%)]">
+        <Card>
           <CardHeader className="p-7">
             <Badge className="w-fit">Tasarım yönü</Badge>
             <CardTitle className="text-2xl">

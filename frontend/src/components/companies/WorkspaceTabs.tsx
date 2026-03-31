@@ -81,9 +81,21 @@ export function OverviewTab({ company, upd, risk, tasks, setTab }: {
           <div><label className="text-xs font-medium text-muted-foreground">NACE Kodu</label><Input value={company.naceCode} onChange={(e) => upd({ naceCode: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">{"Tehlike S\u0131n\u0131f\u0131"}</label><select value={company.hazardClass} onChange={(e) => upd({ hazardClass: e.target.value })} className={FC}><option value="">{"Se\u00E7iniz"}</option><option>Az Tehlikeli</option><option>Tehlikeli</option><option>{"\u00C7ok Tehlikeli"}</option></select></div>
           <div><label className="text-xs font-medium text-muted-foreground">Adres</label><Input value={company.address} onChange={(e) => upd({ address: e.target.value })} className="mt-1" /></div>
+          <div><label className="text-xs font-medium text-muted-foreground">{"İl"}</label><Input value={company.city} onChange={(e) => upd({ city: e.target.value })} className="mt-1" /></div>
+          <div><label className="text-xs font-medium text-muted-foreground">{"İlçe"}</label><Input value={company.district} onChange={(e) => upd({ district: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">Telefon</label><Input value={company.phone} onChange={(e) => upd({ phone: e.target.value })} className="mt-1" /></div>
+          <div><label className="text-xs font-medium text-muted-foreground">Faks</label><Input value={company.fax} onChange={(e) => upd({ fax: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">E-posta</label><Input value={company.email} onChange={(e) => upd({ email: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">{"Yetkili Ki\u015Fi"}</label><Input value={company.contactPerson} onChange={(e) => upd({ contactPerson: e.target.value })} className="mt-1" /></div>
+          <div><label className="text-xs font-medium text-muted-foreground">{"İşveren Unvanı"}</label><Input value={company.employerTitle} onChange={(e) => upd({ employerTitle: e.target.value })} className="mt-1" /></div>
+        </div>
+        <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">SGK Bilgileri</p>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div><label className="text-xs font-medium text-muted-foreground">{"SGK İşyeri Sicil No"}</label><Input value={company.sgkWorkplaceNumber} onChange={(e) => upd({ sgkWorkplaceNumber: e.target.value })} className="mt-1" placeholder="000000.00.000" /></div>
+            <div><label className="text-xs font-medium text-muted-foreground">Vergi No</label><Input value={company.taxNumber} onChange={(e) => upd({ taxNumber: e.target.value })} className="mt-1" /></div>
+            <div><label className="text-xs font-medium text-muted-foreground">{"Vergi Dairesi Adı"}</label><Input value={company.taxOffice} onChange={(e) => upd({ taxOffice: e.target.value })} className="mt-1" /></div>
+          </div>
         </div>
         <div className="mt-4"><label className="text-xs font-medium text-muted-foreground">Notlar</label><Textarea value={company.notes} onChange={(e) => upd({ notes: e.target.value })} rows={3} className="mt-1" /></div>
       </Sec>

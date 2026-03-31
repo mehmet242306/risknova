@@ -9,25 +9,25 @@
 /* LIGHT MODE (default)                                                */
 /* ================================================================== */
 :root {
-  --background: #F6F8FB;
+  --background: #F8F9FC;
   --foreground: #0F172A;
 
   --card: #FFFFFF;
   --card-foreground: #0F172A;
 
-  --primary: #0F4C75;
-  --primary-hover: #0D4266;
+  --primary: #B8860B;
+  --primary-hover: #996F09;
   --primary-foreground: #FFFFFF;
 
-  --accent: #1B6B93;
-  --accent-hover: #175B7D;
-  --accent-foreground: #FFFFFF;
+  --accent: #D4A017;
+  --accent-hover: #C49315;
+  --accent-foreground: #422006;
 
   --secondary: #EEF2F7;
   --secondary-foreground: #0F172A;
 
   --muted: #F1F5F9;
-  --muted-foreground: #475569;
+  --muted-foreground: #64748B;
 
   --border: #E2E8F0;
   --input: #ffffff;
@@ -37,18 +37,25 @@
   --danger: #DC2626;
   --info: #0EA5E9;
 
-  --ring: rgba(15, 76, 117, 0.24);
+  --ring: rgba(184, 134, 11, 0.24);
 
   --radius: 0.75rem;
   --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.08);
   --shadow-card: 0 8px 20px rgba(15, 23, 42, 0.08);
   --shadow-elevated: 0 14px 32px rgba(15, 23, 42, 0.12);
 
-  --header-bg: #1E293B;
+  --header-bg: #0F172A;
   --header-text: #F1F5F9;
   --header-muted: rgba(255, 255, 255, 0.6);
   --header-active: #ffffff;
-  --header-border: rgba(255, 255, 255, 0.1);
+  --header-border: rgba(255, 255, 255, 0.08);
+
+  --gold: #D4A017;
+  --gold-light: #FBBF24;
+  --gold-glow: rgba(212, 160, 23, 0.15);
+  --navy-deep: #020617;
+  --navy-dark: #0F172A;
+  --navy-mid: #1E293B;
 
   --hz-safe: #22C55E;
   --hz-warn: #F59E0B;
@@ -60,48 +67,55 @@
 /* ================================================================== */
 :root.dark,
 [data-theme="dark"] {
-  --background: #0B1120;
+  --background: #0C0F1A;
   --foreground: #F1F5F9;
 
-  --card: #1E293B;
+  --card: #161A28;
   --card-foreground: #F1F5F9;
 
-  --primary: #14B8A6;
-  --primary-hover: #2DD4BF;
-  --primary-foreground: #042F2E;
+  --primary: #FBBF24;
+  --primary-hover: #FCD34D;
+  --primary-foreground: #422006;
 
-  --accent: #38BDF8;
-  --accent-hover: #7DD3FC;
-  --accent-foreground: #0C4A6E;
+  --accent: #F59E0B;
+  --accent-hover: #FBBF24;
+  --accent-foreground: #422006;
 
-  --secondary: #1E293B;
+  --secondary: #161A28;
   --secondary-foreground: #F1F5F9;
 
-  --muted: #1E293B;
+  --muted: #161A28;
   --muted-foreground: #94A3B8;
 
-  --border: #334155;
-  --input: #1E293B;
+  --border: #232838;
+  --input: #161A28;
 
   --success: #34D399;
-  --warning: #FBBF24;
+  --warning: #FB923C;
   --danger: #F87171;
   --info: #38BDF8;
 
-  --ring: rgba(20, 184, 166, 0.3);
+  --ring: rgba(251, 191, 36, 0.3);
 
   --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.5);
 
-  --header-bg: #0F172A;
+  --header-bg: #080A12;
   --header-text: #F1F5F9;
   --header-muted: rgba(255, 255, 255, 0.5);
   --header-active: #ffffff;
   --header-border: rgba(255, 255, 255, 0.08);
 
+  --gold: #FBBF24;
+  --gold-light: #FDE68A;
+  --gold-glow: rgba(251, 191, 36, 0.15);
+  --navy-deep: #080A12;
+  --navy-dark: #0C0F1A;
+  --navy-mid: #161A28;
+
   --hz-safe: #4ADE80;
-  --hz-warn: #FCD34D;
+  --hz-warn: #FB923C;
   --hz-danger: #FB7185;
 }
 
@@ -137,9 +151,15 @@
   --color-danger: var(--danger);
   --color-info: var(--info);
 
-  --font-sans:
-    "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: var(--font-sans, "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif);
+  --font-serif: var(--font-serif, "Playfair Display", "Georgia", "Times New Roman", serif);
+
+  --color-gold: var(--gold);
+  --color-gold-light: var(--gold-light);
+  --color-navy-deep: var(--navy-deep);
+  --color-navy-dark: var(--navy-dark);
+  --color-navy-mid: var(--navy-mid);
 }
 
 /* ================================================================== */
@@ -180,7 +200,7 @@ html {
   }
 
   ::selection {
-    background: rgba(15, 118, 110, 0.18);
+    background: rgba(212, 160, 23, 0.18);
     color: var(--foreground);
   }
 
@@ -236,12 +256,24 @@ html {
 
   .eyebrow {
     @apply inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider;
-    background: rgba(15, 118, 110, 0.08);
+    background: rgba(212, 160, 23, 0.08);
     color: var(--primary);
   }
 
   [data-theme="dark"] .eyebrow {
-    background: rgba(20, 184, 166, 0.12);
+    background: rgba(251, 191, 36, 0.12);
+  }
+
+  .text-accent-serif {
+    font-family: var(--font-serif);
+    font-style: italic;
+    color: var(--gold);
+  }
+
+  .tag-label {
+    @apply inline-flex items-center rounded-lg border px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.15em];
+    border-color: var(--gold);
+    color: var(--gold);
   }
 
   .data-grid {
@@ -268,4 +300,75 @@ body,
 .surface-card,
 .subtle-card {
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* ================================================================== */
+/* Scroll reveal animations (CSS-only, uses IntersectionObserver-free) */
+/* ================================================================== */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal {
+  animation: reveal-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 30%;
+}
+
+.reveal-delay-1 { animation-delay: 0.1s; }
+.reveal-delay-2 { animation-delay: 0.2s; }
+.reveal-delay-3 { animation-delay: 0.3s; }
+
+/* Fallback for browsers without scroll-driven animations */
+@supports not (animation-timeline: view()) {
+  .reveal {
+    animation: reveal-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+/* ================================================================== */
+/* Hover micro-interactions                                            */
+/* ================================================================== */
+.hover-lift {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--shadow-elevated), 0 0 40px var(--gold-glow);
+}
+
+.hover-glow {
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 24px var(--gold-glow), 0 0 48px rgba(212, 160, 23, 0.08);
+  transform: scale(1.02);
+}
+
+/* ================================================================== */
+/* Glassmorphism                                                       */
+/* ================================================================== */
+.glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }

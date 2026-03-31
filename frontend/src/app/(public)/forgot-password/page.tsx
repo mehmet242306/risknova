@@ -1,4 +1,7 @@
-﻿import Link from "next/link";
+import Link from "next/link";
+import { AuthShell } from "@/components/layout/auth-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { sendResetLink } from "./actions";
 
 export default async function ForgotPasswordPage({
@@ -11,54 +14,54 @@ export default async function ForgotPasswordPage({
   const sent = params?.sent === "1";
 
   return (
-    <main className="mx-auto max-w-md p-6 space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Şifremi Unuttum</h1>
-        <p className="text-sm text-gray-600">
-          E-posta adresini yaz. Sana şifre yenileme bağlantısı gönderelim.
+    <AuthShell
+      eyebrow="Şifre sıfırlama"
+      title="Şifreni sıfırla"
+      description="E-posta adresini gir, sana şifre yenileme bağlantısı gönderelim."
+      footer={
+        <p className="text-sm leading-7 text-muted-foreground">
+          <Link
+            href="/login"
+            className="font-medium text-primary underline underline-offset-4"
+          >
+            Giriş ekranına dön
+          </Link>
         </p>
-      </div>
-
+      }
+    >
       {error ? (
-        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}
         </div>
       ) : null}
 
       {sent ? (
-        <div className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">
+        <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
           Eğer e-posta adresi uygunsa, şifre yenileme bağlantısı gönderildi.
         </div>
       ) : null}
 
-      <form className="space-y-4">
-        <div className="space-y-1">
-          <label htmlFor="email" className="block text-sm font-medium">
-            E-posta
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            required
-            autoComplete="email"
-            className="w-full rounded-md border px-3 py-2"
-          />
-        </div>
+      <form className="space-y-5">
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          required
+          autoComplete="email"
+          label="E-posta"
+          placeholder="ornek@kurum.com"
+          hint="Kayıt olduğun e-posta adresini gir."
+        />
 
-        <button
+        <Button
+          type="submit"
           formAction={sendResetLink}
-          className="w-full rounded-md border px-4 py-2"
+          className="w-full"
+          size="lg"
         >
           Yenileme Bağlantısı Gönder
-        </button>
+        </Button>
       </form>
-
-      <p className="text-sm text-gray-600">
-        <Link href="/login" className="underline">
-          Giriş ekranına dön
-        </Link>
-      </p>
-    </main>
+    </AuthShell>
   );
 }

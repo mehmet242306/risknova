@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type BrandProps = {
@@ -21,11 +21,11 @@ export function Brand({
     >
       <span
         className={cn(
-          "inline-flex size-11 items-center justify-center rounded-2xl text-sm font-semibold shadow-[var(--shadow-soft)]",
+          "inline-flex items-center justify-center rounded-2xl text-sm font-semibold shadow-[var(--shadow-soft)]",
           inverted
-            ? "bg-white text-primary"
-            : "bg-primary text-primary-foreground",
-          compact && "size-9 rounded-xl text-xs",
+            ? "bg-white text-[#B8860B]"
+            : "bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)] text-white",
+          compact ? "size-9 rounded-xl text-xs" : "size-11",
         )}
       >
         RN
@@ -34,19 +34,19 @@ export function Brand({
       <span className="flex min-w-0 flex-col">
         <span
           className={cn(
-            "truncate text-base font-semibold tracking-tight",
+            "truncate tracking-tight",
             inverted ? "text-white" : "text-foreground",
-            compact && "text-sm",
+            compact ? "text-sm font-semibold" : "text-base font-semibold",
           )}
         >
-          RiskNova
+          Risk<span className="font-serif italic">Nova</span>
         </span>
 
         {!compact ? (
           <span
             className={cn(
               "truncate text-xs",
-              inverted ? "text-blue-50/85" : "text-muted-foreground",
+              inverted ? "text-amber-100/85" : "text-muted-foreground",
             )}
           >
             AI destekli İSG karar destek platformu

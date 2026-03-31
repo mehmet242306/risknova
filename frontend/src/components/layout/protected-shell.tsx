@@ -13,6 +13,7 @@ const navigation = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/companies", label: "Firmalar" },
   { href: "/risk-analysis", label: "Risk Analizi" },
+  { href: "/incidents", label: "Olaylar" },
   { href: "/score-history", label: "Skor Geçmişi" },
   { href: "/planner", label: "Planlayıcı" },
   { href: "/timesheet", label: "Puantaj" },
@@ -90,6 +91,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
         className="sticky top-0 z-40"
         style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)" }}
       >
+        <div className="h-0.5 w-full bg-[linear-gradient(90deg,transparent,var(--gold),transparent)]" />
         <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           {/* Left: Brand */}
           <Brand href="/dashboard" compact inverted />

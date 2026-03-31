@@ -1,4 +1,7 @@
-﻿import Link from "next/link";
+import Link from "next/link";
+import { AuthShell } from "@/components/layout/auth-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { updatePasswordAction } from "./actions";
 
 export default async function ResetPasswordPage({
@@ -10,49 +13,49 @@ export default async function ResetPasswordPage({
   const error = params?.error;
 
   return (
-    <main className="mx-auto max-w-md p-6 space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Yeni Şifre Belirle</h1>
-        <p className="text-sm text-gray-600">
-          Yeni şifreni gir ve hesabına geri dön.
+    <AuthShell
+      eyebrow="Yeni şifre"
+      title="Yeni şifre belirle"
+      description="Yeni şifreni gir ve hesabına geri dön."
+      footer={
+        <p className="text-sm leading-7 text-muted-foreground">
+          <Link
+            href="/login"
+            className="font-medium text-primary underline underline-offset-4"
+          >
+            Giriş ekranına dön
+          </Link>
         </p>
-      </div>
-
+      }
+    >
       {error ? (
-        <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}
         </div>
       ) : null}
 
-      <form className="space-y-4">
-        <div className="space-y-1">
-          <label htmlFor="password" className="block text-sm font-medium">
-            Yeni Şifre
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            className="w-full rounded-md border px-3 py-2"
-          />
-        </div>
+      <form className="space-y-5">
+        <Input
+          id="password"
+          name="password"
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          label="Yeni Şifre"
+          placeholder="En az 8 karakter"
+          hint="Güvenli bir şifre belirle."
+        />
 
-        <button
+        <Button
+          type="submit"
           formAction={updatePasswordAction}
-          className="w-full rounded-md border px-4 py-2"
+          className="w-full"
+          size="lg"
         >
           Şifreyi Güncelle
-        </button>
+        </Button>
       </form>
-
-      <p className="text-sm text-gray-600">
-        <Link href="/login" className="underline">
-          Giriş ekranına dön
-        </Link>
-      </p>
-    </main>
+    </AuthShell>
   );
 }
