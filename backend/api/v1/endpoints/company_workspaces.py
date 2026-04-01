@@ -50,7 +50,9 @@ def _extract_supabase_error_detail(exc: Exception) -> str:
     return message
 
 
-def _raise_db_error(prefix: str, exc: Exception, code: int = status.HTTP_500_INTERNAL_SERVER_ERROR) -> None:
+def _raise_db_error(
+    prefix: str, exc: Exception, code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
+) -> None:
     detail = _extract_supabase_error_detail(exc)
     raise HTTPException(status_code=code, detail=f"{prefix}: {detail}")
 
@@ -68,7 +70,9 @@ async def get_company_workspace_detail(
     company_identity_id: UUID,
     current_user: Annotated[CurrentAppUser, Depends(require_roles(*_manager_roles()))],
 ):
-    detail = get_company_workspace_detail_for_user(str(company_identity_id), current_user)
+    detail = get_company_workspace_detail_for_user(
+        str(company_identity_id), current_user
+    )
     return success_response(data=detail, meta={})
 
 
@@ -189,7 +193,9 @@ async def create_company_invitation(
                 "inviter_user_id": current_user.auth_user_id,
                 "invitee_email": payload.invitee_email.strip().lower(),
                 "message": payload.message,
-                "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
+                "expires_at": (
+                    payload.expires_at.isoformat() if payload.expires_at else None
+                ),
             }
         )
         .execute()
@@ -207,7 +213,9 @@ async def create_company_invitation(
         }
         for item in payload.permissions
     ]
-    supabase_admin.table("company_invitation_permissions").insert(permission_rows).execute()
+    supabase_admin.table("company_invitation_permissions").insert(
+        permission_rows
+    ).execute()
 
     await write_audit_log(
         current_user=current_user,
@@ -227,7 +235,11 @@ async def list_company_invitations(
     current_user: Annotated[CurrentAppUser, Depends(require_roles(*_manager_roles()))],
     company_identity_id: str | None = None,
 ):
-    query = supabase_admin.table("company_invitations").select("*").order("created_at", desc=True)
+    query = (
+        supabase_admin.table("company_invitations")
+        .select("*")
+        .order("created_at", desc=True)
+    )
     if company_identity_id:
         query = query.eq("company_identity_id", company_identity_id)
     rows = query.execute().data or []
@@ -301,7 +313,9 @@ async def revoke_invitation(
     if not invitation_rows:
         raise HTTPException(status_code=404, detail="Invitation not found")
 
-    require_company_manager(str(invitation_rows[0]["company_identity_id"]), current_user)
+    require_company_manager(
+        str(invitation_rows[0]["company_identity_id"]), current_user
+    )
 
     supabase_admin.rpc(
         "revoke_company_invitation",
@@ -426,7 +440,9 @@ async def update_member_permissions(
         for p in payload.permissions
     ]
     if insert_rows:
-        supabase_admin.table("company_member_module_permissions").insert(insert_rows).execute()
+        supabase_admin.table("company_member_module_permissions").insert(
+            insert_rows
+        ).execute()
 
     await write_audit_log(
         current_user=current_user,
@@ -473,7 +489,9 @@ async def archive_company_identity(
         request=request,
     )
 
-    return success_response(data={"status": "archived", "rpc_result": rpc_response.data}, meta={})
+    return success_response(
+        data={"status": "archived", "rpc_result": rpc_response.data}, meta={}
+    )
 
 
 @router.post("/{company_identity_id}/delete-request")
@@ -508,12 +526,6 @@ async def request_company_delete(
         request=request,
     )
 
-    return success_response(data={"status": "delete_requested", "rpc_result": rpc_response.data}, meta={})
-
-
-
-
-
-
-
-
+    return success_response(
+        data={"status": "delete_requested", "rpc_result": rpc_response.data}, meta={}
+    )

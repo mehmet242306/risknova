@@ -1,7 +1,9 @@
 from typing import Any
 
 
-def success_response(data: Any = None, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+def success_response(
+    data: Any = None, meta: dict[str, Any] | None = None
+) -> dict[str, Any]:
     return {
         "data": data,
         "meta": meta or {},

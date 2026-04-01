@@ -9,7 +9,6 @@ from supabase import Client, create_client
 
 from config import settings
 
-
 if not settings.supabase_url or not settings.supabase_service_role_key:
     raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.")
 
@@ -108,10 +107,7 @@ async def get_current_app_user(
         raise forbidden("No role is assigned to this user")
 
     roles_result = (
-        supabase_admin.table("roles")
-        .select("name")
-        .in_("id", role_ids)
-        .execute()
+        supabase_admin.table("roles").select("name").in_("id", role_ids).execute()
     )
 
     role_rows = roles_result.data or []
@@ -178,17 +174,23 @@ def can_manage_company(current_user: CurrentAppUser, company_identity_id: str) -
     return bool(row.get("can_approve_join_requests"))
 
 
-def require_company_member(company_identity_id: str, current_user: CurrentAppUser) -> None:
+def require_company_member(
+    company_identity_id: str, current_user: CurrentAppUser
+) -> None:
     if not is_company_member(current_user, company_identity_id):
         raise forbidden("Not a company member")
 
 
-def require_company_manager(company_identity_id: str, current_user: CurrentAppUser) -> None:
+def require_company_manager(
+    company_identity_id: str, current_user: CurrentAppUser
+) -> None:
     if not can_manage_company(current_user, company_identity_id):
         raise forbidden("Insufficient company-level permissions")
 
 
-def get_member_module_permissions(company_identity_id: str, user_id: str) -> dict[str, PermissionLevel]:
+def get_member_module_permissions(
+    company_identity_id: str, user_id: str
+) -> dict[str, PermissionLevel]:
     membership_rows = (
         supabase_admin.table("company_memberships")
         .select("id")

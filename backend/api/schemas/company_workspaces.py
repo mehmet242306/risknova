@@ -5,7 +5,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 PermissionLevel = Literal["none", "read", "write"]
 InvitationStatus = Literal["pending", "accepted", "declined", "revoked", "expired"]
 JoinRequestStatus = Literal["pending", "approved", "rejected", "cancelled"]
@@ -33,7 +32,9 @@ class CompanyWorkspaceCreateRequest(BaseModel):
 class JoinRequestByCodeRequest(BaseModel):
     company_code: str = Field(min_length=3, max_length=50)
     requested_role: str = Field(min_length=2, max_length=80, default="viewer")
-    requested_employment_type: str = Field(min_length=2, max_length=80, default="external")
+    requested_employment_type: str = Field(
+        min_length=2, max_length=80, default="external"
+    )
     note: str | None = None
 
 

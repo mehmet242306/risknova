@@ -44,8 +44,7 @@ def calculate_item_scores(item: dict[str, Any]) -> dict[str, Any]:
     gamma = clamp(item.get("gamma", 1.0), 0.0001, 5.0)
 
     factor_values: dict[str, float] = {
-        code: clamp(item.get(code, 0.0), 0.0, 1.0)
-        for code in CONTEXT_WEIGHTS
+        code: clamp(item.get(code, 0.0), 0.0, 1.0) for code in CONTEXT_WEIGHTS
     }
 
     p = manual_probability / 5

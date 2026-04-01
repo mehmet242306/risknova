@@ -44,7 +44,9 @@ def list_company_workspaces_for_user(current_user: CurrentAppUser) -> list[dict]
     return response.data or []
 
 
-def get_company_workspace_detail_for_user(company_identity_id: str, current_user: CurrentAppUser) -> dict:
+def get_company_workspace_detail_for_user(
+    company_identity_id: str, current_user: CurrentAppUser
+) -> dict:
     workspace_rows = (
         supabase_admin.table("company_workspaces")
         .select("*")
@@ -99,10 +101,14 @@ def create_company_with_workspace(payload: dict, current_user: CurrentAppUser) -
         "updated_by": current_user.auth_user_id,
     }
 
-    company_resp = supabase_admin.table("company_identities").insert(company_insert).execute()
+    company_resp = (
+        supabase_admin.table("company_identities").insert(company_insert).execute()
+    )
     company_rows = company_resp.data or []
     if not company_rows:
-        raise HTTPException(status_code=500, detail="Company identity could not be created")
+        raise HTTPException(
+            status_code=500, detail="Company identity could not be created"
+        )
 
     company = company_rows[0]
 
@@ -110,33 +116,46 @@ def create_company_with_workspace(payload: dict, current_user: CurrentAppUser) -
         "organization_id": current_user.organization_id,
         "company_identity_id": company["id"],
         "display_name": display_name,
-        "notes": _value_or_none(payload.get("notes")) or f"{official_name} için firma çalışma alanı üzerinden oluşturuldu.",
+        "notes": _value_or_none(payload.get("notes"))
+        or f"{official_name} için firma çalışma alanı üzerinden oluşturuldu.",
         "is_primary_workspace": True,
         "created_by": current_user.auth_user_id,
         "updated_by": current_user.auth_user_id,
     }
 
-    workspace_resp = supabase_admin.table("company_workspaces").insert(workspace_insert).execute()
+    workspace_resp = (
+        supabase_admin.table("company_workspaces").insert(workspace_insert).execute()
+    )
     workspace_rows = workspace_resp.data or []
     if not workspace_rows:
-        supabase_admin.table("company_identities").delete().eq("id", company["id"]).execute()
-        raise HTTPException(status_code=500, detail="Company workspace could not be created")
+        supabase_admin.table("company_identities").delete().eq(
+            "id", company["id"]
+        ).execute()
+        raise HTTPException(
+            status_code=500, detail="Company workspace could not be created"
+        )
 
     workspace = workspace_rows[0]
 
-    membership_resp = supabase_admin.table("company_memberships").insert(
-        {
-            "company_identity_id": company["id"],
-            "organization_id": current_user.organization_id,
-            "user_id": current_user.auth_user_id,
-            "membership_role": "owner",
-            "status": "active",
-            "can_approve_join_requests": True,
-        }
-    ).execute()
+    membership_resp = (
+        supabase_admin.table("company_memberships")
+        .insert(
+            {
+                "company_identity_id": company["id"],
+                "organization_id": current_user.organization_id,
+                "user_id": current_user.auth_user_id,
+                "membership_role": "owner",
+                "status": "active",
+                "can_approve_join_requests": True,
+            }
+        )
+        .execute()
+    )
 
     if membership_resp.data is None:
-        raise HTTPException(status_code=500, detail="Company membership could not be created")
+        raise HTTPException(
+            status_code=500, detail="Company membership could not be created"
+        )
 
     return {
         "company_identity_id": str(company["id"]),
@@ -144,6 +163,3 @@ def create_company_with_workspace(payload: dict, current_user: CurrentAppUser) -
         "workspace_id": str(workspace["id"]),
         "display_name": workspace.get("display_name"),
     }
-
-
-

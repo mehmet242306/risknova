@@ -120,9 +120,7 @@ def build_item_ai_output(
     factor_sentence = ""
     if factor_names:
         factor_sentence = (
-            " Etkiyi özellikle "
-            + ", ".join(factor_names[:3])
-            + " artırmaktadır."
+            " Etkiyi özellikle " + ", ".join(factor_names[:3]) + " artırmaktadır."
         )
 
     controls_sentence = (
@@ -144,7 +142,9 @@ def build_item_ai_output(
             actions.extend(keyword_actions)
 
     if not current_controls:
-        actions.append("Sahadaki mevcut kontroller yazılı ve görsel olarak standardize edilmelidir.")
+        actions.append(
+            "Sahadaki mevcut kontroller yazılı ve görsel olarak standardize edilmelidir."
+        )
 
     actions = _dedupe(actions)[:5]
 

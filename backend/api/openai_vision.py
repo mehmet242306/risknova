@@ -8,7 +8,6 @@ import httpx
 
 from config import settings
 
-
 ALLOWED_HAZARD_CODES: list[str] = [
     "missing_ppe",
     "fall_hazard",
@@ -286,7 +285,9 @@ class OpenAIVisionClient:
             raise RuntimeError("OPENAI_API_KEY is not configured")
 
         if not data_url.startswith("data:image/"):
-            raise RuntimeError("Only data URL based image inputs are supported in this MVP")
+            raise RuntimeError(
+                "Only data URL based image inputs are supported in this MVP"
+            )
 
         developer_prompt = f"""
 Analysis title: {analysis_title or "-"}

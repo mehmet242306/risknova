@@ -147,7 +147,11 @@ async def create_risk_assessment(
         scored_items.append(
             {
                 **item_payload,
-                **{key: value for key, value in score_data.items() if key != "dominant_factors"},
+                **{
+                    key: value
+                    for key, value in score_data.items()
+                    if key != "dominant_factors"
+                },
                 **ai_data,
             }
         )
@@ -183,15 +187,15 @@ async def create_risk_assessment(
     }
 
     assessment_response = (
-        supabase_admin.table("risk_assessments")
-        .insert(assessment_insert)
-        .execute()
+        supabase_admin.table("risk_assessments").insert(assessment_insert).execute()
     )
     assessment_rows = assessment_response.data or []
     created_assessment = assessment_rows[0] if assessment_rows else None
 
     if not created_assessment:
-        raise HTTPException(status_code=500, detail="Risk assessment could not be created")
+        raise HTTPException(
+            status_code=500, detail="Risk assessment could not be created"
+        )
 
     assessment_id = str(created_assessment["id"])
 
@@ -205,9 +209,7 @@ async def create_risk_assessment(
     ]
 
     items_response = (
-        supabase_admin.table("risk_assessment_items")
-        .insert(item_insert_rows)
-        .execute()
+        supabase_admin.table("risk_assessment_items").insert(item_insert_rows).execute()
     )
     created_items = items_response.data or []
 

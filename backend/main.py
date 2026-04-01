@@ -32,10 +32,9 @@ app.include_router(api_router)
 
 @app.get("/", tags=["root"])
 async def root():
-    return {
-        "message": "RiskNova backend is running",
-        "docs": "/docs"
-    }
+    return {"message": "RiskNova backend is running", "docs": "/docs"}
+
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
