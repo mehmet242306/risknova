@@ -125,6 +125,7 @@ export function InviteProfessionalModal({ open, companyId, onClose }: Props) {
   }, [companyId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) void loadData();
   }, [open, loadData]);
 
@@ -189,6 +190,7 @@ export function InviteProfessionalModal({ open, companyId, onClose }: Props) {
   }, [loadData]);
 
   /* ── Submit ── */
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const handleSubmit = useCallback(async () => {
     const email = manualEmail.trim();
     if (!email) { setSaveError("E-posta adresi gereklidir."); return; }

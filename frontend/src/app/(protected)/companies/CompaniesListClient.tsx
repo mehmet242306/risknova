@@ -42,6 +42,7 @@ export function CompaniesListClient() {
     else { setCos(loadCompanyDirectory()); setArCos(ldA()); setDlCos(ldD()); setDs("local"); }
   }, []);
   const rl = useCallback(() => { setCos(loadCompanyDirectory()); setArCos(ldA()); setDlCos(ldD()); }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadAll().then(() => setMounted(true)); }, [loadAll]);
 
   const [vm, setVm] = useState<VM>("active");

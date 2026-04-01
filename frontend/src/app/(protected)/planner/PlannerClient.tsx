@@ -844,7 +844,7 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <div className="text-5xl">📋</div>
               <p className="font-medium text-muted-foreground">Henüz görev yok</p>
-              <p className="text-sm text-muted-foreground">Yukarıdaki "Yeni Görev" butonuna tıklayın.</p>
+              <p className="text-sm text-muted-foreground">Yukarıdaki &quot;Yeni Görev&quot; butonuna tıklayın.</p>
             </div>
           ) : (
             <div className="divide-y divide-border">

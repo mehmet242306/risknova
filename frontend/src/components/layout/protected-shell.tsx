@@ -40,7 +40,7 @@ function ThemeToggle() {
     const isDark =
       stored === "dark" ||
       (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    setDark(isDark);
+    setDark(isDark); // eslint-disable-line react-hooks/set-state-in-effect
     /* Ensure DOM is in sync */
     document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
     document.documentElement.classList.toggle("dark", isDark);

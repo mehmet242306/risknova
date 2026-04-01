@@ -804,7 +804,7 @@ export default function ProfileClient() {
                     console.log("Tema tıklandı:", t);
                     const root = document.documentElement;
                     root.classList.remove("light", "dark");
-                    let effective: "light" | "dark" = t === "system"
+                    const effective: "light" | "dark" = t === "system"
                       ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
                       : t;
                     root.classList.add(effective);

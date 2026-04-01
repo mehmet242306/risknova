@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from api.audit import write_audit_log
 from api.authz import (
     CurrentAppUser,
-    get_member_module_permissions,
     require_company_manager,
     require_company_member,
     require_roles,

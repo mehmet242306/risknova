@@ -200,6 +200,7 @@ export function OrganizationPanel({ companyId }: { companyId: string }) {
     setLoading(false);
   }, [companyId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadData(); }, [loadData]);
 
   /* ── Role update ── */
@@ -400,7 +401,7 @@ export function OrganizationPanel({ companyId }: { companyId: string }) {
                       )}
                     </div>
                     {inv.message && (
-                      <p className="mt-1 text-xs text-muted-foreground italic">"{inv.message}"</p>
+                      <p className="mt-1 text-xs text-muted-foreground italic">&quot;{inv.message}&quot;</p>
                     )}
                   </div>
                   <button

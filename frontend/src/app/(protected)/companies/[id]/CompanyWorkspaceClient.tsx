@@ -49,6 +49,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
     setLoading(false);
   }, [companyId]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [load]);
 
   const upd = useCallback((patch: Partial<CompanyRecord>) => { setCompany((p) => (p ? { ...p, ...patch } : p)); }, []);
