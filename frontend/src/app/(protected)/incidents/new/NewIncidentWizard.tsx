@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,20 +66,6 @@ const STEPS = [
   { key: "review", label: "Değerlendirme", icon: Sparkles },
 ];
 
-const outcomeLabels: Record<PersonnelOutcome, string> = {
-  injured: "Yaralı",
-  deceased: "Hayatını Kaybetti",
-  unharmed: "Zarar Görmedi",
-  unknown: "Belirsiz",
-};
-
-const outcomeColors: Record<PersonnelOutcome, string> = {
-  injured: "warning",
-  deceased: "danger",
-  unharmed: "success",
-  unknown: "neutral",
-};
-
 const typeLabels: Record<IncidentType, string> = {
   work_accident: "İş Kazası",
   near_miss: "Ramak Kala",
@@ -98,7 +83,6 @@ const typeBadgeVariant: Record<IncidentType, "danger" | "warning" | "accent"> = 
 /* ------------------------------------------------------------------ */
 
 export function NewIncidentWizard() {
-  const router = useRouter();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [savedIncidentId, setSavedIncidentId] = useState<string | null>(null);
@@ -107,7 +91,7 @@ export function NewIncidentWizard() {
   const [incidentType, setIncidentType] = useState<IncidentType | null>(null);
 
   // Step 1: Company
-  const [companies, setCompanies] = useState<CompanyRecord[]>([]);
+  const [companies, setCompanies] = useState<CompanyRecord[]>(() => loadCompanyDirectory());
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [companySearch, setCompanySearch] = useState("");
 
@@ -138,11 +122,10 @@ export function NewIncidentWizard() {
   const [ishikawaRequired, setIshikawaRequired] = useState(false);
   const [accidentCauseDescription, setAccidentCauseDescription] = useState("");
 
-  useEffect(() => { setCompanies(loadCompanyDirectory()); }, []);
-
   const [personnelLoading, setPersonnelLoading] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!selectedCompanyId) { setAvailablePersonnel([]); return; }
     setPersonnelLoading(true);
     fetchPersonnelFromSupabase(selectedCompanyId).then((data) => {

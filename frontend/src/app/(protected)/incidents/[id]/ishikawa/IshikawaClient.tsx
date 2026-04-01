@@ -17,7 +17,7 @@ import {
   type IshikawaRecord,
   type IncidentRecord,
 } from "@/lib/supabase/incident-api";
-import { ArrowLeft, Plus, Trash2, Save, GitBranch, Download, FileText } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Save, GitBranch, Download } from "lucide-react";
 
 type CategoryKey = "man" | "machine" | "method" | "material" | "environment" | "measurement";
 

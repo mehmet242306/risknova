@@ -78,12 +78,6 @@ export function IshikawaDiagram({ data, id }: { data: IshikawaData; id?: string 
 
         {/* Cause bones */}
         {causes.map((cause, ci) => {
-          const boneSpacing = 28;
-          const totalHeight = (causes.length - 1) * boneSpacing;
-          const startBoneY = side === "top"
-            ? branchEndY + 15 - totalHeight / 2 + ci * boneSpacing
-            : branchEndY - 15 - totalHeight / 2 + ci * boneSpacing;
-
           // Point on the main branch
           const t = 0.3 + (ci / Math.max(causes.length, 1)) * 0.5;
           const boneEndX = branchX + (side === "top" ? -40 : -40) + (40 - (side === "top" ? -40 : -40) + 40) * t;

@@ -23,9 +23,6 @@ import {
 } from "@/lib/supabase/incident-api";
 import {
   ArrowLeft,
-  ShieldAlert,
-  AlertTriangle,
-  Stethoscope,
   FileText,
   GitBranch,
   ClipboardCheck,
@@ -112,9 +109,6 @@ export function IncidentDetailClient() {
       </div>
     );
   }
-
-  const TypeIcon = incident.incidentType === "work_accident" ? ShieldAlert
-    : incident.incidentType === "near_miss" ? AlertTriangle : Stethoscope;
 
   async function handleStatusChange(newStatus: IncidentStatus) {
     if (!incident) return;

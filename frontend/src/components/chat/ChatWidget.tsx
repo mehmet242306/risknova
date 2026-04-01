@@ -11,7 +11,6 @@ import {
   ExternalLink,
   Bot,
   User,
-  Minimize2,
 } from "lucide-react";
 
 type Message = {
@@ -36,6 +35,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
   // İlk açılışta karşılama mesajı
   useEffect(() => {
     if (open && messages.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessages([
         {
           id: "welcome",
