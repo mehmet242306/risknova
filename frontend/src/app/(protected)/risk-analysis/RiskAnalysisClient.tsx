@@ -1,621 +1,1732 @@
-"use client";
+﻿"use client";
 
-import { useMemo, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/page-header";
+import Link from "next/link";
 import {
-  type R2DValues,
-  type FKValues,
-  type MatrixValues,
-  type R2DResult,
-  type FKResult,
-  type MatrixResult,
-  R2D_PARAMS,
-  FK_LIKELIHOOD,
-  FK_SEVERITY,
-  FK_EXPOSURE,
-  MATRIX_LIKELIHOOD_LABELS,
-  MATRIX_SEVERITY_LABELS,
-  calculateR2D,
-  calculateFK,
-  calculateMatrix,
-  getMatrixGrid,
-} from "@/lib/risk-scoring";
-import { cn } from "@/lib/utils";
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+} from "react";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatusAlert } from "@/components/ui/status-alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  loadCompanyDirectory,
+  type CompanyRecord,
+} from "@/lib/company-directory";
 
-/* ================================================================== */
-/* Types                                                               */
-/* ================================================================== */
+type AnalysisMethod = "r_skor" | "fine_kinney" | "l_matrix";
+type DetectionSeverity = "low" | "medium" | "high" | "critical";
 
-type MethodTab = "r2d" | "fine_kinney" | "matrix";
+type UploadedImage = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
 
-const METHOD_TABS: { key: MethodTab; label: string; badge: string }[] = [
-  { key: "r2d", label: "R-SKOR 2D", badge: "9 parametre" },
-  { key: "fine_kinney", label: "Fine Kinney", badge: "3 parametre" },
-  { key: "matrix", label: "5\u00D75 Matris", badge: "2 parametre" },
+type RiskLine = {
+  id: string;
+  title: string;
+  description: string;
+  images: UploadedImage[];
+};
+
+type ParticipantRole = {
+  code: string;
+  label: string;
+};
+
+type Participant = {
+  id: string;
+  fullName: string;
+  roleCode: string;
+  title: string;
+  certificateNo: string;
+};
+
+type AnnotationPoint = {
+  x: number;
+  y: number;
+};
+
+type PinAnnotation = {
+  id: string;
+  kind: "pin";
+  label: string;
+  x: number;
+  y: number;
+};
+
+type BoxAnnotation = {
+  id: string;
+  kind: "box";
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type PolygonAnnotation = {
+  id: string;
+  kind: "polygon";
+  label: string;
+  points: AnnotationPoint[];
+};
+
+type FindingAnnotation = PinAnnotation | BoxAnnotation | PolygonAnnotation;
+
+type VisualFinding = {
+  id: string;
+  imageId: string;
+  title: string;
+  category: string;
+  confidence: number;
+  severity: DetectionSeverity;
+  priorityScore: number;
+  methodScore: string;
+  recommendation: string;
+  correctiveActionRequired: boolean;
+  annotations: FindingAnnotation[];
+};
+
+type LineResult = {
+  rowId: string;
+  rowTitle: string;
+  imageCount: number;
+  findings: VisualFinding[];
+};
+
+const participantRoleCatalog: ParticipantRole[] = [
+  { code: "employer", label: "İşveren" },
+  { code: "employer_representative", label: "İşveren Vekili" },
+  { code: "ohs_specialist", label: "İş Güvenliği Uzmanı" },
+  { code: "workplace_physician", label: "İşyeri Hekimi" },
+  { code: "other_health_personnel", label: "Diğer Sağlık Personeli" },
+  { code: "employee_representative", label: "Çalışan Temsilcisi" },
+  { code: "support_staff", label: "Destek Elemanı" },
+  { code: "knowledgeable_employee", label: "Riskler Hakkında Bilgi Sahibi Çalışan" },
 ];
 
-/* ================================================================== */
-/* Severity badge helper                                               */
-/* ================================================================== */
-
-function riskBadge(riskClass: string, label: string, color: string) {
-  const variant =
-    riskClass === "critical" || riskClass === "high"
-      ? "danger"
-      : riskClass === "medium"
-        ? "warning"
-        : "success";
-  return (
-    <Badge variant={variant} className="text-xs" style={{ borderColor: `${color}40`, backgroundColor: `${color}15`, color }}>
-      {label}
-    </Badge>
-  );
+function createLine(): RiskLine {
+  return {
+    id: crypto.randomUUID(),
+    title: "",
+    description: "",
+    images: [],
+  };
 }
 
-/* ================================================================== */
-/* R-SKOR 2D Tab                                                       */
-/* ================================================================== */
+function createParticipant(): Participant {
+  return {
+    id: crypto.randomUUID(),
+    fullName: "",
+    roleCode: "",
+    title: "",
+    certificateNo: "",
+  };
+}
 
-function R2DTab() {
-  const [values, setValues] = useState<R2DValues>(() => {
-    const init: R2DValues = {};
-    R2D_PARAMS.forEach((p) => { init[p.key] = 0; });
-    return init;
+function methodLabel(method: AnalysisMethod) {
+  switch (method) {
+    case "r_skor":
+      return "R-SKOR";
+    case "fine_kinney":
+      return "Fine Kinney";
+    case "l_matrix":
+      return "L Tipi Matris";
+    default:
+      return method;
+  }
+}
+
+function severityLabel(severity: DetectionSeverity) {
+  switch (severity) {
+    case "low":
+      return "Düşük";
+    case "medium":
+      return "Orta";
+    case "high":
+      return "Yüksek";
+    case "critical":
+      return "Kritik";
+    default:
+      return severity;
+  }
+}
+
+function severityClass(severity: DetectionSeverity) {
+  switch (severity) {
+    case "low":
+      return "border border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "medium":
+      return "border border-amber-200 bg-amber-50 text-amber-700";
+    case "high":
+      return "border border-orange-200 bg-orange-50 text-orange-700";
+    case "critical":
+      return "border border-red-200 bg-red-50 text-red-700";
+    default:
+      return "border border-slate-200 bg-slate-50 text-slate-700";
+  }
+}
+
+function buildMethodScore(method: AnalysisMethod, priorityScore: number) {
+  if (method === "r_skor") {
+    const score = Math.min(100, priorityScore * 9.5 + 7.2);
+    return `${score.toFixed(1)} / ${
+      priorityScore >= 9
+        ? "Kritik"
+        : priorityScore >= 7
+          ? "Yüksek"
+          : priorityScore >= 5
+            ? "Orta"
+            : "Düşük"
+    }`;
+  }
+
+  if (method === "fine_kinney") {
+    const score = priorityScore * 18;
+    return `${score} / ${
+      priorityScore >= 9
+        ? "Çok yüksek"
+        : priorityScore >= 7
+          ? "Yüksek"
+          : priorityScore >= 5
+            ? "Önemli"
+            : "Düşük"
+    }`;
+  }
+
+  const score = Math.min(25, priorityScore * 2);
+  return `${score} / ${
+    priorityScore >= 9
+      ? "Kabul edilemez"
+      : priorityScore >= 7
+        ? "Yüksek"
+        : priorityScore >= 5
+          ? "Orta"
+          : "Düşük"
+  }`;
+}
+
+function getMockFindingsForImage(
+  imageId: string,
+  imageIndex: number,
+  lineIndex: number,
+  method: AnalysisMethod,
+): VisualFinding[] {
+  const patterns: Array<Omit<VisualFinding, "id" | "imageId" | "methodScore">> = [
+    {
+      title: "KKD eksikliği şüphesi",
+      category: "PPE",
+      confidence: 0.91,
+      severity: "high",
+      priorityScore: 8,
+      recommendation:
+        "Kişi üzerinde gerekli KKD varlığı sahada doğrulanmalı ve eksiklik varsa derhal giderilmelidir.",
+      correctiveActionRequired: false,
+      annotations: [
+        {
+          id: crypto.randomUUID(),
+          kind: "pin",
+          label: "R1",
+          x: 58,
+          y: 30,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "box",
+          label: "Kişi",
+          x: 44,
+          y: 18,
+          width: 22,
+          height: 52,
+        },
+      ],
+    },
+    {
+      title: "Düşme / takılma riski şüphesi",
+      category: "Housekeeping",
+      confidence: 0.87,
+      severity: "medium",
+      priorityScore: 6,
+      recommendation:
+        "Geçiş yolları, zemin düzeni ve yerdeki engeller saha kontrolüne alınmalıdır.",
+      correctiveActionRequired: false,
+      annotations: [
+        {
+          id: crypto.randomUUID(),
+          kind: "pin",
+          label: "R2",
+          x: 42,
+          y: 76,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "polygon",
+          label: "Geçiş alanı",
+          points: [
+            { x: 18, y: 68 },
+            { x: 62, y: 66 },
+            { x: 70, y: 84 },
+            { x: 24, y: 88 },
+          ],
+        },
+      ],
+    },
+    {
+      title: "İstif / devrilme riski şüphesi",
+      category: "Storage",
+      confidence: 0.89,
+      severity: "critical",
+      priorityScore: 9,
+      recommendation:
+        "İstif güvenliği, yük dengesi ve sabitleme önlemleri derhal gözden geçirilmelidir.",
+      correctiveActionRequired: true,
+      annotations: [
+        {
+          id: crypto.randomUUID(),
+          kind: "pin",
+          label: "R3",
+          x: 74,
+          y: 42,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "box",
+          label: "İstif",
+          x: 61,
+          y: 20,
+          width: 24,
+          height: 48,
+        },
+      ],
+    },
+    {
+      title: "Elektriksel maruziyet şüphesi",
+      category: "Electrical",
+      confidence: 0.84,
+      severity: "high",
+      priorityScore: 7,
+      recommendation:
+        "Açık elektrik ekipmanı veya uygunsuz kablolama ihtimali teknik ekip tarafından incelenmelidir.",
+      correctiveActionRequired: false,
+      annotations: [
+        {
+          id: crypto.randomUUID(),
+          kind: "pin",
+          label: "R4",
+          x: 20,
+          y: 38,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "box",
+          label: "Pano/Kablo",
+          x: 10,
+          y: 22,
+          width: 18,
+          height: 30,
+        },
+      ],
+    },
+    {
+      title: "Elle taşıma ergonomi riski şüphesi",
+      category: "Ergonomi",
+      confidence: 0.83,
+      severity: "high",
+      priorityScore: 7,
+      recommendation:
+        "Taşıma yöntemi, yük ağırlığı ve yardımcı ekipman kullanımı yeniden değerlendirilmelidir.",
+      correctiveActionRequired: false,
+      annotations: [
+        {
+          id: crypto.randomUUID(),
+          kind: "pin",
+          label: "R5",
+          x: 53,
+          y: 49,
+        },
+        {
+          id: crypto.randomUUID(),
+          kind: "box",
+          label: "Yük/Kişi",
+          x: 38,
+          y: 30,
+          width: 26,
+          height: 38,
+        },
+      ],
+    },
+  ];
+
+  const selectionMatrix = [
+    [0, 2],
+    [1, 4],
+    [3, 1],
+    [2, 0, 4],
+  ];
+
+  const selectedIndexes =
+    selectionMatrix[(lineIndex + imageIndex) % selectionMatrix.length];
+
+  return selectedIndexes.map((patternIndex) => {
+    const item = patterns[patternIndex];
+    return {
+      id: crypto.randomUUID(),
+      imageId,
+      title: item.title,
+      category: item.category,
+      confidence: item.confidence,
+      severity: item.severity,
+      priorityScore: item.priorityScore,
+      methodScore: buildMethodScore(method, item.priorityScore),
+      recommendation: item.recommendation,
+      correctiveActionRequired: item.correctiveActionRequired,
+      annotations: item.annotations,
+    };
   });
-  const [result, setResult] = useState<R2DResult | null>(null);
+}
 
-  function updateParam(key: string, val: number) {
-    setValues((prev) => ({ ...prev, [key]: val }));
-    setResult(null);
+function buildMockResults(
+  lines: RiskLine[],
+  method: AnalysisMethod,
+): {
+  results: LineResult[];
+  selectedImages: Record<string, string>;
+  selectedFindings: Record<string, string>;
+} {
+  const validLines = lines.filter((line) => line.images.length > 0);
+
+  const results = validLines.map((line, lineIndex) => {
+    const findings = line.images.flatMap((image, imageIndex) =>
+      getMockFindingsForImage(image.id, imageIndex, lineIndex, method),
+    );
+
+    return {
+      rowId: line.id,
+      rowTitle: line.title.trim() || `Satır ${lineIndex + 1}`,
+      imageCount: line.images.length,
+      findings,
+    };
+  });
+
+  const selectedImages: Record<string, string> = {};
+  const selectedFindings: Record<string, string> = {};
+
+  results.forEach((result) => {
+    const firstFinding = result.findings[0];
+    if (firstFinding) {
+      selectedImages[result.rowId] = firstFinding.imageId;
+      selectedFindings[result.rowId] = firstFinding.id;
+    }
+  });
+
+  return {
+    results,
+    selectedImages,
+    selectedFindings,
+  };
+}
+
+function annotationStyle(
+  style: CSSProperties,
+  active: boolean,
+): CSSProperties {
+  return {
+    ...style,
+    zIndex: active ? 20 : 10,
+  };
+}
+
+function renderAnnotation(
+  annotation: FindingAnnotation,
+  active: boolean,
+  onClick: () => void,
+) {
+  if (annotation.kind === "pin") {
+    return (
+      <button
+        key={annotation.id}
+        type="button"
+        onClick={onClick}
+        title={annotation.label}
+        className={`absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 text-xs font-bold shadow-lg transition-transform hover:scale-105 ${
+          active
+            ? "border-red-700 bg-red-600 text-white"
+            : "border-white bg-slate-900/90 text-white"
+        }`}
+        style={annotationStyle(
+          {
+            left: `${annotation.x}%`,
+            top: `${annotation.y}%`,
+          },
+          active,
+        )}
+      >
+        {annotation.label}
+      </button>
+    );
   }
 
-  function handleCalculate() {
-    setResult(calculateR2D(values));
-  }
-
-  function handleReset() {
-    const init: R2DValues = {};
-    R2D_PARAMS.forEach((p) => { init[p.key] = 0; });
-    setValues(init);
-    setResult(null);
+  if (annotation.kind === "box") {
+    return (
+      <button
+        key={annotation.id}
+        type="button"
+        onClick={onClick}
+        title={annotation.label}
+        className={`absolute rounded-md border-2 ${
+          active
+            ? "border-red-600 bg-red-500/10 shadow-[0_0_0_2px_rgba(220,38,38,0.18)]"
+            : "border-cyan-400 bg-cyan-400/10"
+        }`}
+        style={annotationStyle(
+          {
+            left: `${annotation.x}%`,
+            top: `${annotation.y}%`,
+            width: `${annotation.width}%`,
+            height: `${annotation.height}%`,
+          },
+          active,
+        )}
+      >
+        <span
+          className={`absolute -top-7 left-0 rounded-md px-2 py-1 text-[10px] font-semibold ${
+            active ? "bg-red-600 text-white" : "bg-cyan-500 text-white"
+          }`}
+        >
+          {annotation.label}
+        </span>
+      </button>
+    );
   }
 
   return (
-    <div className="space-y-5">
-      {/* Method description */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
-        <h3 className="section-title text-base">R-SKOR 2D Nedir?</h3>
-        <p className="mt-2 text-sm leading-7 text-muted-foreground">
-          R-SKOR 2D, 9 farkli risk kaynagini es zamanli degerlendiren, surekli bir skor ureten (0.00 - 1.00)
-          ve tek bir kritik tehlikenin diger dusuk degerler tarafindan maskelenmesini override mekanizmasiyla engelleyen
-          cok boyutlu risk degerlendirme yontemidir. Fine-Kinney&apos;in 3 ve 5\u00D75 matrisin 2 parametresine karsi
-          R-SKOR 2D 9 bagimsiz parametre kullanir.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Badge variant="default" className="text-[10px]">9 Parametre</Badge>
-          <Badge variant="accent" className="text-[10px]">Surekli Skor [0, 1]</Badge>
-          <Badge variant="warning" className="text-[10px]">Override Mekanizmasi</Badge>
-        </div>
-      </div>
+    <button
+      key={annotation.id}
+      type="button"
+      onClick={onClick}
+      className="absolute inset-0"
+      title={annotation.label}
+      style={annotationStyle({}, active)}
+    >
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="h-full w-full"
+      >
+        <polygon
+          points={annotation.points.map((point) => `${point.x},${point.y}`).join(" ")}
+          fill={active ? "rgba(239,68,68,0.18)" : "rgba(6,182,212,0.18)"}
+          stroke={active ? "rgb(220,38,38)" : "rgb(8,145,178)"}
+          strokeWidth="1.8"
+        />
+      </svg>
 
-      {/* Formula card */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h4 className="text-sm font-semibold text-foreground">Formul</h4>
-        <div className="mt-3 space-y-2 rounded-lg bg-secondary/50 p-4 font-mono text-sm text-foreground">
-          <p><span className="text-muted-foreground">s_base =</span> 0.16\u00B7C1 + 0.12\u00B7C2 + 0.12\u00B7C3 + 0.10\u00B7C4 + 0.12\u00B7C5 + 0.10\u00B7C6 + 0.14\u00B7C7 + 0.10\u00B7C8 + 0.08\u00B7C9</p>
-          <p><span className="text-muted-foreground">s_peak =</span> 0.15 \u00D7 max(1.40\u00B7C3, 1.60\u00B7C5, 1.50\u00B7C7, 1.30\u00B7C8)</p>
-          <p><span className="text-primary font-bold">R\u2082D =</span> min(1, s_base + s_peak)</p>
-        </div>
-      </div>
+      <span
+        className={`absolute rounded-md px-2 py-1 text-[10px] font-semibold ${
+          active ? "bg-red-600 text-white" : "bg-cyan-500 text-white"
+        }`}
+        style={{
+          left: `${annotation.points[0]?.x ?? 0}%`,
+          top: `${annotation.points[0]?.y ?? 0}%`,
+          transform: "translate(-10%, -120%)",
+        }}
+      >
+        {annotation.label}
+      </span>
+    </button>
+  );
+}
 
-      {/* 9 parameter sliders */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h4 className="text-sm font-semibold text-foreground">Parametre Degerleri</h4>
-        <p className="mt-1 text-xs text-muted-foreground">Her parametreyi 0 (risk yok) ile 1 (maksimum risk) arasinda ayarlayin.</p>
-        <div className="mt-4 space-y-4">
-          {R2D_PARAMS.map((p) => {
-            const v = values[p.key] ?? 0;
-            const barColor = v < 0.3 ? "#10B981" : v < 0.6 ? "#F59E0B" : v < 0.8 ? "#F97316" : "#DC2626";
-            return (
-              <div key={p.key} className="space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex h-6 w-8 items-center justify-center rounded-md bg-secondary text-[10px] font-bold text-muted-foreground">{p.code}</span>
-                    <span className="text-sm font-medium text-foreground">{p.label}</span>
-                    {p.overrideCoeff && <Badge variant="warning" className="text-[9px]">Override \u00D7{p.overrideCoeff}</Badge>}
+export function RiskAnalysisClient() {
+  const [analysisTitle, setAnalysisTitle] = useState("Saha Risk Analizi");
+  const [analysisNote, setAnalysisNote] = useState(
+    "Her satır bir risk konusu veya uygunsuzluk grubunu temsil eder. Aynı satıra bir veya birden fazla fotoğraf eklenebilir.",
+  );
+  const [method, setMethod] = useState<AnalysisMethod>("r_skor");
+
+  const [companies, setCompanies] = useState<CompanyRecord[]>(() => loadCompanyDirectory());
+  const [selectedCompanyId, setSelectedCompanyId] = useState(() => loadCompanyDirectory()[0]?.id ?? "");
+  const [selectedLocation, setSelectedLocation] = useState("");
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+
+  const [participants, setParticipants] = useState<Participant[]>([
+    createParticipant(),
+  ]);
+  const [setupMessage, setSetupMessage] = useState("");
+  const [setupMessageType, setSetupMessageType] = useState<"success" | "error" | "">("");
+
+  const [lines, setLines] = useState<RiskLine[]>([
+    {
+      id: crypto.randomUUID(),
+      title: "İstifleme alanı",
+      description:
+        "Aynı durumun genel ve yakın açıdan çekilmiş görselleri birlikte eklenebilir.",
+      images: [],
+    },
+  ]);
+
+  const [results, setResults] = useState<LineResult[]>([]);
+  const [selectedImageByRow, setSelectedImageByRow] = useState<Record<string, string>>({});
+  const [selectedFindingByRow, setSelectedFindingByRow] = useState<Record<string, string>>({});
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const selectedCompany = useMemo(
+    () => companies.find((item) => item.id === selectedCompanyId) ?? null,
+    [companies, selectedCompanyId],
+  );
+
+  const validParticipants = useMemo(() => {
+    return participants.filter(
+      (participant) =>
+        participant.fullName.trim() && participant.roleCode.trim(),
+    );
+  }, [participants]);
+
+  const lineMap = useMemo(() => {
+    return new Map(lines.map((line) => [line.id, line]));
+  }, [lines]);
+
+  const totalImageCount = useMemo(() => {
+    return lines.reduce((sum, line) => sum + line.images.length, 0);
+  }, [lines]);
+
+  const totalDetectionCount = useMemo(() => {
+    return results.reduce((sum, result) => sum + result.findings.length, 0);
+  }, [results]);
+
+  const dofCandidateCount = useMemo(() => {
+    return results.reduce(
+      (sum, result) =>
+        sum +
+        result.findings.filter((finding) => finding.correctiveActionRequired).length,
+      0,
+    );
+  }, [results]);
+
+  const highestPriority = useMemo(() => {
+    const scores = results.flatMap((result) =>
+      result.findings.map((finding) => finding.priorityScore),
+    );
+    return scores.length ? Math.max(...scores) : 0;
+  }, [results]);
+
+  function validateSetup(): string | null {
+    if (!selectedCompanyId) {
+      return "Önce firma / kurum seçmelisin.";
+    }
+
+    if (!selectedLocation) {
+      return "Lokasyon / çalışma alanı seçmelisin.";
+    }
+
+    if (!selectedDepartment) {
+      return "Bölüm / birim seçmelisin.";
+    }
+
+    if (validParticipants.length === 0) {
+      return "En az bir görevli kişi adı ve rolü girilmelidir.";
+    }
+
+    return null;
+  }
+
+  function handlePrepareSetup() {
+    const error = validateSetup();
+
+    if (error) {
+      setSetupMessage(error);
+      setSetupMessageType("error");
+      return;
+    }
+
+    setSetupMessage("Firma / kurum ve analiz ekibi bilgileri bu analiz için hazırlandı.");
+    setSetupMessageType("success");
+  }
+
+  function updateParticipant(
+    participantId: string,
+    field: keyof Omit<Participant, "id">,
+    value: string,
+  ) {
+    setParticipants((prev) =>
+      prev.map((participant) =>
+        participant.id === participantId
+          ? {
+              ...participant,
+              [field]: value,
+            }
+          : participant,
+      ),
+    );
+    setSetupMessage("");
+    setSetupMessageType("");
+  }
+
+  function addParticipant() {
+    setParticipants((prev) => [...prev, createParticipant()]);
+    setSetupMessage("");
+    setSetupMessageType("");
+  }
+
+  function removeParticipant(participantId: string) {
+    setParticipants((prev) =>
+      prev.length === 1 ? prev : prev.filter((participant) => participant.id !== participantId),
+    );
+    setSetupMessage("");
+    setSetupMessageType("");
+  }
+
+  function updateLine(
+    lineId: string,
+    field: "title" | "description",
+    value: string,
+  ) {
+    setLines((prev) =>
+      prev.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              [field]: value,
+            }
+          : line,
+      ),
+    );
+    setResults([]);
+  }
+
+  function appendFiles(lineId: string, fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+
+    const nextImages = Array.from(fileList)
+      .filter((file) => file.type.startsWith("image/"))
+      .map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+
+    setLines((prev) =>
+      prev.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              images: [...line.images, ...nextImages],
+            }
+          : line,
+      ),
+    );
+
+    setResults([]);
+  }
+
+  function removeImage(lineId: string, imageId: string) {
+    setLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== lineId) {
+          return line;
+        }
+
+        const target = line.images.find((image) => image.id === imageId);
+        if (target) {
+          URL.revokeObjectURL(target.previewUrl);
+        }
+
+        return {
+          ...line,
+          images: line.images.filter((image) => image.id !== imageId),
+        };
+      }),
+    );
+
+    setResults((prev) =>
+      prev.map((result) =>
+        result.rowId === lineId
+          ? {
+              ...result,
+              findings: result.findings.filter((finding) => finding.imageId !== imageId),
+            }
+          : result,
+      ),
+    );
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, createLine()]);
+    setResults([]);
+  }
+
+  function removeLine(lineId: string) {
+    setLines((prev) => {
+      const target = prev.find((line) => line.id === lineId);
+      if (target) {
+        target.images.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+      }
+      return prev.filter((line) => line.id !== lineId);
+    });
+
+    setResults((prev) => prev.filter((result) => result.rowId !== lineId));
+
+    setSelectedImageByRow((prev) => {
+      const next = { ...prev };
+      delete next[lineId];
+      return next;
+    });
+
+    setSelectedFindingByRow((prev) => {
+      const next = { ...prev };
+      delete next[lineId];
+      return next;
+    });
+  }
+
+  async function handleAnalyze() {
+    const setupError = validateSetup();
+
+    if (setupError) {
+      setSetupMessage(setupError);
+      setSetupMessageType("error");
+      return;
+    }
+
+    if (totalImageCount === 0) {
+      setSetupMessage("Analiz başlatmak için en az bir görsel eklemelisin.");
+      setSetupMessageType("error");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setResults([]);
+
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+
+    const built = buildMockResults(lines, method);
+    setResults(built.results);
+    setSelectedImageByRow(built.selectedImages);
+    setSelectedFindingByRow(built.selectedFindings);
+
+    setSetupMessage("Analiz bağlamı doğrulandı ve risk tespit ekranı hazırlandı.");
+    setSetupMessageType("success");
+    setIsAnalyzing(false);
+  }
+
+  function resetAll() {
+    lines.forEach((line) =>
+      line.images.forEach((image) => URL.revokeObjectURL(image.previewUrl)),
+    );
+
+    setAnalysisTitle("Saha Risk Analizi");
+    setAnalysisNote(
+      "Her satır bir risk konusu veya uygunsuzluk grubunu temsil eder. Aynı satıra bir veya birden fazla fotoğraf eklenebilir.",
+    );
+    setMethod("r_skor");
+    const loaded = loadCompanyDirectory();
+    setCompanies(loaded);
+    setSelectedCompanyId(loaded[0]?.id ?? "");
+    setSelectedLocation("");
+    setSelectedDepartment("");
+    setParticipants([createParticipant()]);
+    setSetupMessage("");
+    setSetupMessageType("");
+    setLines([createLine()]);
+    setResults([]);
+    setSelectedImageByRow({});
+    setSelectedFindingByRow({});
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Risk Analizi"
+        title="Firma Bağlamlı ve Ekip Katılımlı Risk Analizi"
+        description="Risk analizi firma / kurum seçilerek başlar, analiz ekibi tanımlanır, sonra satır bazlı görsel risk tespiti ve anotasyonlu sonuçlar oluşturulur."
+        meta={
+          <>
+            <span className="rounded-full border border-border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+              Firma / kurum seçimi
+            </span>
+            <span className="rounded-full border border-border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+              Dinamik analiz ekibi
+            </span>
+            <span className="rounded-full border border-border bg-white px-3 py-1 text-xs font-medium text-slate-600">
+              Anotasyonlu görsel akış
+            </span>
+          </>
+        }
+      />
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="space-y-6">
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
+            <div className="mb-5">
+              <h2 className="text-xl font-semibold text-foreground">
+                Analiz Bağlamı
+              </h2>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                Bu risk analizinin hangi firma / kurum, lokasyon ve bölüm için yapıldığını seç.
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground">
+                  Firma / Kurum
+                </label>
+                <select
+                  value={selectedCompanyId}
+                  onChange={(event) => {
+                    setSelectedCompanyId(event.target.value);
+                    setSelectedLocation("");
+                    setSelectedDepartment("");
+                    setSetupMessage("");
+                    setSetupMessageType("");
+                  }}
+                  className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
+                >
+                  <option value="">Firma / kurum seç</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground">
+                  Analiz Yöntemi
+                </label>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Button
+                    type="button"
+                    variant={method === "r_skor" ? "accent" : "outline"}
+                    onClick={() => setMethod("r_skor")}
+                  >
+                    R-SKOR
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={method === "fine_kinney" ? "accent" : "outline"}
+                    onClick={() => setMethod("fine_kinney")}
+                  >
+                    Fine Kinney
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={method === "l_matrix" ? "accent" : "outline"}
+                    onClick={() => setMethod("l_matrix")}
+                  >
+                    L Tipi Matris
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground">
+                  Lokasyon / Çalışma Alanı
+                </label>
+                <select
+                  value={selectedLocation}
+                  onChange={(event) => setSelectedLocation(event.target.value)}
+                  className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
+                >
+                  <option value="">Lokasyon seç</option>
+                  {(selectedCompany?.locations ?? []).map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground">
+                  Bölüm / Birim
+                </label>
+                <select
+                  value={selectedDepartment}
+                  onChange={(event) => setSelectedDepartment(event.target.value)}
+                  className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
+                >
+                  <option value="">Bölüm seç</option>
+                  {(selectedCompany?.departments ?? []).map((department) => (
+                    <option key={department} value={department}>
+                      {department}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <Link href="/companies">
+                <Button type="button" variant="outline">
+                  Firma / Kurum Yapısını Düzenle
+                </Button>
+              </Link>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              <Input
+                label="Analiz Başlığı"
+                value={analysisTitle}
+                onChange={(event) => setAnalysisTitle(event.target.value)}
+              />
+              <Textarea
+                label="Analiz Notu"
+                rows={4}
+                value={analysisNote}
+                onChange={(event) => setAnalysisNote(event.target.value)}
+              />
+            </div>
+
+            {selectedCompany ? (
+              <div className="mt-5 rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Seçili Kurum Özeti
+                </p>
+                <p className="mt-2 break-words text-sm font-semibold text-foreground">
+                  {selectedCompany.name}
+                </p>
+                <p className="mt-1 text-sm leading-7 text-muted-foreground">
+                  Tür: {selectedCompany.kind || "-"} · Adres: {selectedCompany.address || "-"}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">
+                  Risk Analizinde Görev Alanlar
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                  Analizde görev alan kişileri dinamik olarak ekle. Kişi adı ve rol seçimi zorunludur.
+                </p>
+              </div>
+
+              <Button type="button" variant="outline" onClick={addParticipant}>
+                Görevli Ekle
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              {participants.map((participant, index) => (
+                <div
+                  key={participant.id}
+                  className="rounded-[1.25rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(248,251,255,0.96)_100%)] p-4 shadow-[0_10px_22px_rgba(15,23,42,0.05)]"
+                >
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Görevli {index + 1}
+                      </p>
+                    </div>
+
+                    {participants.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => removeParticipant(participant.id)}
+                      >
+                        Sil
+                      </Button>
+                    ) : null}
                   </div>
-                  <span className="min-w-[3rem] text-right font-mono text-sm font-semibold" style={{ color: barColor }}>{v.toFixed(2)}</span>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Input
+                      label="Ad Soyad"
+                      value={participant.fullName}
+                      onChange={(event) =>
+                        updateParticipant(participant.id, "fullName", event.target.value)
+                      }
+                    />
+
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-medium text-foreground">
+                        Rol / Ünvan Türü
+                      </label>
+                      <select
+                        value={participant.roleCode}
+                        onChange={(event) =>
+                          updateParticipant(participant.id, "roleCode", event.target.value)
+                        }
+                        className="h-12 rounded-2xl border border-primary/15 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(245,249,255,0.95)_100%)] px-4 text-sm text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.05)] transition-colors transition-shadow hover:border-primary/30 focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring),0_12px_28px_rgba(11,95,193,0.12)]"
+                      >
+                        <option value="">Rol seç</option>
+                        {participantRoleCatalog.map((role) => (
+                          <option key={role.code} value={role.code}>
+                            {role.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <Input
+                      label="Görev / Unvan Açıklaması"
+                      value={participant.title}
+                      onChange={(event) =>
+                        updateParticipant(participant.id, "title", event.target.value)
+                      }
+                      placeholder="Örn. A sınıfı uzman, kurum müdürü, çalışan temsilcisi"
+                    />
+
+                    <Input
+                      label="Belge / Sertifika No (varsa)"
+                      value={participant.certificateNo}
+                      onChange={(event) =>
+                        updateParticipant(participant.id, "certificateNo", event.target.value)
+                      }
+                      placeholder="İSG uzmanı / hekim için varsa gir"
+                    />
+                  </div>
                 </div>
-                <p className="text-[11px] text-muted-foreground">{p.description}</p>
-                <div className="flex items-center gap-3">
+              ))}
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <Button type="button" size="lg" variant="accent" onClick={handlePrepareSetup}>
+                Ekip ve Kurum Bilgilerini Hazırla
+              </Button>
+
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={() => {
+                  setParticipants([createParticipant()]);
+                  setSetupMessage("");
+                  setSetupMessageType("");
+                }}
+              >
+                Görevli Alanını Sıfırla
+              </Button>
+            </div>
+
+            {setupMessage ? (
+  <StatusAlert
+    tone={setupMessageType === "success" ? "success" : "danger"}
+    className="mt-5"
+  >
+    {setupMessage}
+  </StatusAlert>
+) : null}
+          </div>
+
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">
+                  Risk Satırları
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                  Her satır bir risk konusu, alan veya uygunsuzluk grubunu temsil eder.
+                </p>
+              </div>
+
+              <Button type="button" variant="outline" onClick={addLine}>
+                Yeni Satır Ekle
+              </Button>
+            </div>
+
+            <div className="space-y-5">
+              {lines.map((line, index) => (
+                <div
+                  key={line.id}
+                  className="rounded-[1.5rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(248,251,255,0.97)_100%)] p-5 shadow-[var(--shadow-soft)]"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Satır {index + 1}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Aynı durumun genel ve yakın açıları bu satır altında toplanabilir.
+                      </p>
+                    </div>
+
+                    {lines.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => removeLine(line.id)}
+                      >
+                        Satırı Sil
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 grid gap-4">
+                    <Input
+                      label="Satır Başlığı"
+                      value={line.title}
+                      onChange={(event) =>
+                        updateLine(line.id, "title", event.target.value)
+                      }
+                      placeholder="Örn. İstifleme alanı / elektrik panosu / geçiş yolu"
+                    />
+
+                    <Textarea
+                      label="Satır Açıklaması"
+                      rows={4}
+                      value={line.description}
+                      onChange={(event) =>
+                        updateLine(line.id, "description", event.target.value)
+                      }
+                      placeholder="Bu satırdaki risk grubunu veya uygunsuzluğu açıkla."
+                    />
+                  </div>
+
                   <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={v}
-                    onChange={(e) => updateParam(p.key, parseFloat(e.target.value))}
-                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-secondary [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:shadow-md"
-                    style={{
-                      background: `linear-gradient(90deg, ${barColor} ${v * 100}%, var(--secondary) ${v * 100}%)`,
-                      // @ts-expect-error -- webkit slider thumb color
-                      "--thumb-color": barColor,
+                    ref={(node) => {
+                      fileInputRefs.current[line.id] = node;
                     }}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      appendFiles(line.id, event.target.files)
+                    }
                   />
-                  <span className="text-[10px] text-muted-foreground">w={p.weight}</span>
+
+                  <input
+                    ref={(node) => {
+                      cameraInputRefs.current[line.id] = node;
+                    }}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    className="hidden"
+                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                      appendFiles(line.id, event.target.files)
+                    }
+                  />
+
+                  <div className="mt-5 rounded-[1.25rem] border border-dashed border-primary/20 bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.95)_55%,rgba(151,197,31,0.12)_100%)] p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <Button
+                        type="button"
+                        onClick={() => fileInputRefs.current[line.id]?.click()}
+                      >
+                        Bu Satıra Görsel Ekle
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => cameraInputRefs.current[line.id]?.click()}
+                      >
+                        Kameradan Ekle
+                      </Button>
+                    </div>
+
+                    <p className="mt-3 text-sm leading-7 text-muted-foreground">
+                      Sistem ileride aynı satırdaki çoklu görselleri tek risk grubunun ortak kanıtı olarak değerlendirecek.
+                    </p>
+                  </div>
+
+                  {line.images.length === 0 ? (
+                    <div className="mt-4 rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] text-sm leading-7 text-muted-foreground">
+                      Bu satıra henüz görsel eklenmedi.
+                    </div>
+                  ) : (
+                    <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                      {line.images.map((image) => (
+                        <div
+                          key={image.id}
+                          className="overflow-hidden rounded-[1.25rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(248,251,255,0.96)_100%)] shadow-[0_10px_22px_rgba(15,23,42,0.05)]"
+                        >
+                          <div className="aspect-[4/3] bg-slate-100">
+                            <img
+                              src={image.previewUrl}
+                              alt={image.file.name}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+
+                          <div className="space-y-2 p-3">
+                            <p className="break-all text-sm font-medium text-foreground">
+                              {image.file.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {(image.file.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-full"
+                              onClick={() => removeImage(line.id, image.id)}
+                            >
+                              Görseli Kaldır
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <aside className="space-y-6">
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
+            <h2 className="text-xl font-semibold text-foreground">
+              Analiz Paneli
+            </h2>
+            <p className="mt-2 text-sm leading-7 text-muted-foreground">
+              Firma, lokasyon, bölüm ve ekip bilgileri olmadan analiz başlatılmaz.
+            </p>
+
+            <div className="mt-5 grid gap-3">
+              <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Firma / Kurum
+                </p>
+                <p className="mt-2 break-words text-sm font-semibold text-foreground">
+                  {selectedCompany?.name ?? "-"}
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Lokasyon
+                  </p>
+                  <p className="mt-2 break-words text-sm font-semibold text-foreground">
+                    {selectedLocation || "-"}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Bölüm
+                  </p>
+                  <p className="mt-2 break-words text-sm font-semibold text-foreground">
+                    {selectedDepartment || "-"}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Görevli Sayısı
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">
+                    {validParticipants.length}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Görsel Sayısı
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-foreground">
+                    {totalImageCount}
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] sm:col-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Yöntem
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {methodLabel(method)}
+                  </p>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
 
-        <div className="mt-5 flex gap-3">
-          <Button onClick={handleCalculate} variant="primary">Hesapla</Button>
-          <Button onClick={handleReset} variant="outline">Sifirla</Button>
-        </div>
-      </div>
+            <div className="mt-5 space-y-3">
+              <Button
+                type="button"
+                size="lg"
+                className="w-full"
+                disabled={totalImageCount === 0 || isAnalyzing}
+                onClick={handleAnalyze}
+              >
+                {isAnalyzing ? "Analiz hazırlanıyor..." : "Risk Analizini Başlat"}
+              </Button>
 
-      {/* Result */}
-      {result && <R2DResultCard result={result} />}
-    </div>
-  );
-}
+              <Button
+                type="button"
+                variant="ghost"
+                size="lg"
+                className="w-full"
+                onClick={resetAll}
+              >
+                Formu Temizle
+              </Button>
+            </div>
 
-function R2DResultCard({ result }: { result: R2DResult }) {
-  return (
-    <div className="rounded-xl border-2 bg-card p-5" style={{ borderColor: result.color }}>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">R-SKOR 2D Sonucu</p>
-          <p className="mt-1 text-4xl font-bold tabular-nums" style={{ color: result.color }}>{result.score.toFixed(3)}</p>
-        </div>
-        <div className="text-right">
-          {riskBadge(result.riskClass, result.label, result.color)}
-          <p className="mt-2 text-sm font-medium text-foreground">{result.action}</p>
-        </div>
-      </div>
+            <div className="mt-5 rounded-2xl border border-border bg-white px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                En Yüksek Öncelik
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {highestPriority || "-"}
+              </p>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                1 en düşük operasyonel öncelik, 10 ise derhal ele alınması gereken risk anlamına gelir.
+              </p>
+            </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-lg bg-secondary/50 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Taban Skor (s_base)</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-foreground">{result.sBase.toFixed(4)}</p>
-        </div>
-        <div className="rounded-lg bg-secondary/50 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Override (s_peak)</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-foreground">{result.sPeak.toFixed(4)}</p>
-        </div>
-        <div className="rounded-lg bg-secondary/50 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Dominant Parametre</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-primary">{result.dominantParam}</p>
-        </div>
-      </div>
+            <div className="mt-4 rounded-2xl border border-border bg-white px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Toplam Tespit
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {totalDetectionCount}
+              </p>
+            </div>
 
-      {/* Param contributions bar chart */}
-      <div className="mt-4">
-        <p className="text-xs font-medium text-muted-foreground">Parametre Katkilari</p>
-        <div className="mt-2 space-y-1.5">
-          {result.paramContributions.map((c) => {
-            const pct = Math.min(100, (c.contribution / (result.sBase || 0.01)) * 100);
-            return (
-              <div key={c.code} className="flex items-center gap-2">
-                <span className="w-7 text-[10px] font-bold text-muted-foreground">{c.code}</span>
-                <div className="h-3 flex-1 overflow-hidden rounded-full bg-secondary">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: result.color }} />
-                </div>
-                <span className="w-12 text-right font-mono text-[10px] text-muted-foreground">{c.contribution.toFixed(4)}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Score scale */}
-      <div className="mt-4">
-        <p className="text-xs font-medium text-muted-foreground">Skor Olcegi</p>
-        <div className="mt-2 flex h-4 w-full overflow-hidden rounded-full">
-          <div className="flex-1 bg-emerald-500" title="Follow-up [0-0.20)" />
-          <div className="flex-1 bg-amber-500" title="Dusuk [0.20-0.40)" />
-          <div className="flex-1 bg-orange-500" title="Orta [0.40-0.60)" />
-          <div className="flex-1 bg-red-600" title="Yuksek [0.60-0.80)" />
-          <div className="flex-1 bg-red-900" title="Kritik [0.80-1.00]" />
-        </div>
-        <div className="relative mt-1 h-3">
-          <div className="absolute h-3 w-0.5 bg-foreground transition-all" style={{ left: `${result.score * 100}%` }} />
-          <div className="absolute -top-0 transition-all" style={{ left: `${result.score * 100}%`, transform: "translateX(-50%)" }}>
-            <span className="text-[9px] font-bold text-foreground">\u25BC</span>
-          </div>
-        </div>
-        <div className="mt-1 flex justify-between text-[9px] text-muted-foreground">
-          <span>0.00</span><span>0.20</span><span>0.40</span><span>0.60</span><span>0.80</span><span>1.00</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* Fine Kinney Tab                                                     */
-/* ================================================================== */
-
-function FineKinneyTab() {
-  const [values, setValues] = useState<FKValues>({ likelihood: 1, severity: 1, exposure: 1 });
-  const [result, setResult] = useState<FKResult | null>(null);
-
-  function handleCalculate() {
-    setResult(calculateFK(values));
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* Method description */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
-        <h3 className="section-title text-base">Fine Kinney Yontemi</h3>
-        <p className="mt-2 text-sm leading-7 text-muted-foreground">
-          Fine-Kinney yontemi, riskin buyuklugunu Olasilik (L) \u00D7 Siddet (S) \u00D7 Maruziyet (F) formuluyle hesaplar.
-          Sonuc 0.05 ile 10.000 arasinda bir deger alir. Basit ve yaygin kullanilan bir yontemdir ancak
-          3 parametreyle sinirlidir ve uzman bagimliliginin yuksek olmasi dezavantajidir.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Badge variant="default" className="text-[10px]">3 Parametre</Badge>
-          <Badge variant="accent" className="text-[10px]">R = L \u00D7 S \u00D7 F</Badge>
-        </div>
-      </div>
-
-      {/* Parameter selection */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h4 className="text-sm font-semibold text-foreground">Parametre Secimi</h4>
-        <div className="mt-4 space-y-5">
-          {/* Likelihood */}
-          <div>
-            <label className="text-sm font-medium text-foreground">Olasilik (L)</label>
-            <p className="text-xs text-muted-foreground">Tehlikeli olayin meydana gelme ihtimali</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-              {FK_LIKELIHOOD.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => { setValues((p) => ({ ...p, likelihood: opt.value })); setResult(null); }}
-                  className={cn(
-                    "rounded-xl border px-4 py-3 text-left text-sm transition-all",
-                    values.likelihood === opt.value
-                      ? "border-primary bg-primary/10 text-foreground shadow-sm"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-secondary",
-                  )}
-                >
-                  <span className="font-bold text-foreground">{opt.label}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{opt.description}</span>
-                </button>
-              ))}
+            <div className="mt-4 rounded-2xl border border-border bg-white px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                DÖF Adayı Tespitler
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {dofCandidateCount}
+              </p>
             </div>
           </div>
 
-          {/* Severity */}
-          <div>
-            <label className="text-sm font-medium text-foreground">Siddet (S)</label>
-            <p className="text-xs text-muted-foreground">Olasi sonucun ciddiyeti</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {FK_SEVERITY.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => { setValues((p) => ({ ...p, severity: opt.value })); setResult(null); }}
-                  className={cn(
-                    "rounded-xl border px-4 py-3 text-left text-sm transition-all",
-                    values.severity === opt.value
-                      ? "border-primary bg-primary/10 text-foreground shadow-sm"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-secondary",
-                  )}
-                >
-                  <span className="font-bold text-foreground">{opt.label}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{opt.description}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
+            <h2 className="text-xl font-semibold text-foreground">
+              Analiz Ekibi Özeti
+            </h2>
 
-          {/* Exposure */}
-          <div>
-            <label className="text-sm font-medium text-foreground">Maruziyet / Frekans (F)</label>
-            <p className="text-xs text-muted-foreground">Tehlikeye maruz kalma sikligi</p>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {FK_EXPOSURE.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => { setValues((p) => ({ ...p, exposure: opt.value })); setResult(null); }}
-                  className={cn(
-                    "rounded-xl border px-4 py-3 text-left text-sm transition-all",
-                    values.exposure === opt.value
-                      ? "border-primary bg-primary/10 text-foreground shadow-sm"
-                      : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-secondary",
-                  )}
-                >
-                  <span className="font-bold text-foreground">{opt.label}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">{opt.description}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+            {validParticipants.length === 0 ? (
+  <div className="mt-4">
+    <EmptyState
+      compact
+      title="Henüz tamamlanmış görevli bilgisi yok"
+      description="Kişi adı ve rol seçildiğinde ekip özeti burada görünür."
+    />
+  </div>
+) : (
+              <div className="mt-4 space-y-3">
+                {validParticipants.map((participant, index) => {
+                  const role =
+                    participantRoleCatalog.find((item) => item.code === participant.roleCode)
+                      ?.label ?? participant.roleCode;
 
-        <div className="mt-5 flex items-center gap-4">
-          <Button onClick={handleCalculate} variant="primary">Hesapla</Button>
-          <div className="rounded-lg bg-secondary/50 px-4 py-2 font-mono text-sm">
-            R = {values.likelihood} \u00D7 {values.severity} \u00D7 {values.exposure} = <span className="font-bold text-primary">{(values.likelihood * values.severity * values.exposure).toFixed(1)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Result */}
-      {result && (
-        <div className="rounded-xl border-2 bg-card p-5" style={{ borderColor: result.color }}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Fine Kinney Sonucu</p>
-              <p className="mt-1 text-4xl font-bold tabular-nums" style={{ color: result.color }}>{result.score.toFixed(1)}</p>
-            </div>
-            <div className="text-right">
-              {riskBadge(result.riskClass, result.label, result.color)}
-              <p className="mt-2 text-sm font-medium text-foreground">{result.action}</p>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg bg-secondary/50 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Olasilik (L)</p>
-              <p className="mt-1 font-mono text-lg font-semibold text-foreground">{result.likelihood}</p>
-            </div>
-            <div className="rounded-lg bg-secondary/50 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Siddet (S)</p>
-              <p className="mt-1 font-mono text-lg font-semibold text-foreground">{result.severity}</p>
-            </div>
-            <div className="rounded-lg bg-secondary/50 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Maruziyet (F)</p>
-              <p className="mt-1 font-mono text-lg font-semibold text-foreground">{result.exposure}</p>
-            </div>
-          </div>
-          {/* FK Scale */}
-          <div className="mt-4">
-            <p className="text-xs font-medium text-muted-foreground">Risk Skalasi</p>
-            <div className="mt-2 grid grid-cols-5 gap-1">
-              {[
-                { label: "Kabul Edilebilir", range: "<20", color: "#10B981" },
-                { label: "Dikkate Deger", range: "20-70", color: "#F59E0B" },
-                { label: "Onemli", range: "70-200", color: "#F97316" },
-                { label: "Yuksek", range: "200-400", color: "#DC2626" },
-                { label: "Cok Yuksek", range: ">400", color: "#7F1D1D" },
-              ].map((s) => (
-                <div key={s.label} className="rounded-lg p-2 text-center" style={{ backgroundColor: `${s.color}20`, borderLeft: `3px solid ${s.color}` }}>
-                  <p className="text-[10px] font-bold" style={{ color: s.color }}>{s.range}</p>
-                  <p className="text-[9px] text-muted-foreground">{s.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* 5x5 Matrix Tab                                                      */
-/* ================================================================== */
-
-function MatrixTab() {
-  const [values, setValues] = useState<MatrixValues>({ likelihood: 0, severity: 0 });
-  const [result, setResult] = useState<MatrixResult | null>(null);
-  const grid = useMemo(() => getMatrixGrid(), []);
-
-  function selectCell(l: number, s: number) {
-    setValues({ likelihood: l, severity: s });
-    setResult(calculateMatrix({ likelihood: l, severity: s }));
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* Method description */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
-        <h3 className="section-title text-base">5\u00D75 L-Tipi Matris</h3>
-        <p className="mt-2 text-sm leading-7 text-muted-foreground">
-          L-Tipi Matris, Olasilik (1-5) ve Siddet (1-5) parametrelerinin carpimi ile 25 hucreli bir risk tablosu olusturur.
-          Gorsel ve anlasilir olmasi en buyuk avantajidir. Kagit-kalem ile sahada hizlica uygulanabilir.
-          Ancak sadece 2 boyut kullanmasi ve ayni hucredeki farkli riskleri ayirt edememesi dezavantajlaridir.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Badge variant="default" className="text-[10px]">2 Parametre</Badge>
-          <Badge variant="accent" className="text-[10px]">Risk = O \u00D7 S</Badge>
-          <Badge variant="neutral" className="text-[10px]">25 Hucre</Badge>
-        </div>
-      </div>
-
-      {/* Interactive 5x5 grid */}
-      <div className="rounded-xl border border-border bg-card p-5">
-        <h4 className="text-sm font-semibold text-foreground">Risk Matrisi</h4>
-        <p className="mt-1 text-xs text-muted-foreground">Olasilik ve siddet kesisimini secmek icin hucreye tiklayin.</p>
-
-        <div className="mt-4 overflow-x-auto">
-          <div className="min-w-[480px]">
-            {/* Header row */}
-            <div className="mb-1 grid grid-cols-[120px_repeat(5,1fr)] gap-1">
-              <div className="flex items-end justify-center p-1 text-[10px] font-medium text-muted-foreground">
-                Olasilik \\ Siddet
-              </div>
-              {MATRIX_SEVERITY_LABELS.map((label, i) => (
-                <div key={i} className="p-1 text-center">
-                  <p className="text-xs font-bold text-foreground">{i + 1}</p>
-                  <p className="text-[9px] leading-tight text-muted-foreground">{label.split("(")[0].trim()}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Grid rows (5 to 1) */}
-            {[5, 4, 3, 2, 1].map((l) => (
-              <div key={l} className="grid grid-cols-[120px_repeat(5,1fr)] gap-1">
-                <div className="flex items-center p-1">
-                  <p className="text-xs font-bold text-foreground">{l}</p>
-                  <p className="ml-1 text-[9px] text-muted-foreground">{MATRIX_LIKELIHOOD_LABELS[l - 1].split("(")[0].trim()}</p>
-                </div>
-                {[1, 2, 3, 4, 5].map((s) => {
-                  const cell = grid.find((c) => c.likelihood === l && c.severity === s);
-                  const isSelected = values.likelihood === l && values.severity === s;
                   return (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => selectCell(l, s)}
-                      className={cn(
-                        "flex h-14 items-center justify-center rounded-lg text-sm font-bold text-white transition-all hover:scale-105 hover:shadow-lg",
-                        isSelected && "ring-2 ring-foreground ring-offset-2 ring-offset-card",
-                      )}
-                      style={{ backgroundColor: cell?.color ?? "#64748B" }}
+                    <div
+                      key={participant.id}
+                      className="rounded-2xl border border-border bg-white px-4 py-4"
                     >
-                      {l * s}
-                    </button>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Görevli {index + 1}
+                      </p>
+                      <p className="mt-2 text-sm font-semibold text-foreground">
+                        {participant.fullName}
+                      </p>
+                      <p className="mt-1 text-sm leading-7 text-muted-foreground">
+                        {role}
+                        {participant.title ? ` · ${participant.title}` : ""}
+                      </p>
+                      {participant.certificateNo ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Belge / Sertifika No: {participant.certificateNo}
+                        </p>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="mt-4 flex flex-wrap gap-3">
-          {[
-            { color: "#10B981", label: "Kabul Edilebilir (1-2)" },
-            { color: "#F59E0B", label: "Dusuk (3-4)" },
-            { color: "#F97316", label: "Orta (5-9)" },
-            { color: "#DC2626", label: "Yuksek (10-15)" },
-            { color: "#7F1D1D", label: "Tolere Edilemez (16-25)" },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-1.5">
-              <div className="h-3 w-3 rounded" style={{ backgroundColor: item.color }} />
-              <span className="text-[11px] text-muted-foreground">{item.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Result */}
-      {result && (
-        <div className="rounded-xl border-2 bg-card p-5" style={{ borderColor: result.cellColor }}>
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Matris Sonucu</p>
-              <p className="mt-1 text-4xl font-bold tabular-nums" style={{ color: result.cellColor }}>{result.score}</p>
-            </div>
-            <div className="text-right">
-              {riskBadge(result.riskClass, result.label, result.cellColor)}
-              <p className="mt-2 text-sm font-medium text-foreground">{result.action}</p>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-lg bg-secondary/50 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Olasilik</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{result.likelihood} - {MATRIX_LIKELIHOOD_LABELS[result.likelihood - 1]}</p>
-            </div>
-            <div className="rounded-lg bg-secondary/50 p-3">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Siddet</p>
-              <p className="mt-1 text-lg font-semibold text-foreground">{result.severity} - {MATRIX_SEVERITY_LABELS[result.severity - 1]}</p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* Comparison Table                                                    */
-/* ================================================================== */
-
-function ComparisonSection() {
-  return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <h3 className="section-title text-base">Yontem Karsilastirmasi</h3>
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[600px] text-sm">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Kriter</th>
-              <th className="px-3 py-2 text-center text-[10px] font-medium uppercase tracking-wider text-primary">R-SKOR 2D</th>
-              <th className="px-3 py-2 text-center text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Fine Kinney</th>
-              <th className="px-3 py-2 text-center text-[10px] font-medium uppercase tracking-wider text-muted-foreground">5\u00D75 Matris</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {[
-              ["Parametre sayisi", "9", "3", "2"],
-              ["Cikti turu", "Surekli [0, 1]", "Kesikli (20-1500)", "Kesikli (5 renk)"],
-              ["Cozunurluk", "Yuksek", "Dusuk", "Cok dusuk"],
-              ["Seyreltme korumasi", "Override mekanizmasi", "Yok", "Yok"],
-              ["Uzman bagimliligi", "Dusuk (veri gudumlu)", "Yuksek (oznel)", "Yuksek (oznel)"],
-              ["Aksiyon onerisi", "Otomatik (C bazli)", "Manuel", "Manuel"],
-            ].map((row, i) => (
-              <tr key={i} className="transition-colors hover:bg-secondary/30">
-                <td className="px-3 py-2.5 font-medium text-foreground">{row[0]}</td>
-                <td className="px-3 py-2.5 text-center font-medium text-primary">{row[1]}</td>
-                <td className="px-3 py-2.5 text-center text-muted-foreground">{row[2]}</td>
-                <td className="px-3 py-2.5 text-center text-muted-foreground">{row[3]}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* Main Page                                                           */
-/* ================================================================== */
-
-export function RiskAnalysisClient() {
-  const [activeTab, setActiveTab] = useState<MethodTab>("r2d");
-
-  return (
-    <>
-      <PageHeader
-        eyebrow="Risk Yonetimi"
-        title="Risk Analizi"
-        description="Firma bazli risk degerlendirmesi olusturun. R-SKOR 2D, Fine-Kinney veya L-Tipi Matris yontemiyle analiz yapin."
-      />
-
-      {/* Method tabs */}
-      <nav className="flex gap-1 rounded-2xl border border-border bg-card p-1.5 shadow-[var(--shadow-soft)]">
-        {METHOD_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors",
-              activeTab === tab.key
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
-          >
-            {tab.label}
-            <span className={cn(
-              "rounded-full px-1.5 py-0.5 text-[10px]",
-              activeTab === tab.key ? "bg-white/20" : "bg-secondary text-muted-foreground",
-            )}>
-              {tab.badge}
-            </span>
-          </button>
-        ))}
-      </nav>
-
-      {/* Tab content */}
-      <div className="mt-1">
-        {activeTab === "r2d" && <R2DTab />}
-        {activeTab === "fine_kinney" && <FineKinneyTab />}
-        {activeTab === "matrix" && <MatrixTab />}
+          </div>
+        </aside>
       </div>
 
-      {/* Comparison section */}
-      <ComparisonSection />
-    </>
+      <div className="rounded-[1.75rem] border border-border bg-[linear-gradient(180deg,rgba(255,255,255,0.99)_0%,rgba(247,250,255,0.97)_100%)] p-6 shadow-[var(--shadow-card)]">
+        <div className="mb-5">
+          <h2 className="text-2xl font-semibold text-foreground">
+            Anotasyonlu Tespit Sonuçları
+          </h2>
+          <p className="mt-2 text-sm leading-7 text-muted-foreground">
+            Risk kartı ile görsel üstündeki anotasyonlar birbirine bağlı çalışır.
+          </p>
+        </div>
+
+        {isAnalyzing ? (
+  <div className="grid gap-4 xl:grid-cols-2">
+    <div className="rounded-[1.5rem] border border-border bg-white p-5 shadow-[var(--shadow-soft)]">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="mt-4 h-64 w-full rounded-[1.25rem]" />
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    </div>
+
+    <div className="rounded-[1.5rem] border border-border bg-white p-5 shadow-[var(--shadow-soft)]">
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="mt-4 h-28 w-full" />
+      <Skeleton className="mt-3 h-28 w-full" />
+      <Skeleton className="mt-3 h-28 w-full" />
+    </div>
+  </div>
+) : results.length === 0 ? (
+  <EmptyState
+    title="Henüz sonuç üretilmedi"
+    description="Önce kurum ve ekip bilgilerini tamamlayıp ardından satırlara görsel ekleyerek analizi başlat. Sonuç kartları ve anotasyonlar burada görünecek."
+  />
+) : (
+          <div className="space-y-6">
+            {results.map((result, resultIndex) => {
+              const sourceLine = lineMap.get(result.rowId);
+              const images = sourceLine?.images ?? [];
+              const selectedImageId =
+                selectedImageByRow[result.rowId] ?? images[0]?.id ?? "";
+              const selectedFindingId =
+                selectedFindingByRow[result.rowId] ?? result.findings[0]?.id ?? "";
+              const selectedImage =
+                images.find((image) => image.id === selectedImageId) ?? images[0];
+              const visibleFindings = result.findings.filter(
+                (finding) => finding.imageId === selectedImage?.id,
+              );
+
+              return (
+                <div
+                  key={result.rowId}
+                  className="rounded-[1.5rem] border border-border bg-white p-5"
+                >
+                  <div className="mb-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Satır {resultIndex + 1}
+                    </p>
+                    <h3 className="mt-1 text-lg font-semibold text-foreground">
+                      {result.rowTitle}
+                    </h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      İlişkili görsel sayısı: {result.imageCount} · Tespit sayısı:{" "}
+                      {result.findings.length}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+                    <div className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {images.map((image, imageIndex) => {
+                          const imageFindings = result.findings.filter(
+                            (finding) => finding.imageId === image.id,
+                          );
+                          const active = selectedImage?.id === image.id;
+
+                          return (
+                            <button
+                              key={image.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedImageByRow((prev) => ({
+                                  ...prev,
+                                  [result.rowId]: image.id,
+                                }));
+
+                                if (imageFindings[0]) {
+                                  setSelectedFindingByRow((prev) => ({
+                                    ...prev,
+                                    [result.rowId]: imageFindings[0].id,
+                                  }));
+                                }
+                              }}
+                              className={`overflow-hidden rounded-2xl border text-left transition-colors ${
+                                active
+                                  ? "border-primary shadow-[var(--shadow-soft)]"
+                                  : "border-border hover:border-primary/40 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                              }`}
+                            >
+                              <div className="aspect-[4/3] bg-slate-100">
+                                <img
+                                  src={image.previewUrl}
+                                  alt={image.file.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              </div>
+
+                              <div className="p-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Görsel {imageIndex + 1}
+                                </p>
+                                <p className="mt-1 truncate text-sm font-medium text-foreground">
+                                  {image.file.name}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Risk sayısı: {imageFindings.length}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {selectedImage ? (
+                        <div className="overflow-hidden rounded-[1.5rem] border border-red-300/25 bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.97)_55%,rgba(151,197,31,0.14)_100%)] shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
+                          <div className="relative aspect-[4/3]">
+                            <img
+                              src={selectedImage.previewUrl}
+                              alt={selectedImage.file.name}
+                              className="h-full w-full object-cover"
+                            />
+
+                            <div className="absolute inset-0">
+                              {visibleFindings.map((finding) =>
+                                finding.annotations.map((annotation) =>
+                                  renderAnnotation(
+                                    annotation,
+                                    selectedFindingId === finding.id,
+                                    () => {
+                                      setSelectedFindingByRow((prev) => ({
+                                        ...prev,
+                                        [result.rowId]: finding.id,
+                                      }));
+                                    },
+                                  ),
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-3">
+                      {visibleFindings.length === 0 ? (
+                        <div className="rounded-2xl border border-border bg-[linear-gradient(180deg,rgba(234,242,251,0.70)_0%,rgba(255,255,255,0.92)_100%)] px-4 py-4 shadow-[0_8px_18px_rgba(15,23,42,0.04)] text-sm leading-7 text-muted-foreground">
+                          Seçilen görsel için tespit bulunamadı.
+                        </div>
+                      ) : (
+                        visibleFindings.map((finding, findingIndex) => {
+                          const active = selectedFindingId === finding.id;
+
+                          return (
+                            <button
+                              key={finding.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedFindingByRow((prev) => ({
+                                  ...prev,
+                                  [result.rowId]: finding.id,
+                                }));
+
+                                setSelectedImageByRow((prev) => ({
+                                  ...prev,
+                                  [result.rowId]: finding.imageId,
+                                }));
+                              }}
+                              className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+                                active
+                                  ? "border-red-400/35 bg-[linear-gradient(135deg,rgba(11,95,193,0.10)_0%,rgba(255,255,255,0.97)_58%,rgba(151,197,31,0.14)_100%)] shadow-[0_0_0_1px_rgba(239,68,68,0.12),0_18px_36px_rgba(11,95,193,0.16),0_0_20px_rgba(239,68,68,0.10)]"
+                                  : "border-border bg-muted/50 hover:border-primary/40 hover:bg-white hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                              }`}
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Risk {findingIndex + 1}
+                                  </p>
+                                  <h4 className="mt-1 text-base font-semibold text-foreground">
+                                    {finding.title}
+                                  </h4>
+                                  <p className="mt-1 text-sm text-muted-foreground">
+                                    Sınıf: {finding.category}
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                  <span
+                                    className={`rounded-full px-3 py-1 text-xs font-semibold ${severityClass(finding.severity)}`}
+                                  >
+                                    {severityLabel(finding.severity)}
+                                  </span>
+
+                                  <span className="rounded-full border border-border bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                                    Öncelik: {finding.priorityScore}/10
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-2xl border border-border bg-white px-3 py-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    Confidence
+                                  </p>
+                                  <p className="mt-2 text-sm font-medium text-foreground">
+                                    %{Math.round(finding.confidence * 100)}
+                                  </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-border bg-white px-3 py-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                    {methodLabel(method)} Skoru
+                                  </p>
+                                  <p className="mt-2 text-sm font-medium text-foreground">
+                                    {finding.methodScore}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="mt-3 rounded-2xl border border-border bg-white px-3 py-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                  Öneri
+                                </p>
+                                <p className="mt-2 text-sm leading-7 text-foreground">
+                                  {finding.recommendation}
+                                </p>
+                              </div>
+
+                              {finding.correctiveActionRequired ? (
+                                <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-medium text-red-700">
+                                  Bu tespit DÖF adayı olarak işaretlenmelidir.
+                                </div>
+                              ) : null}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
