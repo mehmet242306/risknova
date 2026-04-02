@@ -1,6 +1,7 @@
 ﻿import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Inter, Playfair_Display } from "next/font/google";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
 const inter = Inter({
@@ -62,7 +63,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

@@ -5,22 +5,24 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Brand } from "./brand";
+import { LanguageSelector } from "./language-selector";
 import { ChatWidget } from "@/components/chat/ChatWidget";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type ProtectedShellProps = { children: ReactNode };
 
-const navigation = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/companies", label: "Firmalar" },
-  { href: "/risk-analysis", label: "Risk Analizi" },
-  { href: "/incidents", label: "Olaylar" },
-  { href: "/score-history", label: "Skor Geçmişi" },
-  { href: "/planner", label: "Planlayıcı" },
-  { href: "/timesheet", label: "Puantaj" },
-  { href: "/solution-center", label: "Çözüm Merkezi" },
-  { href: "/reports", label: "Raporlar" },
-  { href: "/settings", label: "Ayarlar" },
+const navigationKeys = [
+  { href: "/dashboard", key: "nav.dashboard" },
+  { href: "/companies", key: "nav.companies" },
+  { href: "/risk-analysis", key: "nav.riskAnalysis" },
+  { href: "/incidents", key: "nav.incidents" },
+  { href: "/score-history", key: "nav.scoreHistory" },
+  { href: "/planner", key: "nav.planner" },
+  { href: "/timesheet", key: "nav.timesheet" },
+  { href: "/solution-center", key: "nav.solutionCenter" },
+  { href: "/reports", key: "nav.reports" },
+  { href: "/settings", key: "nav.settings" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -85,6 +87,7 @@ function ThemeToggle() {
 /* ------------------------------------------------------------------ */
 export function ProtectedShell({ children }: ProtectedShellProps) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
     <div className="app-shell">
@@ -100,7 +103,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
 
           {/* Center: Desktop navigation */}
           <nav className="hidden items-center gap-0.5 md:flex">
-            {navigation.map((item) => {
+            {navigationKeys.map((item) => {
               const act = isActive(pathname, item.href);
               return (
                 <Link
@@ -113,7 +116,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                       : "text-[var(--header-muted)] hover:text-[var(--header-active)]",
                   )}
                 >
-                  {item.label}
+                  {t(item.key)}
                   {act && (
                     <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[var(--primary)]" />
                   )}
@@ -124,12 +127,13 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2">
+            <LanguageSelector variant="dark" />
             <ThemeToggle />
             <Link
               href="/profile"
               className="inline-flex h-8 items-center rounded-lg px-3 text-sm font-medium text-[var(--header-muted)] transition-colors hover:bg-white/10 hover:text-white"
             >
-              Profil
+              {t("common.profile")}
             </Link>
           </div>
         </div>
@@ -139,7 +143,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
       <div className="border-b md:hidden" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
         <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
           <div className="flex gap-0.5 overflow-x-auto py-0">
-            {navigation.map((item) => {
+            {navigationKeys.map((item) => {
               const act = isActive(pathname, item.href);
               return (
                 <Link
@@ -152,7 +156,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {item.label}
+                  {t(item.key)}
                   {act && (
                     <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary" />
                   )}

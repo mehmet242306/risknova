@@ -3,12 +3,13 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { href: "/solution-center", label: "Sohbet", exact: true },
-  { href: "/solution-center/history", label: "Geçmiş" },
-  { href: "/solution-center/documents", label: "Dokümanlarım" },
+  { href: "/solution-center", key: "solutionCenter.chat", exact: true },
+  { href: "/solution-center/history", key: "solutionCenter.history" },
+  { href: "/solution-center/documents", key: "solutionCenter.documents" },
 ];
 
 export default function SolutionCenterLayout({
@@ -17,6 +18,7 @@ export default function SolutionCenterLayout({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
     <div className="flex flex-col gap-4">
@@ -37,7 +39,7 @@ export default function SolutionCenterLayout({
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground",
               )}
             >
-              {tab.label}
+              {t(tab.key)}
             </Link>
           );
         })}

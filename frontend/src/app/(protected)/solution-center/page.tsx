@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { downloadDocument, type DocumentBlock } from "@/lib/document-generator";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -23,6 +24,7 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  documents?: DocumentBlock[];
   queryId?: string;
   timestamp: Date;
   saved?: boolean;
@@ -129,6 +131,93 @@ function SourceCard({ source }: { source: Source }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Document download card                                              */
+/* ------------------------------------------------------------------ */
+
+function DocumentDownloadCard({ doc }: { doc: DocumentBlock }) {
+  const [downloading, setDownloading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      await downloadDocument(doc);
+      setDone(true);
+      setTimeout(() => setDone(false), 3000);
+    } catch {
+      // silently fail
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const isPptx = doc.type === "pptx";
+
+  return (
+    <button
+      type="button"
+      onClick={handleDownload}
+      disabled={downloading}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-all",
+        "border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50",
+        downloading && "opacity-70 cursor-wait",
+      )}
+    >
+      {/* Icon */}
+      <div className={cn(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+        isPptx ? "bg-orange-500/10 text-orange-500" : "bg-blue-500/10 text-blue-500",
+      )}>
+        {isPptx ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2" />
+            <path d="M8 21h8" />
+            <path d="M12 17v4" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <line x1="10" y1="9" x2="8" y2="9" />
+          </svg>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
+        <p className="text-xs text-muted-foreground">
+          {isPptx ? "PowerPoint Sunumu" : "Word Belgesi"} (.{doc.type})
+        </p>
+      </div>
+
+      {/* Download indicator */}
+      <div className="shrink-0">
+        {downloading ? (
+          <svg className="h-5 w-5 animate-spin text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        ) : done ? (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-500">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ) : (
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        )}
+      </div>
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Message bubble                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -207,6 +296,15 @@ function MessageBubble({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Document download buttons */}
+        {!isUser && message.documents && message.documents.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {message.documents.map((doc, i) => (
+              <DocumentDownloadCard key={i} doc={doc} />
+            ))}
           </div>
         )}
 
@@ -404,11 +502,26 @@ export default function SolutionCenterPage() {
 
       if (error) throw error;
 
+      const docs: DocumentBlock[] = data.documents || [];
+
+      // Save generated documents to DB
+      if (docs.length > 0 && data.query_id) {
+        for (const doc of docs) {
+          await supabase.from("solution_documents").insert({
+            query_id: data.query_id,
+            doc_type: doc.type,
+            doc_title: doc.title,
+            doc_content: doc.content,
+          });
+        }
+      }
+
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: data.response,
         sources: data.sources || [],
+        documents: docs,
         queryId: data.query_id,
         timestamp: new Date(),
         saved: false,
