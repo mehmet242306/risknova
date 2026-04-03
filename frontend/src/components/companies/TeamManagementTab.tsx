@@ -311,6 +311,13 @@ export function TeamManagementTab({
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Personnel quick-add (from company personnel)
+  type PersonnelQuick = { id: string; name: string; title: string; phone: string; email: string };
+  const [personnel, setPersonnel] = useState<PersonnelQuick[]>([]);
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
+
   // New category modal
   const [catOpen, setCatOpen] = useState(false);
   const [catName, setCatName] = useState("");
@@ -360,6 +367,39 @@ export function TeamManagementTab({
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void loadData(); }, [loadData]);
 
+  // Firma personelini yukle (ekip uyesi olarak eklemek icin)
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      if (!supabase) return;
+
+      // companyId = workspace id, personnel company_identity_id ile bagli
+      const { data: ws } = await supabase
+        .from("company_workspaces")
+        .select("company_identity_id")
+        .eq("id", companyId)
+        .single();
+
+      if (!ws?.company_identity_id) return;
+
+      const { data } = await supabase
+        .from("personnel")
+        .select("id, first_name, last_name, position_title, phone, email")
+        .eq("company_identity_id", ws.company_identity_id)
+        .order("first_name");
+
+      if (data) {
+        setPersonnel(data.map((p: { id: string; first_name: string; last_name: string; position_title: string; phone: string; email: string }) => ({
+          id: p.id,
+          name: `${p.first_name} ${p.last_name}`.trim(),
+          title: p.position_title || "",
+          phone: p.phone || "",
+          email: p.email || "",
+        })));
+      }
+    })();
+  }, [companyId]);
+
   /* ── Filtered members ── */
   const filteredMembers =
     selectedCategoryId === "all"
@@ -386,6 +426,37 @@ export function TeamManagementTab({
     setAddError(null);
     setAddOpen(true);
   }, [selectedCategoryId]);
+
+  // Toplu personelden ekle
+  const handleBulkAdd = useCallback(async () => {
+    if (bulkSelected.size === 0 || !orgId) return;
+    const supabase = createClient();
+    if (!supabase) return;
+    setBulkSaving(true);
+
+    const existingNames = new Set(members.map((m) => m.full_name.toLowerCase()));
+    const toAdd = personnel.filter((p) => bulkSelected.has(p.id) && !existingNames.has(p.name.toLowerCase()));
+
+    const catId = selectedCategoryId === "all" ? null : selectedCategoryId;
+
+    for (const p of toAdd) {
+      await supabase.from("team_members").insert({
+        organization_id: orgId,
+        company_workspace_id: companyId,
+        category_id: catId,
+        full_name: p.name,
+        title: p.title || null,
+        phone: p.phone || null,
+        email: p.email || null,
+        is_active: true,
+      });
+    }
+
+    setBulkSaving(false);
+    setBulkSelected(new Set());
+    setBulkMode(false);
+    void loadData();
+  }, [bulkSelected, orgId, personnel, members, selectedCategoryId, companyId, loadData]);
 
   const handleAdd = useCallback(async () => {
     if (!addForm.full_name.trim()) { setAddError("Ad Soyad zorunludur."); return; }
@@ -520,6 +591,15 @@ export function TeamManagementTab({
             <span className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
               ⏰ {expiringCount} sertifika yakında dolacak
             </span>
+          )}
+          {personnel.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { setBulkMode(true); setBulkSelected(new Set()); }}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors"
+            >
+              Personelden Ekle
+            </button>
           )}
           <button
             type="button"
@@ -681,6 +761,35 @@ export function TeamManagementTab({
           }
         >
           {addError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400">{addError}</p>}
+
+          {/* Personelden hizli doldurma */}
+          {personnel.length > 0 && (
+            <div className="mb-4 rounded-lg border border-border bg-muted/30 p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Personelden Doldur</p>
+              <select
+                className="h-9 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground [&>option]:dark:bg-slate-800 [&>option]:dark:text-white"
+                value=""
+                onChange={(e) => {
+                  const p = personnel.find((pp) => pp.id === e.target.value);
+                  if (p) {
+                    setAddForm((f) => ({
+                      ...f,
+                      full_name: p.name,
+                      title: p.title || f.title,
+                      phone: p.phone || f.phone,
+                      email: p.email || f.email,
+                    }));
+                  }
+                }}
+              >
+                <option value="">Personel seç (bilgileri otomatik doldurur)</option>
+                {personnel.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}{p.title ? ` — ${p.title}` : ""}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <MemberFormFields
             form={addForm}
             onChange={(p) => setAddForm((f) => ({ ...f, ...p }))}
@@ -711,6 +820,97 @@ export function TeamManagementTab({
             categories={categories}
             showCategory
           />
+        </Modal>
+      )}
+
+      {/* ── Bulk add from personnel modal ── */}
+      {bulkMode && (
+        <Modal
+          title="Personelden Ekip Üyesi Ekle"
+          onClose={() => setBulkMode(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setBulkMode(false)} className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary">İptal</button>
+              <button
+                type="button"
+                onClick={() => void handleBulkAdd()}
+                disabled={bulkSaving || bulkSelected.size === 0}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
+              >
+                {bulkSaving ? "Ekleniyor..." : `${bulkSelected.size} Kişiyi Ekle`}
+              </button>
+            </>
+          }
+        >
+          <p className="mb-3 text-xs text-muted-foreground">
+            Firma personelinden ekip üyesi olarak eklemek istediklerinizi seçin. Zaten ekipte olan kişiler işaretlenmiştir.
+          </p>
+
+          {/* Tümünü seç */}
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const existingNames = new Set(members.map((m) => m.full_name.toLowerCase()));
+                const available = personnel.filter((p) => !existingNames.has(p.name.toLowerCase()));
+                if (bulkSelected.size === available.length) {
+                  setBulkSelected(new Set());
+                } else {
+                  setBulkSelected(new Set(available.map((p) => p.id)));
+                }
+              }}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary"
+            >
+              {bulkSelected.size > 0 ? "Seçimi Kaldır" : "Tümünü Seç"}
+            </button>
+            <span className="text-xs text-muted-foreground">{bulkSelected.size} seçili</span>
+          </div>
+
+          <div className="max-h-[400px] space-y-1 overflow-y-auto">
+            {personnel.map((p) => {
+              const alreadyInTeam = members.some((m) => m.full_name.toLowerCase() === p.name.toLowerCase());
+              const isSelected = bulkSelected.has(p.id);
+
+              return (
+                <label
+                  key={p.id}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-colors ${
+                    alreadyInTeam
+                      ? "bg-emerald-50 opacity-60 dark:bg-emerald-950"
+                      : isSelected
+                        ? "bg-primary/10 border border-primary/30 dark:bg-primary/20"
+                        : "hover:bg-secondary"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected || alreadyInTeam}
+                    disabled={alreadyInTeam}
+                    onChange={() => {
+                      if (alreadyInTeam) return;
+                      setBulkSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(p.id)) next.delete(p.id);
+                        else next.add(p.id);
+                        return next;
+                      });
+                    }}
+                    className="h-4 w-4 rounded border-border accent-primary"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">{p.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {p.title || "Görev belirtilmemiş"}
+                      {p.phone && ` · ${p.phone}`}
+                    </p>
+                  </div>
+                  {alreadyInTeam && (
+                    <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">Ekipte</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
         </Modal>
       )}
 

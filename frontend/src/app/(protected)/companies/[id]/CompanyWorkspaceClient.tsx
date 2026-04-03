@@ -1,6 +1,7 @@
 ﻿"use client";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +37,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
   const [company, setCompany] = useState<CompanyRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<WTab>("overview");
+  const [tab, setTab] = usePersistedState<WTab>("company:tab", "overview");
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoFeedback, setLogoFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);

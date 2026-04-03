@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,16 +84,16 @@ const typeBadgeVariant: Record<IncidentType, "danger" | "warning" | "accent"> = 
 /* ------------------------------------------------------------------ */
 
 export function NewIncidentWizard() {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = usePersistedState("incident:step", 0);
   const [saving, setSaving] = useState(false);
   const [savedIncidentId, setSavedIncidentId] = useState<string | null>(null);
 
   // Step 0: Type
-  const [incidentType, setIncidentType] = useState<IncidentType | null>(null);
+  const [incidentType, setIncidentType] = usePersistedState<IncidentType | null>("incident:type", null);
 
   // Step 1: Company
   const [companies, setCompanies] = useState<CompanyRecord[]>(() => loadCompanyDirectory());
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = usePersistedState<string | null>("incident:company", null);
   const [companySearch, setCompanySearch] = useState("");
 
   // Step 2: Personnel (çoklu)
