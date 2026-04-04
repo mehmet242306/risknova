@@ -23,7 +23,11 @@ export const metadata: Metadata = {
     default: "RiskNova",
     template: "%s | RiskNova",
   },
-  description: "AI destekli \u0130SG risk analizi ve operasyon platformu.",
+  description: "AI destekli İSG risk analizi ve operasyon platformu.",
+  icons: {
+    icon: "/logo/risknova-favicon-64.svg",
+    apple: "/logo/risknova-app-icon-512.svg",
+  },
 };
 
 /**

@@ -199,10 +199,12 @@ type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, history, userId } = await request.json() as {
+    const { message, history, userId, imageBase64, imageMimeType } = await request.json() as {
       message: string;
       history: ChatMessage[];
       userId?: string;
+      imageBase64?: string;
+      imageMimeType?: string;
     };
 
     if (!message?.trim()) {
@@ -223,12 +225,26 @@ export async function POST(request: NextRequest) {
 
     const systemWithContext = `${SYSTEM_PROMPT}\n\n${platformContext}${knowledge}${relevantQA}${patterns}`;
 
+    // Build user message content — with optional image for pin enrichment
+    const userContent: Anthropic.ContentBlockParam[] = [];
+    if (imageBase64 && imageMimeType) {
+      userContent.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: imageMimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: imageBase64,
+        },
+      });
+    }
+    userContent.push({ type: "text", text: message });
+
     const messages: Anthropic.MessageParam[] = [
       ...(history ?? []).map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       })),
-      { role: "user" as const, content: message },
+      { role: "user" as const, content: userContent },
     ];
 
     const response = await client.messages.create({

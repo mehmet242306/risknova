@@ -109,9 +109,33 @@ function FlagIN() {
   );
 }
 
+function FlagKR() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30" className="h-4 w-6 rounded-sm">
+      <rect width="60" height="30" fill="#fff"/>
+      <circle cx="30" cy="15" r="8" fill="#C60C30"/>
+      <path d="M30,7 A8,8 0 0,1 30,23 A4,4 0 0,1 30,15 A4,4 0 0,0 30,7Z" fill="#003478"/>
+    </svg>
+  );
+}
+
+function FlagAZ() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30" className="h-4 w-6 rounded-sm">
+      <rect width="60" height="10" fill="#00B5E2"/>
+      <rect width="60" height="10" y="10" fill="#E4002B"/>
+      <rect width="60" height="10" y="20" fill="#00AF66"/>
+      <circle cx="32" cy="15" r="5" fill="#fff"/>
+      <circle cx="33.5" cy="15" r="4" fill="#E4002B"/>
+      <polygon fill="#fff" points="37,15 35.5,16 36,14.5 34.8,13.5 36.3,13.5"/>
+    </svg>
+  );
+}
+
 const flagComponents: Record<string, () => React.JSX.Element> = {
   tr: FlagTR, en: FlagGB, ar: FlagSA, ru: FlagRU, de: FlagDE,
   fr: FlagFR, es: FlagES, zh: FlagCN, ja: FlagJP, hi: FlagIN,
+  ko: FlagKR, az: FlagAZ,
 };
 
 /* ------------------------------------------------------------------ */
@@ -133,6 +157,8 @@ const languages: Language[] = [
   { code: "es", label: "Espa\u00f1ol" },
   { code: "zh", label: "\u4E2D\u6587" },
   { code: "ja", label: "\u65E5\u672C\u8A9E" },
+  { code: "ko", label: "\uD55C\uAD6D\uC5B4" },
+  { code: "az", label: "Az\u0259rbaycanca" },
   { code: "hi", label: "\u0939\u093F\u0928\u094D\u0926\u0940" },
 ];
 

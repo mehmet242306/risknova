@@ -1,0 +1,38 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="core-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EF9F27"/><stop offset="100%" stop-color="#BA7517"/>
+    </linearGradient>
+    <linearGradient id="hex-g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1D9E75"/><stop offset="100%" stop-color="#085041"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(200,200)">
+    <polygon points="0,-140 121.2,-70 121.2,70 0,140 -121.2,70 -121.2,-70" fill="none" stroke="#1D9E75" stroke-width="0.6" opacity="0.06"/>
+    <polygon points="0,-110 95.3,-55 95.3,55 0,110 -95.3,55 -95.3,-55" fill="none" stroke="#1D9E75" stroke-width="0.8" opacity="0.1"/>
+    <polygon points="0,-82 71,-41 71,41 0,82 -71,41 -71,-41" fill="none" stroke="url(#hex-g)" stroke-width="1.2" opacity="0.3"/>
+    <polygon points="0,-55 47.6,-27.5 47.6,27.5 0,55 -47.6,27.5 -47.6,-27.5" fill="none" stroke="url(#hex-g)" stroke-width="1.5" opacity="0.5"/>
+    <polygon points="0,-30 26,-15 26,15 0,30 -26,15 -26,-15" fill="none" stroke="#EF9F27" stroke-width="1.8" opacity="0.65"/>
+    <line x1="0" y1="-82" x2="71" y2="-41" stroke="#1D9E75" stroke-width="0.4" opacity="0.2"/>
+    <line x1="71" y1="-41" x2="71" y2="41" stroke="#1D9E75" stroke-width="0.4" opacity="0.2"/>
+    <line x1="71" y1="41" x2="0" y2="82" stroke="#1D9E75" stroke-width="0.4" opacity="0.2"/>
+    <line x1="0" y1="82" x2="-71" y2="41" stroke="#1D9E75" stroke-width="0.4" opacity="0.2"/>
+    <line x1="-71" y1="41" x2="-71" y2="-41" stroke="#1D9E75" stroke-width="0.4" opacity="0.2"/>
+    <line x1="-71" y1="-41" x2="0" y2="-82" stroke="#1D9E75" stroke-width="0.4" opacity="0.2"/>
+    <line x1="0" y1="-82" x2="0" y2="-55" stroke="#1D9E75" stroke-width="0.3" opacity="0.15"/>
+    <line x1="71" y1="-41" x2="47.6" y2="-27.5" stroke="#1D9E75" stroke-width="0.3" opacity="0.15"/>
+    <line x1="71" y1="41" x2="47.6" y2="27.5" stroke="#1D9E75" stroke-width="0.3" opacity="0.15"/>
+    <line x1="0" y1="82" x2="0" y2="55" stroke="#1D9E75" stroke-width="0.3" opacity="0.15"/>
+    <line x1="-71" y1="41" x2="-47.6" y2="27.5" stroke="#1D9E75" stroke-width="0.3" opacity="0.15"/>
+    <line x1="-71" y1="-41" x2="-47.6" y2="-27.5" stroke="#1D9E75" stroke-width="0.3" opacity="0.15"/>
+    <circle cx="0" cy="-82" r="6" fill="#1D9E75"/><circle cx="0" cy="-82" r="2.5" fill="#E1F5EE"/>
+    <circle cx="71" cy="-41" r="5" fill="#EF9F27"/><circle cx="71" cy="-41" r="2" fill="#FAEEDA"/>
+    <circle cx="71" cy="41" r="4.5" fill="#D85A30"/><circle cx="71" cy="41" r="1.5" fill="#FAECE7"/>
+    <circle cx="0" cy="82" r="5.5" fill="#1D9E75"/><circle cx="0" cy="82" r="2" fill="#E1F5EE"/>
+    <circle cx="-71" cy="41" r="4.5" fill="#5DCAA5"/><circle cx="-71" cy="41" r="1.5" fill="#E1F5EE"/>
+    <circle cx="-71" cy="-41" r="5" fill="#EF9F27"/><circle cx="-71" cy="-41" r="2" fill="#FAEEDA"/>
+    <circle cx="0" cy="0" r="18" fill="url(#core-g)"/>
+    <circle cx="0" cy="0" r="10" fill="#FAEEDA"/>
+    <circle cx="0" cy="0" r="4" fill="#BA7517"/>
+  </g>
+</svg>

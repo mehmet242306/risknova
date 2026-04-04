@@ -1,10 +1,14 @@
 "use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { CompanyRecord } from "@/lib/company-directory";
 import { getGuidedTasks, getOverallRiskState } from "@/lib/workplace-status";
+import { listRiskAssessments, deleteRiskAssessment, type SavedAssessment } from "@/lib/supabase/risk-assessment-api";
+import { createClient } from "@/lib/supabase/client";
 
 export type WTab = "overview" | "structure" | "risk" | "people" | "personnel" | "planner" | "tracking" | "documents" | "organization" | "history" | "digital_twin";
 
@@ -116,56 +120,351 @@ export function OverviewTab({ company, upd, risk, tasks, setTab }: {
 
 /* ── STRUCTURE ── */
 export function StructureTab({ company, upd }: { company: CompanyRecord; upd: (p: Partial<CompanyRecord>) => void }) {
+  const locCount = company.locations.filter(Boolean).length;
+  const depCount = company.departments.filter(Boolean).length;
+
   return (
     <div className="space-y-6">
-      <Sec title="Lokasyonlar" desc={"Firman\u0131n fiziksel yerle\u015Fkeleri."}>
-        <div className="space-y-2">
-          {company.locations.map((loc, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Input value={loc} onChange={(e) => { const n = [...company.locations]; n[i] = e.target.value; upd({ locations: n }); }} className="flex-1" />
-              <button type="button" onClick={() => upd({ locations: company.locations.filter((_, j) => j !== i) })} className="text-xs text-red-500 hover:underline">{"Kald\u0131r"}</button>
-            </div>
-          ))}
+      {/* Üst özet kartları */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-border bg-card p-4 text-center">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Lokasyon</p>
+          <p className="mt-1 text-2xl font-bold text-foreground">{locCount}</p>
         </div>
-        <Button variant="outline" size="sm" className="mt-3" onClick={() => upd({ locations: [...company.locations, ""] })}>Lokasyon Ekle</Button>
-      </Sec>
-      <Sec title={"B\u00F6l\u00FCmler"} desc="Organizasyonel birimler.">
-        <div className="space-y-2">
-          {company.departments.map((dep, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <Input value={dep} onChange={(e) => { const n = [...company.departments]; n[i] = e.target.value; upd({ departments: n }); }} className="flex-1" />
-              <button type="button" onClick={() => upd({ departments: company.departments.filter((_, j) => j !== i) })} className="text-xs text-red-500 hover:underline">{"Kald\u0131r"}</button>
-            </div>
-          ))}
+        <div className="rounded-xl border border-border bg-card p-4 text-center">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Bölüm</p>
+          <p className="mt-1 text-2xl font-bold text-foreground">{depCount}</p>
         </div>
-        <Button variant="outline" size="sm" className="mt-3" onClick={() => upd({ departments: [...company.departments, ""] })}>{"B\u00F6l\u00FCm Ekle"}</Button>
-      </Sec>
+        <div className="rounded-xl border border-border bg-card p-4 text-center">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Çalışan</p>
+          <p className="mt-1 text-2xl font-bold text-foreground">{company.employeeCount}</p>
+        </div>
+      </div>
+
+      {/* Lokasyonlar ve Bölümler — yan yana */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* Lokasyonlar */}
+        <section className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-lg dark:bg-amber-900/30">📍</div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Lokasyonlar</h3>
+                <p className="text-[11px] text-muted-foreground">Firmanın fiziksel yerleşkeleri</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{locCount}</span>
+          </div>
+          <div className="space-y-2">
+            {company.locations.map((loc, i) => (
+              <div key={i} className="group flex items-center gap-2 rounded-lg border border-border bg-secondary/30 p-2 transition-colors hover:border-primary/20">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-500/10 text-[10px] font-bold text-amber-600 dark:text-amber-400">{i + 1}</span>
+                <Input
+                  value={loc}
+                  onChange={(e) => { const n = [...company.locations]; n[i] = e.target.value; upd({ locations: n }); }}
+                  className="flex-1 !border-0 !bg-transparent !shadow-none !ring-0 text-sm"
+                  placeholder="Lokasyon adı girin"
+                />
+                <button
+                  type="button"
+                  onClick={() => upd({ locations: company.locations.filter((_, j) => j !== i) })}
+                  className="shrink-0 rounded-md p-1 text-muted-foreground/40 opacity-0 transition-all hover:bg-red-100 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => upd({ locations: [...company.locations, ""] })}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            Lokasyon Ekle
+          </button>
+        </section>
+
+        {/* Bölümler */}
+        <section className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-lg dark:bg-blue-900/30">🏢</div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Bölümler</h3>
+                <p className="text-[11px] text-muted-foreground">Organizasyonel birimler</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{depCount}</span>
+          </div>
+          <div className="space-y-2">
+            {company.departments.map((dep, i) => (
+              <div key={i} className="group flex items-center gap-2 rounded-lg border border-border bg-secondary/30 p-2 transition-colors hover:border-primary/20">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-blue-500/10 text-[10px] font-bold text-blue-600 dark:text-blue-400">{i + 1}</span>
+                <Input
+                  value={dep}
+                  onChange={(e) => { const n = [...company.departments]; n[i] = e.target.value; upd({ departments: n }); }}
+                  className="flex-1 !border-0 !bg-transparent !shadow-none !ring-0 text-sm"
+                  placeholder="Bölüm adı girin"
+                />
+                <button
+                  type="button"
+                  onClick={() => upd({ departments: company.departments.filter((_, j) => j !== i) })}
+                  className="shrink-0 rounded-md p-1 text-muted-foreground/40 opacity-0 transition-all hover:bg-red-100 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => upd({ departments: [...company.departments, ""] })}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            Bölüm Ekle
+          </button>
+        </section>
+      </div>
     </div>
   );
 }
 
 /* ── RISK ── */
+/* Risk kategori tanımları — süreç yönetimi kartları */
+const RISK_CATEGORIES = [
+  { key: "fiziksel", label: "Fiziksel", icon: "⚡", color: "#3B82F6", examples: "Gürültü, titreşim, aydınlatma, sıcaklık" },
+  { key: "kimyasal", label: "Kimyasal", icon: "🧪", color: "#8B5CF6", examples: "Gaz, toz, buhar, kimyasal madde" },
+  { key: "biyolojik", label: "Biyolojik", icon: "🦠", color: "#10B981", examples: "Bakteri, virüs, küf, biyolojik etkenler" },
+  { key: "ergonomik", label: "Ergonomik", icon: "🧍", color: "#F59E0B", examples: "Duruş bozukluğu, ağır yük, tekrarlı hareket" },
+  { key: "psikososyal", label: "Psikososyal", icon: "🧠", color: "#EC4899", examples: "Stres, mobbing, iş yükü, vardiya" },
+  { key: "mekanik", label: "Mekanik", icon: "⚙️", color: "#F97316", examples: "Makine, ekipman, düşme, sıkışma" },
+  { key: "elektrik", label: "Elektrik", icon: "🔌", color: "#EF4444", examples: "Çarpma, kısa devre, topraklama" },
+  { key: "yangin", label: "Yangın / Patlama", icon: "🔥", color: "#DC2626", examples: "Yanıcı madde, patlayıcı ortam, LPG" },
+  { key: "trafik", label: "Trafik", icon: "🚛", color: "#6366F1", examples: "Araç, forklift, yaya-araç çatışması" },
+  { key: "cevre", label: "Çevresel", icon: "🌿", color: "#059669", examples: "Atık, emisyon, gürültü kirliliği" },
+];
+
+type CategoryStats = { key: string; total: number; critical: number; high: number; medium: number; low: number };
+
 export function RiskTab({ company }: { company: CompanyRecord }) {
+  const [analyses, setAnalyses] = useState<SavedAssessment[]>([]);
+  const [catStats, setCatStats] = useState<CategoryStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<"overview" | "analyses">("overview");
+
+  useEffect(() => {
+    (async () => {
+      const [list] = await Promise.all([listRiskAssessments(company.id)]);
+      setAnalyses(list);
+
+      // Tespitleri kategorilere göre say
+      const supabase = createClient();
+      if (supabase) {
+        // Get all assessment IDs for this company
+        const assessmentIds = list.map((a) => a.id);
+        if (assessmentIds.length > 0) {
+          const { data: findings } = await supabase
+            .from("risk_assessment_findings")
+            .select("category, severity")
+            .in("assessment_id", assessmentIds);
+
+          if (findings) {
+            const stats: Record<string, CategoryStats> = {};
+            for (const cat of RISK_CATEGORIES) stats[cat.key] = { key: cat.key, total: 0, critical: 0, high: 0, medium: 0, low: 0 };
+
+            for (const f of findings) {
+              const catKey = mapCategoryToKey(f.category);
+              if (!stats[catKey]) stats[catKey] = { key: catKey, total: 0, critical: 0, high: 0, medium: 0, low: 0 };
+              stats[catKey].total++;
+              if (f.severity === "critical") stats[catKey].critical++;
+              else if (f.severity === "high") stats[catKey].high++;
+              else if (f.severity === "medium") stats[catKey].medium++;
+              else stats[catKey].low++;
+            }
+            setCatStats(Object.values(stats));
+          }
+        }
+      }
+      setLoading(false);
+    })();
+  }, [company.id]);
+
+  async function handleDelete(id: string) {
+    const ok = await deleteRiskAssessment(id);
+    if (ok) setAnalyses((prev) => prev.filter((a) => a.id !== id));
+    setConfirmDeleteId(null);
+  }
+
+  function fmtDate(d: string) { try { return new Date(d).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" }); } catch { return d; } }
+  function methodLabel(m: string) { return m === "r_skor" ? "R-SKOR 2D" : m === "fine_kinney" ? "Fine-Kinney" : m === "l_matrix" ? "L-Matris" : m; }
+  function statusBadge(s: string) {
+    if (s === "completed") return { label: "Tamamlandı", cls: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" };
+    if (s === "archived") return { label: "Arşivlendi", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
+    return { label: "Taslak", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" };
+  }
+
+  const totalFindings = catStats.reduce((s, c) => s + c.total, 0);
+  const totalCritical = catStats.reduce((s, c) => s + c.critical, 0);
+  const totalHigh = catStats.reduce((s, c) => s + c.high, 0);
+
   return (
-    <Sec title={"Risk ve Saha Y\u00F6netimi"} desc={"Risk analizi, saha bulgular\u0131 ve de\u011Ferlendirme."}>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { l: "A\u00E7\u0131k De\u011Ferlendirme", v: company.openRiskAssessments },
-          { l: "A\u00E7\u0131k Aksiyon", v: company.openActions },
-          { l: "Geciken Aksiyon", v: company.overdueActions },
-          { l: "Risk Bask\u0131s\u0131", v: company.openRiskScore },
-        ].map((m) => (
-          <div key={m.l} className="rounded-lg border border-border p-3.5 text-center">
-            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{m.l}</p>
-            <p className={`mt-1 text-xl font-semibold tabular-nums ${m.v > 0 ? "text-warning" : "text-foreground"}`}>{m.v}</p>
+    <div className="space-y-5">
+      {/* Başlık + Sekme seçici + Buton */}
+      <div className="rounded-xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="section-title text-base">Risk ve Saha Yönetimi</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Risk sınıflandırması, analiz geçmişi ve süreç takibi.</p>
           </div>
-        ))}
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-border bg-secondary/30">
+              <button type="button" onClick={() => setActiveSection("overview")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-l-lg transition-colors ${activeSection === "overview" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                Risk Haritası
+              </button>
+              <button type="button" onClick={() => setActiveSection("analyses")}
+                className={`px-3 py-1.5 text-xs font-medium rounded-r-lg transition-colors ${activeSection === "analyses" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                Analizler ({analyses.length})
+              </button>
+            </div>
+            <Link href={`/risk-analysis?companyId=${company.id}`} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+              Yeni Analiz
+            </Link>
+          </div>
+        </div>
+
+        {/* Üst metriler */}
+        <div className="mt-4 grid gap-3 grid-cols-2 sm:grid-cols-4">
+          <div className="rounded-lg border border-border p-3 text-center">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Toplam Tespit</p>
+            <p className="mt-1 text-xl font-bold text-foreground">{totalFindings}</p>
+          </div>
+          <div className="rounded-lg border border-border p-3 text-center">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Kritik</p>
+            <p className={`mt-1 text-xl font-bold ${totalCritical > 0 ? "text-red-600" : "text-muted-foreground"}`}>{totalCritical}</p>
+          </div>
+          <div className="rounded-lg border border-border p-3 text-center">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Yüksek</p>
+            <p className={`mt-1 text-xl font-bold ${totalHigh > 0 ? "text-orange-500" : "text-muted-foreground"}`}>{totalHigh}</p>
+          </div>
+          <div className="rounded-lg border border-border p-3 text-center">
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Analiz Sayısı</p>
+            <p className="mt-1 text-xl font-bold text-foreground">{analyses.length}</p>
+          </div>
+        </div>
       </div>
-      <div className="mt-5 rounded-lg border border-warning/30 bg-warning/5 p-4">
-        <p className="text-sm text-foreground">{"Risk analizi mod\u00FCl\u00FC geli\u015Ftirme a\u015Famas\u0131ndad\u0131r."}</p>
-      </div>
-    </Sec>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+      ) : activeSection === "overview" ? (
+        /* ── Risk Haritası — Kategori kartları ── */
+        <div className="grid gap-3 sm:grid-cols-2">
+          {RISK_CATEGORIES.map((cat) => {
+            const stat = catStats.find((s) => s.key === cat.key);
+            const total = stat?.total ?? 0;
+            const hasCritical = (stat?.critical ?? 0) > 0;
+            const hasHigh = (stat?.high ?? 0) > 0;
+
+            return (
+              <div key={cat.key} className={`rounded-xl border p-4 transition-colors ${
+                hasCritical ? "border-red-400/40 bg-red-50/5 dark:bg-red-950/10"
+                : hasHigh ? "border-orange-400/30 bg-orange-50/5 dark:bg-orange-950/10"
+                : total > 0 ? "border-border bg-card"
+                : "border-border/50 bg-card/50"
+              }`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl text-lg" style={{ backgroundColor: cat.color + "18" }}>
+                      {cat.icon}
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">{cat.label}</h4>
+                      <p className="text-[10px] text-muted-foreground">{cat.examples}</p>
+                    </div>
+                  </div>
+                  {total > 0 && (
+                    <span className="rounded-full px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: cat.color + "20", color: cat.color }}>
+                      {total}
+                    </span>
+                  )}
+                </div>
+                {total > 0 && (
+                  <div className="mt-3 flex gap-2">
+                    {(stat?.critical ?? 0) > 0 && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">Kritik: {stat!.critical}</span>}
+                    {(stat?.high ?? 0) > 0 && <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">Yüksek: {stat!.high}</span>}
+                    {(stat?.medium ?? 0) > 0 && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Orta: {stat!.medium}</span>}
+                    {(stat?.low ?? 0) > 0 && <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">Düşük: {stat!.low}</span>}
+                  </div>
+                )}
+                {total === 0 && (
+                  <p className="mt-2 text-[11px] text-muted-foreground/60">Henüz tespit yok</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── Analizler listesi ── */
+        <div className="space-y-2">
+          {analyses.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center">
+              <p className="text-sm font-medium text-foreground">Henüz risk analizi yapılmamış</p>
+              <p className="mt-1 text-xs text-muted-foreground">Risk Analizi sayfasından bu firma için ilk analizinizi başlatın.</p>
+            </div>
+          ) : analyses.map((a) => {
+            const sb = statusBadge(a.status);
+            return (
+              <div key={a.id} className="group flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/20">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="font-semibold text-foreground">{a.title}</h4>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${sb.cls}`}>{sb.label}</span>
+                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{methodLabel(a.method)}</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{fmtDate(a.assessmentDate)}</span>
+                    <span>{a.itemCount} tespit</span>
+                    {a.locationText && <span>{a.locationText}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-3">
+                  {confirmDeleteId === a.id ? (
+                    <div className="flex items-center gap-1 rounded-lg border border-red-400 bg-red-50 px-2 py-1 dark:border-red-600 dark:bg-red-950">
+                      <span className="text-[11px] text-red-600 dark:text-red-400">Emin misin?</span>
+                      <button type="button" className="rounded px-2 py-0.5 text-[11px] font-medium text-red-600 hover:bg-red-100 dark:text-red-400" onClick={() => handleDelete(a.id)}>Evet</button>
+                      <button type="button" className="rounded px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary" onClick={() => setConfirmDeleteId(null)}>Hayır</button>
+                    </div>
+                  ) : (
+                    <button type="button" className="rounded-lg px-2 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => setConfirmDeleteId(a.id)}>Sil</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
+}
+
+/** AI kategori adını risk sınıfı key'ine dönüştür */
+function mapCategoryToKey(category: string): string {
+  const lower = (category || "").toLowerCase().trim();
+  if (lower.includes("elektrik")) return "elektrik";
+  if (lower.includes("yangın") || lower.includes("patlama") || lower.includes("yangin")) return "yangin";
+  if (lower.includes("kimyasal") || lower.includes("kimya")) return "kimyasal";
+  if (lower.includes("makine") || lower.includes("mekanik")) return "mekanik";
+  if (lower.includes("ergonomi")) return "ergonomik";
+  if (lower.includes("trafik") || lower.includes("araç")) return "trafik";
+  if (lower.includes("çevre") || lower.includes("cevre")) return "cevre";
+  if (lower.includes("biyolojik")) return "biyolojik";
+  if (lower.includes("psikososyal") || lower.includes("stres")) return "psikososyal";
+  // Fiziksel: KKD, düşme, düzen, depolama, yüksekte çalışma, iskele, acil durum
+  return "fiziksel";
 }
 
 /* ── PEOPLE ── */

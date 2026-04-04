@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -53,6 +54,15 @@ import {
   type ExportImage,
   type RiskAnalysisExportData,
 } from "@/lib/risk-analysis-export";
+import {
+  saveRiskAnalysis,
+  listRiskAssessments,
+  loadRiskAssessment,
+  deleteRiskAssessment,
+  type SavedAssessment,
+  type SaveRiskAnalysisInput,
+} from "@/lib/supabase/risk-assessment-api";
+import { createNotification } from "@/lib/supabase/notification-api";
 
 /* ================================================================== */
 /* Types                                                               */
@@ -164,6 +174,21 @@ const participantRoleCatalog: ParticipantRole[] = [
   { code: "support_staff", label: "Destek Elemanı" },
   { code: "knowledgeable_employee", label: "Riskler Hakkında Bilgi Sahibi Çalışan" },
 ];
+
+/** Firma ekip kategorisinden ISG rol kodu tahmin et */
+function guessRoleFromCategory(categoryName: string | null): string {
+  if (!categoryName) return "";
+  const lower = categoryName.toLowerCase();
+  if (lower.includes("işveren") && lower.includes("vekil")) return "employer_representative";
+  if (lower.includes("işveren")) return "employer";
+  if (lower.includes("güvenlik") || lower.includes("uzman") || lower.includes("isg")) return "ohs_specialist";
+  if (lower.includes("hekim") || lower.includes("doktor")) return "workplace_physician";
+  if (lower.includes("sağlık")) return "other_health_personnel";
+  if (lower.includes("temsilci")) return "employee_representative";
+  if (lower.includes("destek")) return "support_staff";
+  if (lower.includes("risk") || lower.includes("değerlendirme")) return "knowledgeable_employee";
+  return "knowledgeable_employee"; // varsayılan: bilgi sahibi çalışan
+}
 
 /** Kategori bazli R2D profilleri — her kategorinin baskin parametresi farkli */
 const categoryR2DProfiles: Record<string, R2DValues> = {
@@ -827,6 +852,8 @@ function MatrixPanel({ finding, onUpdate }: { finding: VisualFinding; onUpdate: 
 /* ================================================================== */
 
 export function RiskAnalysisClient() {
+  const searchParams = useSearchParams();
+
   /* ── Setup state (persisted across page navigation) ── */
   const [analysisTitle, setAnalysisTitle] = usePersistedState("risk:title", "Saha Risk Analizi");
   const [analysisNote, setAnalysisNote] = usePersistedState("risk:note", "Her satır bir risk konusu veya uygunsuzluk grubunu temsil eder. Aynı satıra bir veya birden fazla fotoğraf eklenebilir.");
@@ -856,6 +883,20 @@ export function RiskAnalysisClient() {
     });
     return () => { cancelled = true; };
   }, []);
+
+  // URL'den gelen companyId parametresi — firma sayfasından yönlendirme
+  useEffect(() => {
+    const urlCompanyId = searchParams.get("companyId");
+    if (urlCompanyId && companies.length > 0) {
+      const found = companies.find((c) => c.id === urlCompanyId);
+      if (found) {
+        setSelectedCompanyId(urlCompanyId);
+        // Doğrudan wizard moduna geç
+        setViewMode("wizard");
+        setStep(1);
+      }
+    }
+  }, [searchParams, companies]);
 
   // Firma secildiginde ekip uyelerini yukle
   useEffect(() => {
@@ -900,6 +941,27 @@ export function RiskAnalysisClient() {
   const [step, setStep] = usePersistedState<1 | 2 | 3 | 4>("risk:step", 1);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [analysisMessage, setAnalysisMessage] = useState("");
+
+  /* ── Sayfa modu: "list" = firma + geçmiş listesi, "wizard" = analiz wizard ── */
+  const [viewMode, setViewMode] = usePersistedState<"list" | "wizard">("risk:viewMode", "list");
+
+  /* ── Kayıtlı analizler ── */
+  const [savedAnalyses, setSavedAnalyses] = useState<SavedAssessment[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [currentAssessmentId, setCurrentAssessmentId] = useState<string | null>(null);
+  const [loadingAnalyses, setLoadingAnalyses] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Firma seçildiğinde analizleri yükle
+  useEffect(() => {
+    if (!selectedCompanyId) { setSavedAnalyses([]); return; }
+    setLoadingAnalyses(true);
+    listRiskAssessments(selectedCompanyId).then((list) => {
+      setSavedAnalyses(list);
+      setLoadingAnalyses(false);
+    });
+  }, [selectedCompanyId]);
 
   /* ── Saved team members (from company team management) ── */
   type TeamMemberBasic = { id: string; full_name: string; title: string | null; category_name: string | null; cert_number: string | null };
@@ -986,6 +1048,14 @@ export function RiskAnalysisClient() {
   /* ── Toggle DÖF ── */
   const toggleDof = useCallback((rowId: string, findingId: string) => {
     setResults((prev) => prev.map((r) => r.rowId === rowId ? { ...r, findings: r.findings.map((f) => f.id === findingId ? { ...f, correctiveActionRequired: !f.correctiveActionRequired } : f) } : r));
+  }, []);
+
+  /* ── Tespit silme ── */
+  const [pendingDeleteFinding, setPendingDeleteFinding] = useState<{ rowId: string; findingId: string; title: string } | null>(null);
+  const deleteFinding = useCallback((rowId: string, findingId: string) => {
+    setResults((prev) => prev.map((r) => r.rowId === rowId ? { ...r, findings: r.findings.filter((f) => f.id !== findingId) } : r));
+    setSelectedFindingByRow((prev) => { const n = { ...prev }; if (n[rowId] === findingId) delete n[rowId]; return n; });
+    setPendingDeleteFinding(null);
   }, []);
 
   /* ── Analyze ── */
@@ -1080,6 +1150,7 @@ export function RiskAnalysisClient() {
         confidence: number; recommendation: string; correctiveActionRequired: boolean;
         pinX: number; pinY: number; boxX?: number; boxY?: number; boxW?: number; boxH?: number;
         legalReferences?: LegalReference[];
+        r2dParams?: { c1: number; c2: number; c3: number; c4: number; c5: number; c6: number; c7: number; c8: number; c9: number };
       }> };
 
       return data.risks.map((risk, idx) => {
@@ -1093,7 +1164,21 @@ export function RiskAnalysisClient() {
           });
         }
 
-        const r2dValues = getR2DForCategory(risk.category, risk.severity);
+        // AI'dan gelen C1-C9 parametrelerini kullan, yoksa fallback profil
+        const aiParams = risk.r2dParams;
+        const r2dValues: R2DValues = aiParams
+          ? {
+              c1: Math.min(1, Math.max(0, aiParams.c1 ?? 0)),
+              c2: Math.min(1, Math.max(0, aiParams.c2 ?? 0)),
+              c3: Math.min(1, Math.max(0, aiParams.c3 ?? 0)),
+              c4: Math.min(1, Math.max(0, aiParams.c4 ?? 0)),
+              c5: Math.min(1, Math.max(0, aiParams.c5 ?? 0)),
+              c6: Math.min(1, Math.max(0, aiParams.c6 ?? 0)),
+              c7: Math.min(1, Math.max(0, aiParams.c7 ?? 0)),
+              c8: Math.min(1, Math.max(0, aiParams.c8 ?? 0)),
+              c9: Math.min(1, Math.max(0, aiParams.c9 ?? 0)),
+            }
+          : getR2DForCategory(risk.category, risk.severity);
         const fkValues = getFKForCategory(risk.category, risk.severity);
         const matrixValues = getMatrixForCategory(risk.category, risk.severity);
 
@@ -1269,8 +1354,26 @@ export function RiskAnalysisClient() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            message: `Bu görselde (${x.toFixed(0)}%, ${y.toFixed(0)}% konumunda) "${pendingPinTitle.trim()}" olarak işaretlenen bir risk tespit edildi. Ciddiyet: ${pendingPinSeverity}. Bu risk için:\n1. Kısa ve net bir öneri yaz\n2. İlgili Türk ISG mevzuat referanslarını belirle (kanun/yönetmelik adı + madde)\n\nJSON formatında döndür:\n{"recommendation": "...", "legalReferences": [{"law": "...", "article": "...", "description": "..."}], "category": "PPE|Housekeeping|Electrical|Makine|Yangın|..."}`,
+            message: `Bu görselde tam olarak (${x.toFixed(0)}%, ${y.toFixed(0)}%) konumunda bir risk işaretlendi.
+
+GÖREV: Görselin bu spesifik konumundaki nesne/durum/ekipmanı dikkatlice incele. Kullanıcı bu noktayı "${pendingPinTitle.trim()}" olarak tanımladı, ciddiyet: ${pendingPinSeverity}.
+
+YAPMAN GEREKENLER:
+1. Bu konumdaki spesifik nesne/durumu tanımla ve riski somut olarak değerlendir
+2. EN AZ 2-3 cümle detaylı öneri yaz — ne yapılacak, nasıl, kim yapacak
+3. İlgili Türk İSG mevzuat referanslarını belirle:
+   - HER referans için: tam yönetmelik adı + madde numarası + fıkra + maddenin ne söylediğini açıkla
+   - En az 2 farklı mevzuat kaynağından referans ver
+   - 6331 sayılı İSG Kanunu + ilgili yönetmeliği birlikte kullan
+4. Riski en iyi tanımlayan kategoriyi seç
+
+KATEGORİLER: KKD, Düzen/Temizlik, Depolama, Elektrik, Ergonomi, Yangın, Acil Durum, Makine, Yüksekte Çalışma, Kimyasal, Çevre, İskele, Trafik, Diğer
+
+JSON formatında döndür:
+{"recommendation": "detaylı öneri", "legalReferences": [{"law": "tam yönetmelik adı", "article": "Madde X, fıkra Y", "description": "maddenin ne söylediğini açıkla"}], "category": "Türkçe kategori"}`,
             history: [],
+            imageBase64: base64,
+            imageMimeType: mimeType,
           }),
         });
 
@@ -1298,18 +1401,73 @@ export function RiskAnalysisClient() {
   }
 
   /* ── Export ── */
-  /** Blob URL'i base64 data URL'e cevir */
+  /** Blob URL'i base64 data URL'e cevir — export sırasında yüzleri bulanıklaştır */
   async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
     try {
       const res = await fetch(blobUrl);
       const blob = await res.blob();
+
+      // Görseli canvas'a çiz → yüz tespiti → bulanıklaştır → dataUrl
       return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => resolve("");
-        reader.readAsDataURL(blob);
+        const img = new Image();
+        img.onload = async () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(""); return; }
+          ctx.drawImage(img, 0, 0);
+
+          // Yüz tespiti ve bulanıklaştırma
+          try {
+            await blurFacesOnCanvas(canvas, ctx);
+          } catch { /* yüz tespiti başarısızsa orijinal devam */ }
+
+          resolve(canvas.toDataURL("image/jpeg", 0.90));
+          URL.revokeObjectURL(img.src);
+        };
+        img.onerror = () => resolve("");
+        img.src = URL.createObjectURL(blob);
       });
     } catch { return ""; }
+  }
+
+  /** Canvas üzerindeki yüzleri tespit edip bulanıklaştır */
+  async function blurFacesOnCanvas(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): Promise<void> {
+    // FaceDetector API (Chrome 70+, Edge, Opera)
+    if ("FaceDetector" in window) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const detector = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 20 });
+        const faces = await detector.detect(canvas);
+        for (const face of faces) {
+          const { x, y, width, height } = face.boundingBox;
+          // Orijinal bölgeyi al
+          const faceData = ctx.getImageData(x, y, width, height);
+          // Pixelate (hızlı bulanıklaştırma)
+          const blockSize = Math.max(8, Math.round(Math.min(width, height) / 6));
+          for (let py = 0; py < height; py += blockSize) {
+            for (let px = 0; px < width; px += blockSize) {
+              const idx = (py * width + px) * 4;
+              const r = faceData.data[idx];
+              const g = faceData.data[idx + 1];
+              const b = faceData.data[idx + 2];
+              for (let dy = 0; dy < blockSize && py + dy < height; dy++) {
+                for (let dx = 0; dx < blockSize && px + dx < width; dx++) {
+                  const i = ((py + dy) * width + (px + dx)) * 4;
+                  faceData.data[i] = r;
+                  faceData.data[i + 1] = g;
+                  faceData.data[i + 2] = b;
+                }
+              }
+            }
+          }
+          ctx.putImageData(faceData, x, y);
+        }
+      } catch { /* FaceDetector hata verirse devam */ }
+    }
+    // FaceDetector yoksa (Firefox, Safari) → canvas filter blur fallback
+    // Yüz konumu bilinmediğinden bulanıklaştırma yapılamaz — orijinal kalır
   }
 
   async function buildExportData(): Promise<RiskAnalysisExportData> {
@@ -1318,6 +1476,7 @@ export function RiskAnalysisClient() {
       const rc = getActiveRiskClass(f, method);
       return {
         rowTitle: results.find((r) => r.findings.some((ff) => ff.id === f.id))?.rowTitle ?? "",
+        imageId: f.imageId,
         title: f.title,
         category: f.category,
         severity: f.severity,
@@ -1353,7 +1512,7 @@ export function RiskAnalysisClient() {
         const findingCount = result.findings.filter((f) => f.imageId === img.id).length;
         const dataUrl = await blobUrlToDataUrl(img.previewUrl);
         if (dataUrl) {
-          images.push({ rowTitle: result.rowTitle, dataUrl, fileName: img.file.name, findingCount });
+          images.push({ imageId: img.id, rowTitle: result.rowTitle, dataUrl, fileName: img.file.name, findingCount });
         }
       }
     }
@@ -1386,13 +1545,113 @@ export function RiskAnalysisClient() {
     };
   }
 
+  /* ── Kaydet ── */
+  async function handleSaveAnalysis() {
+    if (results.length === 0) return;
+    if (!selectedCompanyId) { setSaveMessage("Firma seçilmeden analiz kaydedilemez."); return; }
+    setIsSaving(true);
+    setSaveMessage("");
+
+    try {
+      const input: SaveRiskAnalysisInput = {
+        title: analysisTitle,
+        analysisNote,
+        method,
+        companyWorkspaceId: selectedCompanyId || null,
+        location: selectedLocation,
+        department: selectedDepartment,
+        participants: validParticipants.map((p) => ({
+          fullName: p.fullName,
+          roleCode: p.roleCode,
+          title: p.title,
+          certificateNo: p.certificateNo,
+        })),
+        rows: results.map((result) => {
+          const sourceLine = lineMap.get(result.rowId);
+          // Map each image to its finding IDs
+          const imageEntries = (sourceLine?.images ?? []).map((img) => ({
+            file: img.file,
+            findingIds: result.findings.filter((f) => f.imageId === img.id).map((f) => f.imageId),
+          }));
+
+          return {
+            title: result.rowTitle,
+            description: sourceLine?.description ?? "",
+            images: imageEntries,
+            findings: result.findings.map((f) => ({
+              id: f.id,
+              imageId: f.imageId,
+              title: f.title,
+              category: f.category,
+              severity: f.severity,
+              confidence: f.confidence,
+              isManual: f.isManual,
+              correctiveActionRequired: f.correctiveActionRequired,
+              recommendation: f.recommendation,
+              action: getActiveScore(f, method).action,
+              r2dValues: f.r2dValues,
+              r2dResult: f.r2dResult,
+              fkValues: f.fkValues,
+              fkResult: f.fkResult,
+              matrixValues: f.matrixValues,
+              matrixResult: f.matrixResult,
+              annotations: f.annotations,
+              legalReferences: f.legalReferences,
+            })),
+          };
+        }),
+        totalFindings: totalDetectionCount,
+        criticalCount: criticalHighCount,
+        highestRiskLevel: allFindings.length > 0 ? getActiveRiskClass(allFindings.reduce((worst, f) => {
+          const wScore = getActiveScore(worst, method).score;
+          const fScore = getActiveScore(f, method).score;
+          return fScore > wScore ? f : worst;
+        }), method) : "low",
+      };
+
+      const assessmentId = await saveRiskAnalysis(input);
+      if (assessmentId) {
+        setCurrentAssessmentId(assessmentId);
+        setSaveMessage("Analiz başarıyla kaydedildi!");
+        // Bildirim oluştur
+        void createNotification({
+          title: "Risk analizi kaydedildi",
+          message: `${input.title} — ${input.totalFindings} tespit, ${input.criticalCount} kritik/yüksek`,
+          type: "risk_analysis",
+          level: input.criticalCount > 0 ? "warning" : "info",
+          link: `/companies/${selectedCompanyId}?tab=risk`,
+        });
+        // Refresh list
+        const list = await listRiskAssessments(selectedCompanyId);
+        setSavedAnalyses(list);
+      } else {
+        setSaveMessage("Kayıt sırasında hata oluştu.");
+      }
+    } catch (err) {
+      console.warn("[save] error:", err);
+      setSaveMessage("Kayıt sırasında hata oluştu.");
+    } finally {
+      setIsSaving(false);
+      setTimeout(() => setSaveMessage(""), 4000);
+    }
+  }
+
+  /* ── Kayıtlı analizi sil ── */
+  async function handleDeleteAnalysis(assessmentId: string) {
+    const ok = await deleteRiskAssessment(assessmentId);
+    if (ok) {
+      setSavedAnalyses((prev) => prev.filter((a) => a.id !== assessmentId));
+      if (currentAssessmentId === assessmentId) setCurrentAssessmentId(null);
+    }
+  }
+
   /* ── Reset ── */
   function resetAll() {
+    const keepCompanyId = selectedCompanyId; // Firma seçimini koru
     lines.forEach((l) => l.images.forEach((i) => URL.revokeObjectURL(i.previewUrl)));
     setAnalysisTitle("Saha Risk Analizi");
     setAnalysisNote("Her satır bir risk konusu veya uygunsuzluk grubunu temsil eder. Aynı satıra bir veya birden fazla fotoğraf eklenebilir.");
     setMethod("r_skor");
-    setSelectedCompanyId(companies[0]?.id ?? "");
     setSelectedLocation(""); setSelectedDepartment("");
     setParticipants([createParticipant()]);
     setSetupMessage(""); setSetupMessageType("");
@@ -1400,7 +1659,36 @@ export function RiskAnalysisClient() {
     setResults([]); setSelectedImageByRow({}); setSelectedFindingByRow({});
     setPinMode(null); setPendingPin(null);
     setStep(1);
+    setCurrentAssessmentId(null);
+    setViewMode("list");
     clearPersistedStates("risk:");
+    // Firma seçimini geri yükle (clearPersistedStates silmiş olabilir)
+    if (keepCompanyId) setSelectedCompanyId(keepCompanyId);
+  }
+
+  /** Wizard'a geç (yeni analiz başlat) */
+  function startNewAnalysis() {
+    lines.forEach((l) => l.images.forEach((i) => URL.revokeObjectURL(i.previewUrl)));
+    setAnalysisTitle("Saha Risk Analizi");
+    setAnalysisNote("Her satır bir risk konusu veya uygunsuzluk grubunu temsil eder. Aynı satıra bir veya birden fazla fotoğraf eklenebilir.");
+    setSelectedLocation(""); setSelectedDepartment("");
+    setParticipants([createParticipant()]);
+    setSetupMessage(""); setSetupMessageType("");
+    setLines([createLine()]);
+    setResults([]); setSelectedImageByRow({}); setSelectedFindingByRow({});
+    setPinMode(null); setPendingPin(null);
+    setCurrentAssessmentId(null);
+    setStep(1);
+    setViewMode("wizard");
+  }
+
+  /** Listeye geri dön */
+  function backToList() {
+    setViewMode("list");
+    // Analizleri yenile
+    if (selectedCompanyId) {
+      listRiskAssessments(selectedCompanyId).then((list) => setSavedAnalyses(list));
+    }
   }
 
   /* ── Select styles (reusable) ── */
@@ -1433,6 +1721,142 @@ export function RiskAnalysisClient() {
   /* RENDER                                                            */
   /* ================================================================ */
 
+  /* ── Tarih formatı helper ── */
+  function fmtDate(d: string) {
+    try { return new Date(d).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" }); } catch { return d; }
+  }
+  function methodBadge(m: string) {
+    return m === "r_skor" ? "R-SKOR 2D" : m === "fine_kinney" ? "Fine-Kinney" : m === "l_matrix" ? "L-Matris" : m;
+  }
+  function riskBadgeColor(level: string | null) {
+    if (!level) return "bg-muted text-muted-foreground";
+    if (level === "critical") return "bg-red-900/80 text-red-200";
+    if (level === "high") return "bg-red-600/80 text-white";
+    if (level === "medium" || level === "significant") return "bg-orange-500/80 text-white";
+    if (level === "low") return "bg-amber-500/80 text-white";
+    return "bg-green-600/80 text-white";
+  }
+
+  /* ════════════════════════════════════════════════════════════════ */
+  /* LIST MODE — Firma seçimi + analiz geçmişi                      */
+  /* ════════════════════════════════════════════════════════════════ */
+  if (viewMode === "list") {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow="Risk Analizi"
+          title="Risk Analizi Yönetimi"
+          description="Firma seçin, geçmiş analizleri görüntüleyin veya yeni analiz başlatın."
+        />
+
+        {/* ── Firma Seçimi ── */}
+        <div className="surface-card rounded-[1.75rem] border border-border p-6 shadow-[var(--shadow-card)]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex-1">
+              <label className="mb-2 block text-sm font-semibold text-foreground">Firma / Kurum Seçin</label>
+              <select
+                value={selectedCompanyId}
+                onChange={(e) => setSelectedCompanyId(e.target.value)}
+                className={selectCls + " w-full"}
+              >
+                <option value="">— Firma seçin —</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <Button
+              type="button"
+              variant="accent"
+              size="lg"
+              disabled={!selectedCompanyId}
+              onClick={startNewAnalysis}
+            >
+              + Yeni Analiz Başlat
+            </Button>
+          </div>
+        </div>
+
+        {/* ── Analiz Geçmişi ── */}
+        {selectedCompanyId && (
+          <div className="surface-card rounded-[1.75rem] border border-border p-6 shadow-[var(--shadow-card)]">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">
+                  {selectedCompany?.name ?? "Firma"} — Risk Analizi Geçmişi
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {savedAnalyses.length} kayıtlı analiz
+                </p>
+              </div>
+            </div>
+
+            {loadingAnalyses ? (
+              <div className="flex justify-center py-12">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              </div>
+            ) : savedAnalyses.length === 0 ? (
+              <EmptyState
+                title="Henüz analiz kaydı yok"
+                description="Bu firma için ilk risk analizinizi başlatmak için yukarıdaki butonu kullanın."
+              />
+            ) : (
+              <div className="space-y-3">
+                {savedAnalyses.map((a) => (
+                  <div key={a.id} className="group rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/30">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-foreground">{a.title}</h3>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${riskBadgeColor(a.overallRiskLevel)}`}>
+                            {a.overallRiskLevel ? a.overallRiskLevel.toUpperCase() : "—"}
+                          </span>
+                          <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            {methodBadge(a.method)}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            a.status === "completed" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : a.status === "archived" ? "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                          }`}>
+                            {a.status === "completed" ? "Tamamlandı" : a.status === "archived" ? "Arşivlendi" : "Taslak"}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                          <span>{fmtDate(a.assessmentDate)}</span>
+                          <span>{a.itemCount} tespit</span>
+                          {a.locationText && <span>{a.locationText}</span>}
+                          {a.departmentName && <span>{a.departmentName}</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {deleteConfirmId === a.id ? (
+                          <div className="flex items-center gap-1 rounded-xl border border-red-400 bg-red-50 px-2 py-1 dark:border-red-600 dark:bg-red-950">
+                            <span className="text-xs text-red-600 dark:text-red-400 mr-1">Emin misin?</span>
+                            <Button type="button" variant="ghost" className="h-6 px-2 text-xs text-red-600 hover:bg-red-100 dark:text-red-400" onClick={() => { handleDeleteAnalysis(a.id); setDeleteConfirmId(null); }}>Evet</Button>
+                            <Button type="button" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setDeleteConfirmId(null)}>Hayır</Button>
+                          </div>
+                        ) : (
+                          <>
+                            <Button type="button" variant="ghost" className="h-7 px-2 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => setDeleteConfirmId(a.id)}>Sil</Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ════════════════════════════════════════════════════════════════ */
+  /* WIZARD MODE — Analiz oluşturma / düzenleme                     */
+  /* ════════════════════════════════════════════════════════════════ */
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -1447,7 +1871,10 @@ export function RiskAnalysisClient() {
           </>
         }
         actions={
-          <Button type="button" variant="outline" onClick={resetAll}>Yeni Analiz</Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={backToList}>Listeye Dön</Button>
+            <Button type="button" variant="outline" onClick={resetAll}>Yeni Analiz</Button>
+          </div>
         }
       />
 
@@ -1569,7 +1996,9 @@ export function RiskAnalysisClient() {
                       disabled={alreadyAdded}
                       onClick={() => {
                         const emptyIdx = participants.findIndex((p) => !p.fullName.trim());
-                        const patch = { fullName: tm.full_name, title: tm.title || "", certificateNo: tm.cert_number || "" };
+                        // Kategori adından otomatik rol eşle
+                        const autoRole = guessRoleFromCategory(tm.category_name);
+                        const patch = { fullName: tm.full_name, title: tm.title || "", certificateNo: tm.cert_number || "", roleCode: autoRole };
                         if (emptyIdx >= 0) {
                           setParticipants((prev) => prev.map((p, i) => i === emptyIdx ? { ...p, ...patch } : p));
                         } else {
@@ -1592,9 +2021,25 @@ export function RiskAnalysisClient() {
             </div>
           )}
 
-          {teamMembers.length === 0 && (
-            <div className="mb-5 rounded-[1.25rem] border border-dashed border-border bg-card p-4 text-sm text-muted-foreground">
-              Bu firma için henüz ekip üyesi tanımlanmamış. <Link href={`/companies/${selectedCompanyId}`} className="font-medium text-[var(--accent)] hover:underline">Firma sayfasından ekip oluşturun</Link> veya aşağıdan manuel ekleyin.
+          {teamMembers.length === 0 && selectedCompanyId && (
+            <div className="mb-5 rounded-[1.25rem] border border-dashed border-amber-400/40 bg-amber-50/10 p-4 dark:bg-amber-950/20">
+              <div className="flex items-start gap-3">
+                <svg className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Risk Değerlendirme Ekibi Tanımlı Değil</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Bu firma için henüz ekip üyesi tanımlanmamış. Firma sayfasında <strong>Ekip</strong> sekmesinden
+                    &quot;Risk Değerlendirme Ekibi&quot; oluşturup üyelerinizi ekleyin — burada otomatik listelenecek.
+                  </p>
+                  <Link
+                    href={`/companies/${selectedCompanyId}?tab=people`}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-400 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
+                    Firma Ekip Yönetimine Git
+                  </Link>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1752,6 +2197,11 @@ export function RiskAnalysisClient() {
             </div>
           </div>
 
+          {/* Kayit mesaji */}
+          {saveMessage && (
+            <StatusAlert tone={saveMessage.includes("başarı") ? "success" : "danger"} className="mt-2">{saveMessage}</StatusAlert>
+          )}
+
           {/* Sonuc alani */}
           <div className="surface-card rounded-[1.75rem] border border-border p-6 shadow-[var(--shadow-card)]">
             <div className="mb-5 flex items-center justify-between">
@@ -1808,6 +2258,18 @@ export function RiskAnalysisClient() {
                     <Button type="button" variant="accent" onClick={confirmManualPin} disabled={!pendingPinTitle.trim()}>Ekle</Button>
                     <Button type="button" variant="ghost" onClick={() => setPendingPin(null)}>İptal</Button>
                   </div>
+                </div>
+              </div>
+            )}
+
+                {/* ── Tespit silme onay dialog ── */}
+                {pendingDeleteFinding && (
+              <div className="rounded-2xl border-2 border-red-400 bg-red-50 p-4 dark:border-red-600 dark:bg-red-950">
+                <p className="text-sm font-semibold text-foreground">Tespiti Sil</p>
+                <p className="mt-1 text-sm text-muted-foreground">&quot;{pendingDeleteFinding.title}&quot; tespitini silmek istediğinize emin misiniz?</p>
+                <div className="mt-3 flex gap-2">
+                  <Button type="button" variant="accent" className="!bg-red-600 hover:!bg-red-700" onClick={() => deleteFinding(pendingDeleteFinding.rowId, pendingDeleteFinding.findingId)}>Sil</Button>
+                  <Button type="button" variant="ghost" onClick={() => setPendingDeleteFinding(null)}>İptal</Button>
                 </div>
               </div>
             )}
@@ -1926,8 +2388,20 @@ export function RiskAnalysisClient() {
                                   <h4 className="mt-1 text-base font-semibold text-foreground">{finding.title}</h4>
                                   <p className="mt-1 text-sm text-muted-foreground">{finding.category}</p>
                                 </div>
-                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: sc.color }}>
-                                  {method === "r_skor" ? (sc.score * 100).toFixed(0) : Math.round(sc.score)}
+                                <div className="flex flex-shrink-0 items-center gap-2">
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white" style={{ backgroundColor: sc.color }}>
+                                    {method === "r_skor" ? (sc.score * 100).toFixed(0) : Math.round(sc.score)}
+                                  </div>
+                                  <div
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={(e) => { e.stopPropagation(); setPendingDeleteFinding({ rowId: result.rowId, findingId: finding.id, title: finding.title }); }}
+                                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setPendingDeleteFinding({ rowId: result.rowId, findingId: finding.id, title: finding.title }); } }}
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground/50 transition-colors hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                                    title="Tespiti sil"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                  </div>
                                 </div>
                               </div>
 
@@ -1986,7 +2460,12 @@ export function RiskAnalysisClient() {
             </Button>
           )}
           {step === 4 && (
-            <Button type="button" variant="ghost" size="lg" onClick={resetAll}>Yeni Analiz</Button>
+            <>
+              <Button type="button" variant="accent" size="lg" onClick={handleSaveAnalysis} disabled={isSaving || results.length === 0}>
+                {isSaving ? "Kaydediliyor..." : currentAssessmentId ? "Güncelle" : "Kaydet"}
+              </Button>
+              <Button type="button" variant="outline" size="lg" onClick={backToList}>Listeye Dön</Button>
+            </>
           )}
         </div>
       </div>

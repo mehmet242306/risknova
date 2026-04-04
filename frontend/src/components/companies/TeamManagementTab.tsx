@@ -359,7 +359,27 @@ export function TeamManagementTab({
 
     const [{ data: cats }, { data: mems }] = await Promise.all([qCats, qMembers]);
 
-    setCategories((cats as TeamCategory[]) ?? []);
+    let loadedCats = (cats as TeamCategory[]) ?? [];
+
+    // Varsayılan kategorileri otomatik oluştur (yoksa)
+    const defaultCats = [
+      { name: "Risk Değerlendirme Ekibi", color: "#DC2626", icon: "🎯", sort_order: 1 },
+      { name: "İSG Uzmanı", color: "#3B82F6", icon: "🛡️", sort_order: 2 },
+      { name: "İşyeri Hekimi", color: "#10B981", icon: "⚕️", sort_order: 3 },
+      { name: "Acil Durum Ekip Lideri", color: "#F97316", icon: "🚨", sort_order: 4 },
+    ];
+    const missingDefaults = defaultCats.filter((d) => !loadedCats.some((c) => c.name === d.name));
+    if (missingDefaults.length > 0) {
+      const inserts = missingDefaults.map((d) => ({
+        ...d,
+        is_default: true,
+        organization_id: resolvedOrgId || orgId,
+      }));
+      const { data: newCats } = await supabase.from("team_categories").insert(inserts).select("id, name, color, icon, is_default, sort_order");
+      if (newCats) loadedCats = [...loadedCats, ...(newCats as TeamCategory[])].sort((a, b) => a.sort_order - b.sort_order);
+    }
+
+    setCategories(loadedCats);
     setMembers((mems as TeamMember[]) ?? []);
     setLoading(false);
   }, [companyId, orgId]);
@@ -612,138 +632,125 @@ export function TeamManagementTab({
         </div>
       </div>
 
-      {/* ── Layout: category sidebar + member grid ── */}
-      <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
-        {/* Category sidebar */}
-        <div className="space-y-1.5 rounded-xl border border-border bg-card p-3 shadow-[var(--shadow-soft)] self-start">
-          <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Kategoriler</p>
-          <button
-            type="button"
-            onClick={() => setSelectedCategoryId("all")}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-              selectedCategoryId === "all"
-                ? "bg-primary/10 text-primary font-medium"
-                : "text-foreground hover:bg-secondary"
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <span className="text-base">👥</span>
-              <span>Tümü</span>
-            </span>
-            <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{members.length}</span>
-          </button>
+      {/* ── Yatay kategori filtreleri ── */}
+      <div className="flex items-center gap-2 overflow-x-auto rounded-xl border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-soft)]">
+        <button
+          type="button"
+          onClick={() => setSelectedCategoryId("all")}
+          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            selectedCategoryId === "all"
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary text-foreground hover:bg-secondary/80"
+          }`}
+        >
+          Tümü
+          <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px]">{members.length}</span>
+        </button>
 
-          {categories.map((cat) => {
-            const count = members.filter((m) => m.category_id === cat.id).length;
-            const active = selectedCategoryId === cat.id;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => setSelectedCategoryId(active ? "all" : cat.id)}
-                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
-                  active ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-secondary"
-                }`}
-              >
-                <span className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="h-2 w-2 rounded-full shrink-0"
-                    style={{ backgroundColor: cat.color }}
-                  />
-                  <span className="truncate">{cat.icon} {cat.name}</span>
-                </span>
-                {count > 0 && (
-                  <span className="ml-1 rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground shrink-0">{count}</span>
-                )}
-              </button>
-            );
-          })}
+        {categories.map((cat) => {
+          const count = members.filter((m) => m.category_id === cat.id).length;
+          const active = selectedCategoryId === cat.id;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              onClick={() => setSelectedCategoryId(active ? "all" : cat.id)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                active
+                  ? "text-white"
+                  : "bg-secondary text-foreground hover:bg-secondary/80"
+              }`}
+              style={active ? { backgroundColor: cat.color } : undefined}
+            >
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: active ? "#fff" : cat.color }} />
+              {cat.name}
+              {count > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/20" : "bg-muted"}`}>{count}</span>}
+            </button>
+          );
+        })}
 
-          <div className="pt-1 border-t border-border">
+        <button
+          type="button"
+          onClick={() => { setCatOpen(true); }}
+          className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary transition-colors"
+        >
+          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+          Kategori Ekle
+        </button>
+      </div>
+
+      {/* ── Üye listesi ── */}
+      <div className="space-y-6">
+        {members.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center shadow-[var(--shadow-soft)]">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-2xl">👥</div>
+            <p className="text-sm font-medium text-foreground">Henüz ekip üyesi yok</p>
+            <p className="mt-1 text-xs text-muted-foreground">İSG ekibini oluşturmak için üye ekleyin.</p>
             <button
               type="button"
-              onClick={() => { setCatOpen(true); }}
-              className="flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-secondary transition-colors"
+              onClick={() => openAdd()}
+              className="mt-4 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
             >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-              Kategori Ekle
+              İlk Üyeyi Ekle
             </button>
           </div>
-        </div>
-
-        {/* Member grid */}
-        <div className="space-y-6">
-          {members.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center shadow-[var(--shadow-soft)]">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-2xl">👥</div>
-              <p className="text-sm font-medium text-foreground">Henüz ekip üyesi yok</p>
-              <p className="mt-1 text-xs text-muted-foreground">İSG ekibini oluşturmak için üye ekleyin.</p>
-              <button
-                type="button"
-                onClick={() => openAdd()}
-                className="mt-4 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
-              >
-                İlk Üyeyi Ekle
-              </button>
-            </div>
-          ) : (
-            <>
-              {grouped.map(({ category, members: catMembers }) => (
-                <div key={category.id}>
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: category.color }} />
-                      <h3 className="text-sm font-semibold text-foreground">
-                        {category.icon} {category.name}
-                      </h3>
-                      <span className="text-xs text-muted-foreground">({catMembers.length})</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => openAdd(category.id)}
-                      className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary transition-colors"
-                    >
-                      <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                      Ekle
-                    </button>
+        ) : (
+          <>
+            {grouped.map(({ category, members: catMembers }) => (
+              <div key={category.id}>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: category.color }} />
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {category.icon} {category.name}
+                    </h3>
+                    <span className="text-xs text-muted-foreground">({catMembers.length})</span>
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {catMembers.map((m) => (
-                      <MemberCard
-                        key={m.id}
-                        member={m}
-                        category={category}
-                        onEdit={openEdit}
-                        onDelete={handleDelete}
-                      />
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openAdd(category.id)}
+                    className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary transition-colors"
+                  >
+                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Ekle
+                  </button>
                 </div>
-              ))}
-
-              {uncategorized.length > 0 && (
-                <div>
-                  <div className="mb-3 flex items-center gap-2">
-                    <div className="h-3 w-3 rounded-full bg-border" />
-                    <h3 className="text-sm font-semibold text-foreground">Kategorisiz</h3>
-                    <span className="text-xs text-muted-foreground">({uncategorized.length})</span>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {uncategorized.map((m) => (
-                      <MemberCard
-                        key={m.id}
-                        member={m}
-                        category={undefined}
-                        onEdit={openEdit}
-                        onDelete={handleDelete}
-                      />
-                    ))}
-                  </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {catMembers.map((m) => (
+                    <MemberCard
+                      key={m.id}
+                      member={m}
+                      category={category}
+                      onEdit={openEdit}
+                      onDelete={handleDelete}
+                    />
+                  ))}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            ))}
+
+            {uncategorized.length > 0 && (
+              <div>
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-border" />
+                  <h3 className="text-sm font-semibold text-foreground">Kategorisiz</h3>
+                  <span className="text-xs text-muted-foreground">({uncategorized.length})</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {uncategorized.map((m) => (
+                    <MemberCard
+                      key={m.id}
+                      member={m}
+                      category={undefined}
+                      onEdit={openEdit}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* ── Add member modal ── */}

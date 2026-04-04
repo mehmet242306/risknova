@@ -1,15 +1,35 @@
 /**
  * Risk Analizi Export: PDF, Word, Excel
- * Profesyonel ISG rapor formatı
+ * Profesyonel ISG rapor formatı — SATIR BAZLI GRUPLAMA
+ *
+ * Her satır (risk alanı) kendi görselleri ve tespitleriyle birlikte
+ * gruplanmış şekilde export edilir.
  */
 
 import ExcelJS from "exceljs";
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  AlignmentType,
+  HeadingLevel,
+  BorderStyle,
+  ImageRun,
+  ShadingType,
+  PageBreak,
+} from "docx";
 
 /* ================================================================== */
 /* Types                                                               */
 /* ================================================================== */
 
 export type ExportImage = {
+  imageId: string;
   rowTitle: string;
   dataUrl: string;
   fileName: string;
@@ -18,6 +38,7 @@ export type ExportImage = {
 
 export type ExportFinding = {
   rowTitle: string;
+  imageId: string;
   title: string;
   category: string;
   severity: string;
@@ -83,60 +104,56 @@ function scoreDisplay(f: ExportFinding): string {
   return f.score < 2 ? (f.score * 100).toFixed(0) : String(Math.round(f.score));
 }
 
+type RowGroup = { rowTitle: string; images: ExportImage[]; findings: ExportFinding[] };
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Metin uzunluguna gore satir yuksekligi hesapla (ExcelJS icin) */
+function calcRowHeight(texts: string[], colWidths: number[]): number {
+  const CHAR_PX = 7; // Yaklaşık karakter genişliği (pixel)
+  const LINE_HEIGHT = 15; // Bir satır yüksekliği (pt)
+  const PADDING = 10; // Üst+alt padding
+  let maxLines = 1;
+  for (let i = 0; i < texts.length; i++) {
+    const text = texts[i] || "";
+    const colPx = (colWidths[i] || 10) * CHAR_PX;
+    const lines = Math.ceil((text.length * CHAR_PX) / colPx);
+    if (lines > maxLines) maxLines = lines;
+  }
+  return Math.max(20, maxLines * LINE_HEIGHT + PADDING);
+}
+
+/** Findings ve images'i rowTitle bazinda grupla, sirayi koru */
+function groupByRow(data: RiskAnalysisExportData): RowGroup[] {
+  const map = new Map<string, RowGroup>();
+  // Images sirasiyla row'lari olustur (dogru sira)
+  for (const img of data.images) {
+    if (!map.has(img.rowTitle)) map.set(img.rowTitle, { rowTitle: img.rowTitle, images: [], findings: [] });
+    map.get(img.rowTitle)!.images.push(img);
+  }
+  // Findings'i dagit
+  for (const f of data.findings) {
+    if (!map.has(f.rowTitle)) map.set(f.rowTitle, { rowTitle: f.rowTitle, images: [], findings: [] });
+    map.get(f.rowTitle)!.findings.push(f);
+  }
+  // Boş satırları filtrele (başlıksız veya hem görsel hem tespit olmayan)
+  return Array.from(map.values()).filter((g) => g.rowTitle.trim() && (g.images.length > 0 || g.findings.length > 0));
+}
+
 /* ================================================================== */
-/* HTML Generator (Professional ISG Report)                            */
+/* HTML Generator — SATIR BAZLI (Professional ISG Report)              */
 /* ================================================================== */
 
 function generateHTML(data: RiskAnalysisExportData): string {
   const now = data.date || new Date().toLocaleDateString("tr-TR");
-
-  // Her risk icin detayli kart
-  const findingCards = data.findings.map((f, i) => `
-    <div style="margin-bottom:20px;border:1px solid #dee2e6;border-radius:8px;overflow:hidden;page-break-inside:avoid;">
-      <div style="background:${severityBg(f.severity)};padding:10px 14px;border-bottom:1px solid #dee2e6;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="font-weight:700;font-size:14px;color:#1a1a2e;">${i + 1}. ${f.title}</span>
-          <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;color:#fff;background:${severityColor(f.severity)};">
-            ${f.scoreLabel} — ${scoreDisplay(f)}
-          </span>
-        </div>
-        <div style="margin-top:4px;font-size:11px;color:#666;">${f.category} · ${f.rowTitle}${f.correctiveActionRequired ? ' · <strong style="color:#DC2626;">DÖF Adayı</strong>' : ""}</div>
-      </div>
-      <div style="padding:12px 14px;">
-        <div style="margin-bottom:8px;">
-          <p style="margin:0 0 2px 0;font-size:10px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Tespit ve Değerlendirme</p>
-          <p style="margin:0;font-size:12px;line-height:1.5;">${f.recommendation || "Detaylı değerlendirme yapılmalıdır."}</p>
-        </div>
-        <div style="margin-bottom:8px;">
-          <p style="margin:0 0 2px 0;font-size:10px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Alınması Gereken Önlem</p>
-          <p style="margin:0;font-size:12px;line-height:1.5;">${f.action}</p>
-        </div>
-        ${(f.legalReferences ?? []).length > 0 ? `
-          <div>
-            <p style="margin:0 0 4px 0;font-size:10px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Mevzuat Dayanağı</p>
-            ${(f.legalReferences ?? []).map((r) => `
-              <p style="margin:2px 0;font-size:11px;line-height:1.4;">
-                <strong>§ ${r.law}</strong>${r.article ? ` — ${r.article}` : ""}${r.description ? `<br/><span style="color:#666;margin-left:12px;">${r.description}</span>` : ""}
-              </p>
-            `).join("")}
-          </div>
-        ` : ""}
-      </div>
-    </div>
-  `).join("");
-
-  // Gorseller (kucuk thumbnail satiri)
-  const imagesHTML = data.images.length > 0 ? `
-    <h2>SAHA GÖRSELLERİ</h2>
-    <table style="border:none;"><tr>
-      ${data.images.map((img) => `
-        <td style="border:none;padding:2px;width:${Math.floor(100 / Math.min(data.images.length, 5))}%;vertical-align:top;">
-          <img src="${img.dataUrl}" style="width:100%;height:auto;max-height:180px;object-fit:contain;border:1px solid #dee2e6;border-radius:3px;background:#f9fafb;" />
-          <p style="margin:1px 0 0;font-size:7px;color:#999;text-align:center;">${img.rowTitle} (${img.findingCount})</p>
-        </td>
-      `).join("")}
-    </tr></table>
-  ` : "";
+  const rows = groupByRow(data);
 
   // Katilimcilar
   const participantsHTML = data.participants.length > 0 ? `
@@ -149,23 +166,93 @@ function generateHTML(data: RiskAnalysisExportData): string {
     </table>
   ` : "";
 
-  // Ozet tablo
-  const summaryTable = `
-    <h2>RİSK DAĞILIM ÖZETİ</h2>
-    <table>
-      <tr class="hdr"><th>#</th><th>Tespit</th><th>Kategori</th><th>Risk Sınıfı</th><th>Skor</th><th>DÖF</th></tr>
-      ${data.findings.map((f, i) => `
-        <tr style="background:${i % 2 === 0 ? "#fff" : "#f9fafb"};">
-          <td style="text-align:center;">${i + 1}</td>
+  // Satir bazli section'lar
+  let globalIdx = 0;
+  const rowSections = rows.map((group, gi) => {
+    // Gorseller (kucuk thumbnail satiri)
+    const imgCells = group.images.map((img) => `
+      <td style="border:none;padding:3px;width:${Math.floor(100 / Math.min(group.images.length, 4))}%;vertical-align:top;">
+        <img src="${img.dataUrl}" style="width:100%;height:auto;max-height:160px;object-fit:contain;border:1px solid #dee2e6;border-radius:4px;background:#f9fafb;" />
+        <p style="margin:2px 0 0;font-size:7px;color:#999;text-align:center;">${img.fileName} (${img.findingCount} tespit)</p>
+      </td>
+    `).join("");
+
+    const imagesBlock = group.images.length > 0 ? `
+      <table style="border:none;margin:8px 0 10px;"><tr>${imgCells}</tr></table>
+    ` : "";
+
+    // Ozet tablo (bu satirin tespitleri)
+    const summaryRows = group.findings.map((f) => {
+      globalIdx++;
+      return `
+        <tr style="background:${globalIdx % 2 === 0 ? "#fff" : "#f9fafb"};">
+          <td style="text-align:center;width:30px;">${globalIdx}</td>
           <td>${f.title}</td>
           <td>${f.category}</td>
           <td style="color:${severityColor(f.severity)};font-weight:600;">${f.scoreLabel}</td>
           <td style="text-align:center;font-weight:600;">${scoreDisplay(f)}</td>
           <td style="text-align:center;">${f.correctiveActionRequired ? "✓" : "-"}</td>
-        </tr>
-      `).join("")}
-    </table>
-  `;
+        </tr>`;
+    }).join("");
+
+    const summaryTable = group.findings.length > 0 ? `
+      <table>
+        <tr class="hdr"><th>#</th><th>Tespit</th><th>Kategori</th><th>Risk Sınıfı</th><th>Skor</th><th>DÖF</th></tr>
+        ${summaryRows}
+      </table>
+    ` : "";
+
+    // Detayli tespit kartlari
+    const findingCards = group.findings.map((f) => `
+      <div style="margin:10px 0;border:1px solid #dee2e6;border-radius:8px;overflow:hidden;page-break-inside:avoid;">
+        <div style="background:${severityBg(f.severity)};padding:8px 12px;border-bottom:1px solid #dee2e6;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:700;font-size:13px;color:#1a1a2e;">${f.title}</span>
+            <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700;color:#fff;background:${severityColor(f.severity)};">
+              ${f.scoreLabel} — ${scoreDisplay(f)}
+            </span>
+          </div>
+          <div style="margin-top:3px;font-size:10px;color:#666;">${f.category}${f.correctiveActionRequired ? ' · <strong style="color:#DC2626;">DÖF Adayı</strong>' : ""}</div>
+        </div>
+        <div style="padding:10px 12px;">
+          <div style="margin-bottom:6px;">
+            <p style="margin:0 0 2px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Tespit ve Değerlendirme</p>
+            <p style="margin:0;font-size:11px;line-height:1.5;">${f.recommendation || "Detaylı değerlendirme yapılmalıdır."}</p>
+          </div>
+          <div style="margin-bottom:6px;">
+            <p style="margin:0 0 2px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Alınması Gereken Önlem</p>
+            <p style="margin:0;font-size:11px;line-height:1.5;">${f.action}</p>
+          </div>
+          ${(f.legalReferences ?? []).length > 0 ? `
+            <div>
+              <p style="margin:0 0 3px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Mevzuat Dayanağı</p>
+              ${(f.legalReferences ?? []).map((r) => `
+                <p style="margin:2px 0;font-size:10px;line-height:1.4;">
+                  <strong>§ ${r.law}</strong>${r.article ? ` — ${r.article}` : ""}${r.description ? `<br/><span style="color:#666;margin-left:12px;">${r.description}</span>` : ""}
+                </p>
+              `).join("")}
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    `).join("");
+
+    return `
+      <div style="margin-top:${gi === 0 ? "0" : "8"}px;page-break-before:${gi === 0 ? "auto" : "always"};">
+        <div style="background:#FDF8EE;border:2px solid #B8860B;border-radius:8px;padding:10px 14px;margin-bottom:4px;">
+          <h3 style="margin:0;font-size:14px;color:#B8860B;text-transform:uppercase;letter-spacing:0.03em;">
+            SATIR ${gi + 1}: ${group.rowTitle}
+          </h3>
+          <p style="margin:2px 0 0;font-size:10px;color:#666;">${group.findings.length} tespit · ${group.images.length} görsel</p>
+        </div>
+        ${imagesBlock}
+        ${summaryTable}
+        <div style="margin-top:10px;">
+          ${findingCards}
+        </div>
+      </div>
+    `;
+  }).join("");
 
   return `<!DOCTYPE html>
 <html lang="tr">
@@ -176,6 +263,7 @@ function generateHTML(data: RiskAnalysisExportData): string {
     body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 900px; margin: 0 auto; padding: 32px; color: #1a1a2e; font-size: 12px; line-height: 1.6; }
     h1 { color: #B8860B; font-size: 20px; margin: 0; }
     h2 { color: #B8860B; font-size: 14px; border-bottom: 2px solid #B8860B; padding-bottom: 4px; margin-top: 24px; text-transform: uppercase; letter-spacing: 0.05em; }
+    h3 { color: #B8860B; }
     table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10px; }
     th, td { border: 1px solid #dee2e6; padding: 5px 7px; text-align: left; }
     .hdr { background: #B8860B; color: #fff; }
@@ -216,11 +304,9 @@ function generateHTML(data: RiskAnalysisExportData): string {
   </div>
 
   ${participantsHTML}
-  ${imagesHTML}
-  ${summaryTable}
 
-  <h2 style="page-break-before:always;">DETAYLI RİSK TESPİTLERİ VE ÇÖZÜM ÖNERİLERİ</h2>
-  ${findingCards}
+  <h2>SATIR BAZLI RİSK TESPİTLERİ</h2>
+  ${rowSections}
 
   <div style="margin-top:32px;padding-top:12px;border-top:2px solid #B8860B;font-size:9px;color:#999;text-align:center;">
     Bu rapor RiskNova İSG Platformu tarafından ${now} tarihinde oluşturulmuştur.<br/>
@@ -243,34 +329,279 @@ export function exportRiskAnalysisPDF(data: RiskAnalysisExportData) {
 }
 
 /* ================================================================== */
-/* Word Export                                                         */
+/* Word Export — docx kütüphanesi ile gerçek DOCX                      */
 /* ================================================================== */
 
-export function exportRiskAnalysisWord(data: RiskAnalysisExportData) {
-  const html = generateHTML(data);
-  const pre = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>Risk Analizi Raporu</title></head><body>`;
-  const post = `</body></html>`;
-  const blob = new Blob(["\ufeff", pre + html + post], { type: "application/msword" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `Risk-Analizi-${data.companyName || "Rapor"}-${data.date || new Date().toISOString().split("T")[0]}.doc`;
-  a.click();
-  URL.revokeObjectURL(url);
+const GOLD_HEX = "B8860B";
+const DARK_HEX = "1A1A2E";
+
+function sevColorHex(s: string): string {
+  return s === "critical" ? "7F1D1D" : s === "high" ? "DC2626" : s === "medium" ? "F97316" : s === "low" ? "F59E0B" : "10B981";
+}
+
+function sevBgHex(s: string): string {
+  return s === "critical" ? "FEE2E2" : s === "high" ? "FEF2F2" : s === "medium" ? "FFF7ED" : s === "low" ? "FFFBEB" : "ECFDF5";
+}
+
+function noBorder() {
+  const none = { style: BorderStyle.NONE, size: 0, color: "FFFFFF" };
+  return { top: none, bottom: none, left: none, right: none };
+}
+
+function thinBorder() {
+  const b = { style: BorderStyle.SINGLE, size: 1, color: "DEE2E6" };
+  return { top: b, bottom: b, left: b, right: b };
+}
+
+function goldHeaderCell(text: string): TableCell {
+  return new TableCell({
+    children: [new Paragraph({ children: [new TextRun({ text, bold: true, size: 18, font: "Segoe UI", color: "FFFFFF" })], alignment: AlignmentType.LEFT })],
+    shading: { type: ShadingType.SOLID, color: GOLD_HEX },
+    borders: thinBorder(),
+  });
+}
+
+function dataCell(text: string, opts?: { bold?: boolean; color?: string; bg?: string }): TableCell {
+  return new TableCell({
+    children: [new Paragraph({ children: [new TextRun({ text: text || "-", bold: opts?.bold, size: 18, font: "Segoe UI", color: opts?.color || DARK_HEX })], spacing: { after: 40 } })],
+    shading: opts?.bg ? { type: ShadingType.SOLID, color: opts.bg } : undefined,
+    borders: thinBorder(),
+  });
+}
+
+/** base64 data URL → Uint8Array + docx image type */
+function parseDataUrl(dataUrl: string): { buffer: Uint8Array; ext: "jpg" | "png" | "gif" | "bmp" } | null {
+  try {
+    const match = dataUrl.match(/^data:image\/(png|jpeg|jpg|gif|bmp);base64,(.+)$/);
+    if (!match) return null;
+    const rawExt = match[1];
+    const ext: "jpg" | "png" | "gif" | "bmp" = rawExt === "jpeg" ? "jpg" : rawExt as "jpg" | "png" | "gif" | "bmp";
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return { buffer: bytes, ext };
+  } catch { return null; }
+}
+
+export async function exportRiskAnalysisWord(data: RiskAnalysisExportData) {
+  const now = data.date || new Date().toLocaleDateString("tr-TR");
+  const rows = groupByRow(data);
+  const children: (Paragraph | Table)[] = [];
+
+  // ── Başlık ──
+  children.push(new Paragraph({
+    children: [new TextRun({ text: "RİSK ANALİZİ RAPORU", bold: true, size: 36, font: "Segoe UI", color: GOLD_HEX })],
+    heading: HeadingLevel.TITLE,
+    spacing: { after: 80 },
+  }));
+
+  children.push(new Paragraph({
+    children: [new TextRun({ text: data.companyName, bold: true, size: 22, font: "Segoe UI", color: DARK_HEX })],
+    spacing: { after: 40 },
+  }));
+
+  const metaParts = [data.companyKind, data.companySector, data.companyHazardClass].filter(Boolean).join(" · ");
+  if (metaParts) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: metaParts, size: 18, font: "Segoe UI", color: "666666" })],
+      spacing: { after: 40 },
+    }));
+  }
+
+  children.push(new Paragraph({
+    children: [
+      new TextRun({ text: `${data.methodLabel} · Tarih: ${now}`, size: 18, font: "Segoe UI", color: "666666" }),
+      new TextRun({ text: ` · Lokasyon: ${data.location || "-"} · Bölüm: ${data.department || "-"}`, size: 18, font: "Segoe UI", color: "666666" }),
+    ],
+    spacing: { after: 200 },
+  }));
+
+  // ── İstatistikler ──
+  children.push(new Paragraph({
+    children: [
+      new TextRun({ text: `Toplam: ${data.totalFindings} tespit`, bold: true, size: 20, font: "Segoe UI", color: GOLD_HEX }),
+      new TextRun({ text: ` · Yüksek/Kritik: ${data.criticalCount}`, size: 20, font: "Segoe UI", color: "DC2626" }),
+      new TextRun({ text: ` · DÖF Adayı: ${data.dofCandidateCount}`, size: 20, font: "Segoe UI", color: GOLD_HEX }),
+      new TextRun({ text: ` · Ekip: ${data.participants.length} kişi`, size: 20, font: "Segoe UI", color: GOLD_HEX }),
+    ],
+    spacing: { after: 300 },
+  }));
+
+  // ── Katılımcılar ──
+  if (data.participants.length > 0) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: "ANALİZ EKİBİ", bold: true, size: 24, font: "Segoe UI", color: GOLD_HEX })],
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 200, after: 100 },
+    }));
+
+    const pRows = [
+      new TableRow({ children: [goldHeaderCell("#"), goldHeaderCell("Ad Soyad"), goldHeaderCell("Görev / Rol"), goldHeaderCell("Unvan"), goldHeaderCell("Belge No")] }),
+      ...data.participants.map((p, i) => new TableRow({
+        children: [dataCell(String(i + 1)), dataCell(p.fullName), dataCell(p.role), dataCell(p.title), dataCell(p.certificateNo)],
+      })),
+    ];
+    children.push(new Table({ rows: pRows, width: { size: 100, type: WidthType.PERCENTAGE } }));
+  }
+
+  // ── Satır bazlı bölümler ──
+  let globalIdx = 0;
+
+  for (let gi = 0; gi < rows.length; gi++) {
+    const group = rows[gi];
+
+    // Satır başlığı
+    if (gi > 0) children.push(new Paragraph({ children: [new PageBreak()] }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `SATIR ${gi + 1}: ${group.rowTitle}`, bold: true, size: 26, font: "Segoe UI", color: GOLD_HEX })],
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 300, after: 60 },
+    }));
+
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `${group.findings.length} tespit · ${group.images.length} görsel`, size: 18, font: "Segoe UI", color: "666666" })],
+      spacing: { after: 150 },
+    }));
+
+    // Görseller (thumbnail olarak embed)
+    for (const img of group.images) {
+      const parsed = parseDataUrl(img.dataUrl);
+      if (parsed) {
+        try {
+          children.push(new Paragraph({
+            children: [
+              new ImageRun({
+                type: parsed.ext,
+                data: parsed.buffer,
+                transformation: { width: 220, height: 165 },
+              }),
+            ],
+            spacing: { after: 40 },
+          }));
+          children.push(new Paragraph({
+            children: [new TextRun({ text: `${img.fileName} (${img.findingCount} tespit)`, size: 14, font: "Segoe UI", color: "999999", italics: true })],
+            spacing: { after: 100 },
+          }));
+        } catch { /* gorsel eklenemezse devam */ }
+      }
+    }
+
+    // Özet tablosu
+    if (group.findings.length > 0) {
+      const sRows = [
+        new TableRow({ children: [goldHeaderCell("#"), goldHeaderCell("Tespit"), goldHeaderCell("Kategori"), goldHeaderCell("Risk Sınıfı"), goldHeaderCell("Skor"), goldHeaderCell("DÖF")] }),
+        ...group.findings.map((f) => {
+          globalIdx++;
+          return new TableRow({
+            children: [
+              dataCell(String(globalIdx)),
+              dataCell(f.title),
+              dataCell(f.category),
+              dataCell(f.scoreLabel, { bold: true, color: sevColorHex(f.severity) }),
+              dataCell(scoreDisplay(f), { bold: true }),
+              dataCell(f.correctiveActionRequired ? "Evet" : "-", { bold: f.correctiveActionRequired, color: f.correctiveActionRequired ? "DC2626" : undefined }),
+            ],
+          });
+        }),
+      ];
+      children.push(new Table({ rows: sRows, width: { size: 100, type: WidthType.PERCENTAGE } }));
+    }
+
+    // Detaylı tespit kartları
+    for (const f of group.findings) {
+      children.push(new Paragraph({ spacing: { before: 200 } }));
+
+      // Tespit başlığı
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: f.title, bold: true, size: 22, font: "Segoe UI", color: DARK_HEX }),
+          new TextRun({ text: ` — ${f.scoreLabel} (${scoreDisplay(f)})`, bold: true, size: 20, font: "Segoe UI", color: sevColorHex(f.severity) }),
+        ],
+        shading: { type: ShadingType.SOLID, color: sevBgHex(f.severity) },
+        spacing: { after: 40 },
+      }));
+
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: f.category, size: 18, font: "Segoe UI", color: "666666" }),
+          ...(f.correctiveActionRequired ? [new TextRun({ text: " · DÖF Adayı", bold: true, size: 18, font: "Segoe UI", color: "DC2626" })] : []),
+        ],
+        spacing: { after: 80 },
+      }));
+
+      // Tespit ve Değerlendirme
+      children.push(new Paragraph({
+        children: [new TextRun({ text: "Tespit ve Değerlendirme", bold: true, size: 16, font: "Segoe UI", color: GOLD_HEX, allCaps: true })],
+        spacing: { after: 20 },
+      }));
+      children.push(new Paragraph({
+        children: [new TextRun({ text: f.recommendation || "Detaylı değerlendirme yapılmalıdır.", size: 20, font: "Segoe UI", color: DARK_HEX })],
+        spacing: { after: 80 },
+      }));
+
+      // Alınması Gereken Önlem
+      children.push(new Paragraph({
+        children: [new TextRun({ text: "Alınması Gereken Önlem", bold: true, size: 16, font: "Segoe UI", color: GOLD_HEX, allCaps: true })],
+        spacing: { after: 20 },
+      }));
+      children.push(new Paragraph({
+        children: [new TextRun({ text: f.action || "-", size: 20, font: "Segoe UI", color: DARK_HEX })],
+        spacing: { after: 80 },
+      }));
+
+      // Mevzuat
+      if ((f.legalReferences ?? []).length > 0) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: "Mevzuat Dayanağı", bold: true, size: 16, font: "Segoe UI", color: GOLD_HEX, allCaps: true })],
+          spacing: { after: 20 },
+        }));
+        for (const ref of f.legalReferences ?? []) {
+          children.push(new Paragraph({
+            children: [
+              new TextRun({ text: `§ ${ref.law}`, bold: true, size: 18, font: "Segoe UI", color: DARK_HEX }),
+              ...(ref.article ? [new TextRun({ text: ` — ${ref.article}`, size: 18, font: "Segoe UI", color: DARK_HEX })] : []),
+              ...(ref.description ? [new TextRun({ text: `\n${ref.description}`, size: 16, font: "Segoe UI", color: "666666" })] : []),
+            ],
+            spacing: { after: 40 },
+          }));
+        }
+      }
+    }
+  }
+
+  // ── Footer ──
+  children.push(new Paragraph({ spacing: { before: 400 } }));
+  children.push(new Paragraph({
+    children: [
+      new TextRun({ text: `Bu rapor RiskNova İSG Platformu tarafından ${now} tarihinde oluşturulmuştur.`, size: 16, font: "Segoe UI", color: "999999", italics: true }),
+    ],
+    alignment: AlignmentType.CENTER,
+  }));
+  children.push(new Paragraph({
+    children: [
+      new TextRun({ text: `Rapor içeriği ${data.methodLabel} yöntemi ile değerlendirilmiştir.`, size: 16, font: "Segoe UI", color: "999999", italics: true }),
+    ],
+    alignment: AlignmentType.CENTER,
+  }));
+
+  // ── Oluştur ve indir ──
+  const doc = new Document({
+    creator: "RiskNova İSG Platformu",
+    title: `${data.analysisTitle} - Risk Analizi Raporu`,
+    description: `${data.companyName} risk analizi raporu`,
+    sections: [{ children }],
+  });
+
+  Packer.toBlob(doc).then((blob) => {
+    downloadBlob(blob, `Risk-Analizi-${data.companyName || "Rapor"}-${data.date || new Date().toISOString().split("T")[0]}.docx`);
+  });
 }
 
 /* ================================================================== */
-/* Excel Export — Tek sayfa, profesyonel                               */
+/* Excel Export — Satir bazli gruplama + embedded gorseller             */
 /* ================================================================== */
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
 
 export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
   const wb = new ExcelJS.Workbook();
@@ -278,6 +609,7 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
   wb.created = new Date();
 
   const GOLD = "B8860B";
+  const GOLD_BG = "FDF8EE";
   const WHITE = "FFFFFF";
   const LIGHT = "F9FAFB";
   const RED = "DC2626";
@@ -288,7 +620,6 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
     return severity === "critical" ? "7F1D1D" : severity === "high" ? RED : severity === "medium" ? ORANGE : severity === "low" ? "F59E0B" : GREEN;
   }
 
-  // ── Tek Sayfa: Risk Analizi Raporu ──
   const ws = wb.addWorksheet("Risk Analizi");
 
   // Kolon genislikleri
@@ -299,9 +630,9 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
     { width: 10 },  // D: Risk Sinifi
     { width: 8 },   // E: Skor
     { width: 6 },   // F: DÖF
-    { width: 35 },  // G: Öneri / Çözüm
-    { width: 30 },  // H: Mevzuat Dayanağı
-    { width: 25 },  // I: Alınacak Önlem
+    { width: 35 },  // G: Tespit Detayi
+    { width: 30 },  // H: Mevzuat Dayanagi
+    { width: 25 },  // I: Alinacak Onlem
   ];
 
   // Baslik
@@ -322,108 +653,150 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
 
   ws.addRow([]); // Bos satir
 
-  // Tablo basligi
-  const headers = ["#", "Tespit", "Kategori", "Risk Sınıfı", "Skor", "DÖF", "Tespit Detayı ve Çözüm Önerisi", "Mevzuat Dayanağı", "Alınacak Önlem"];
-  const hRow = ws.addRow(headers);
-  hRow.height = 22;
-  hRow.eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: WHITE }, size: 9 };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GOLD } };
-    cell.alignment = { wrapText: true, vertical: "middle" };
-    cell.border = { bottom: { style: "medium", color: { argb: "996F09" } } };
-  });
+  // ── Satir bazli gruplama ──
+  const rows = groupByRow(data);
+  let globalIdx = 0;
 
-  // Veriler
-  data.findings.forEach((f, i) => {
-    const mevzuat = (f.legalReferences ?? []).map((r) => `${r.law}${r.article ? ` — ${r.article}` : ""}${r.description ? `: ${r.description}` : ""}`).join("\n");
+  for (let gi = 0; gi < rows.length; gi++) {
+    const group = rows[gi];
 
-    const row = ws.addRow([
-      i + 1,
-      f.title,
-      f.category,
-      f.scoreLabel,
-      f.score < 2 ? Number((f.score * 100).toFixed(0)) : Math.round(f.score),
-      f.correctiveActionRequired ? "Evet" : "-",
-      f.recommendation || "Detaylı değerlendirme yapılmalıdır.",
-      mevzuat || "-",
-      f.action || "-",
-    ]);
+    // ── Satir baslik satiri (altin renk, merge) ──
+    const sectionRow = ws.addRow([`SATIR ${gi + 1}: ${group.rowTitle}  —  ${group.findings.length} tespit · ${group.images.length} görsel`]);
+    const sn = sectionRow.number;
+    ws.mergeCells(`A${sn}:I${sn}`);
+    sectionRow.height = 24;
+    sectionRow.font = { bold: true, size: 11, color: { argb: GOLD } };
+    sectionRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GOLD_BG } };
+    sectionRow.border = {
+      top: { style: "medium", color: { argb: GOLD } },
+      bottom: { style: "medium", color: { argb: GOLD } },
+    };
 
-    row.alignment = { wrapText: true, vertical: "top" };
-    row.height = Math.max(40, (f.recommendation?.length || 0) / 3);
+    // ── Gorseller embed (baslik altinda, yan yana) ──
+    if (group.images.length > 0) {
+      const imgRow = ws.addRow([]);
+      const imgRowHeight = 120;
+      imgRow.height = imgRowHeight;
 
-    // Risk sinifina gore renk
-    const rColor = riskColor(f.severity);
-    row.getCell(4).font = { bold: true, color: { argb: rColor }, size: 9 };
-    row.getCell(5).font = { bold: true, size: 9 };
+      for (let ii = 0; ii < group.images.length; ii++) {
+        const img = group.images[ii];
+        try {
+          const base64Data = img.dataUrl.split(",")[1];
+          if (base64Data) {
+            const ext = img.dataUrl.includes("image/png") ? "png" : "jpeg";
+            const imageId = wb.addImage({ base64: base64Data, extension: ext });
+            const colStart = ii * 3; // Her gorsel 3 kolon genisliginde
+            if (colStart < 9) { // Max 3 gorsel yan yana (9 kolon)
+              ws.addImage(imageId, {
+                tl: { col: colStart, row: imgRow.number - 1 },
+                ext: { width: 200, height: 130 },
+              });
+            }
+          }
+        } catch { /* gorsel eklenemezse devam */ }
+      }
 
-    if (f.correctiveActionRequired) {
-      row.getCell(6).font = { bold: true, color: { argb: RED }, size: 9 };
+      // Gorsel dosya adlari
+      const nameRow = ws.addRow([]);
+      for (let ii = 0; ii < Math.min(group.images.length, 3); ii++) {
+        const img = group.images[ii];
+        const colIdx = ii * 3 + 1; // 1-indexed
+        if (colIdx <= 9) {
+          nameRow.getCell(colIdx).value = `${img.fileName} (${img.findingCount} tespit)`;
+          nameRow.getCell(colIdx).font = { size: 8, italic: true, color: { argb: "999999" } };
+        }
+      }
     }
 
-    // Zebra renk
-    if (i % 2 === 1) {
-      row.eachCell((cell) => {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: LIGHT.replace("#", "") } };
-      });
-    }
-
-    // Border
-    row.eachCell((cell) => {
-      cell.border = {
-        bottom: { style: "thin", color: { argb: "E5E7EB" } },
-      };
+    // ── Tablo basligi (her grup icin) ──
+    const headers = ["#", "Tespit", "Kategori", "Risk Sınıfı", "Skor", "DÖF", "Tespit Detayı ve Çözüm Önerisi", "Mevzuat Dayanağı", "Alınacak Önlem"];
+    const hRow = ws.addRow(headers);
+    hRow.height = 20;
+    hRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: WHITE }, size: 9 };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GOLD } };
+      cell.alignment = { wrapText: true, vertical: "middle" };
+      cell.border = { bottom: { style: "medium", color: { argb: "996F09" } } };
     });
-  });
 
-  // Ekip bilgileri (alt kisim)
+    // ── Tespit satirlari ──
+    group.findings.forEach((f, fi) => {
+      globalIdx++;
+      const mevzuat = (f.legalReferences ?? []).map((r) => `${r.law}${r.article ? ` — ${r.article}` : ""}${r.description ? `: ${r.description}` : ""}`).join("\n");
+
+      const row = ws.addRow([
+        globalIdx,
+        f.title,
+        f.category,
+        f.scoreLabel,
+        f.score < 2 ? Number((f.score * 100).toFixed(0)) : Math.round(f.score),
+        f.correctiveActionRequired ? "Evet" : "-",
+        f.recommendation || "Detaylı değerlendirme yapılmalıdır.",
+        mevzuat || "-",
+        f.action || "-",
+      ]);
+
+      row.alignment = { wrapText: true, vertical: "top" };
+      const COL_WIDTHS = [5, 30, 14, 10, 8, 6, 35, 30, 25];
+      row.height = calcRowHeight([
+        String(globalIdx),
+        f.title,
+        f.category,
+        f.scoreLabel,
+        String(f.score),
+        f.correctiveActionRequired ? "Evet" : "-",
+        f.recommendation || "",
+        mevzuat || "-",
+        f.action || "-",
+      ], COL_WIDTHS);
+
+      // Risk sinifina gore renk
+      const rColor = riskColor(f.severity);
+      row.getCell(4).font = { bold: true, color: { argb: rColor }, size: 9 };
+      row.getCell(5).font = { bold: true, size: 9 };
+
+      if (f.correctiveActionRequired) {
+        row.getCell(6).font = { bold: true, color: { argb: RED }, size: 9 };
+      }
+
+      // Zebra renk
+      if (fi % 2 === 1) {
+        row.eachCell((cell) => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: LIGHT } };
+        });
+      }
+
+      // Border
+      row.eachCell((cell) => {
+        cell.border = {
+          bottom: { style: "thin", color: { argb: "E5E7EB" } },
+        };
+      });
+    });
+
+    // Gruplar arasi bos satir
+    if (gi < rows.length - 1) {
+      ws.addRow([]);
+    }
+  }
+
+  // ── Ekip bilgileri (alt kisim) ──
   if (data.participants.length > 0) {
     ws.addRow([]);
     const ekipTitle = ws.addRow(["ANALİZ EKİBİ"]);
     ws.mergeCells(`A${ekipTitle.number}:I${ekipTitle.number}`);
     ekipTitle.font = { bold: true, size: 11, color: { argb: GOLD } };
 
+    const ekipHdr = ws.addRow(["", "Ad Soyad", "Görev / Rol", "Unvan", "", "", "Belge No"]);
+    ekipHdr.font = { bold: true, size: 9 };
+
     data.participants.forEach((p) => {
-      ws.addRow([
-        "",
-        p.fullName,
-        p.role,
-        p.title || "-",
-        "",
-        "",
-        p.certificateNo || "-",
-      ]);
+      ws.addRow(["", p.fullName, p.role, p.title || "-", "", "", p.certificateNo || "-"]);
     });
   }
 
-  // Auto filter + frozen panes
-  ws.autoFilter = { from: "A5", to: `I${5 + data.findings.length}` };
-  ws.views = [{ state: "frozen", xSplit: 0, ySplit: 5 }];
-
-  // Görseller (ayrı sheet, varsa)
-  if (data.images.length > 0) {
-    const wsImg = wb.addWorksheet("Görseller");
-    wsImg.columns = [{ width: 5 }, { width: 25 }, { width: 25 }, { width: 12 }, { width: 45 }];
-    const imgHdr = wsImg.addRow(["#", "Alan", "Dosya", "Tespit", ""]);
-    imgHdr.eachCell((cell) => {
-      cell.font = { bold: true, color: { argb: WHITE }, size: 10 };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GOLD } };
-    });
-
-    for (let i = 0; i < data.images.length; i++) {
-      const img = data.images[i];
-      const row = wsImg.addRow([i + 1, img.rowTitle, img.fileName, img.findingCount]);
-      try {
-        const base64Data = img.dataUrl.split(",")[1];
-        if (base64Data) {
-          const ext = img.dataUrl.includes("image/png") ? "png" : "jpeg";
-          const imageId = wb.addImage({ base64: base64Data, extension: ext });
-          wsImg.addImage(imageId, { tl: { col: 4, row: row.number - 1 }, ext: { width: 300, height: 200 } });
-          row.height = 155;
-        }
-      } catch { /* gorsel eklenemezse devam */ }
-    }
-  }
+  // Frozen panes (ilk 4 satir)
+  ws.views = [{ state: "frozen", xSplit: 0, ySplit: 4 }];
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });

@@ -4,12 +4,16 @@ import Anthropic from "@anthropic-ai/sdk";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 60;
-export const config = { api: { bodyParser: { sizeLimit: "10mb" } } };
 
 type LegalReference = {
   law: string;
   article: string;
   description: string;
+};
+
+type R2DParams = {
+  c1: number; c2: number; c3: number; c4: number; c5: number;
+  c6: number; c7: number; c8: number; c9: number;
 };
 
 type DetectedRisk = {
@@ -26,9 +30,11 @@ type DetectedRisk = {
   boxW?: number;
   boxH?: number;
   legalReferences: LegalReference[];
+  /** R-SKOR 2D parametreleri — AI görselden doğrudan çıkarır */
+  r2dParams: R2DParams;
 };
 
-const SYSTEM_PROMPT = `Sen deneyimli bir Türk İSG uzmanısın. Görseli analiz ederek İŞ GÜVENLİĞİ risklerini tespit edeceksin.
+const SYSTEM_PROMPT = `Sen 20+ yıl deneyimli A sınıfı İSG uzmanısın. Görseli analiz ederek İŞ GÜVENLİĞİ risklerini tespit edeceksin.
 
 KRİTİK KURAL: SADECE GÖRSELDEKİ GERÇEK DURUMLARI TESPİT ET.
 - Görselde ne görüyorsan SADECE onu yaz.
@@ -42,8 +48,85 @@ KRİTİK KURAL: SADECE GÖRSELDEKİ GERÇEK DURUMLARI TESPİT ET.
 - Kategori (Türkçe): Depolama, Yangın, Elektrik, Kimyasal, KKD, Düzen/Temizlik, Makine, Çevre, Acil Durum, Ergonomi, Yüksekte Çalışma, İskele, Trafik, Diğer
 - Ciddiyet: low (düşük), medium (orta), high (yüksek), critical (kritik)
 - Öneri: EN AZ 2-3 cümle yaz. Ne yapılacak, nasıl yapılacak, kim yapacak belirt. "Kontrol edin" gibi genel ifadeler YASAK. Somut aksiyon planı ver.
-- Mevzuat: HER TESPİT İÇİN en az 1 mevzuat referansı ver. Kanun/yönetmelik adı + madde numarası + maddenin ne söylediğini 1 cümle ile açıkla. Emin olmadığın mevzuatı yazma ama bildiklerini mutlaka yaz.
 - Konum: Riskin görseldeki konumu (x,y yüzde 0-100)
+
+R-SKOR 2D PARAMETRELERİ — HER TESPİT İÇİN ZORUNLU:
+Her tespit için aşağıdaki 9 parametreyi görselden DOĞRUDAN analiz ederek 0.00-1.00 arasında değer ver.
+Bu değerler statik profil DEĞİL — görseldeki gerçek duruma göre bireysel olarak belirlenecek.
+
+C1 - Tehlike Yoğunluğu (0-1): Sahada görülen tehlikeli nesne/durum sayısı ve yoğunluğu
+  0.0 = temiz, düzenli alan  |  0.3 = birkaç ufak sorun  |  0.6 = belirgin tehlike  |  1.0 = çok sayıda ciddi tehlike
+
+C2 - KKD Eksikliği (0-1): Kişisel koruyucu donanım eksikliği
+  0.0 = KKD tam veya insan yok  |  0.4 = kısmi eksiklik  |  0.8 = ciddi KKD eksikliği  |  1.0 = hiç KKD yok, aktif tehlike
+
+C3 - Davranış Riski (0-1): Güvensiz davranış, yasak bölge ihlali, korumasız çalışma
+  0.0 = güvenli çalışma veya insan yok  |  0.5 = risk alıyor ama farkında  |  1.0 = son derece tehlikeli davranış
+
+C4 - Çevresel Stres (0-1): Sıcaklık, nem, gürültü, titreşim, aydınlatma
+  0.0 = normal ortam  |  0.5 = belirgin çevresel sorun  |  1.0 = aşırı çevresel tehlike
+
+C5 - Kimyasal/Elektrik Tehlike (0-1): Gaz kaçağı, kimyasal madde, elektrik tehlikesi
+  0.0 = yok  |  0.4 = kontrollü kullanım  |  0.7 = ciddi tehlike  |  1.0 = patlama/yangın riski
+
+C6 - Erişim/Engel (0-1): Kaçış yolu tıkalı, ıslak zemin, geçiş engeli
+  0.0 = serbest geçiş  |  0.5 = kısmi engel  |  1.0 = tamamen tıkalı/erişilemez
+
+C7 - Makine/Proses (0-1): Makine koruyucu eksik, bakım gecikmesi, arıza
+  0.0 = makine yok veya güvenli  |  0.5 = koruyucu eksik  |  1.0 = ciddi makine arızası, koruyucu yok
+
+C8 - Araç Trafiği (0-1): Forklift, araç yoğunluğu, yaya-araç çatışması
+  0.0 = araç yok  |  0.5 = trafik var ama düzenli  |  1.0 = yoğun trafik, kaza riski
+
+C9 - Örgütsel Yük (0-1): Eğitim eksikliği belirtileri, uyarı levhası eksikliği
+  0.0 = uyarı/işaret tam  |  0.5 = kısmen eksik  |  1.0 = hiç uyarı/işaret yok
+
+ÖNEMLİ R-SKOR KURALLARI:
+- Görselde GÖRMEDIĞIN parametre için DÜŞÜK değer ver (0.0-0.1). Tahmin YAPMA.
+- İnsan yoksa C2 ve C3 mutlaka 0.0 olmalı.
+- Her parametre bağımsız değerlendirilmeli — birbirinden etkilenmemeli.
+- Aynı görseldeki farklı tespitler FARKLI parametre değerleri alabilir.
+
+MEVZUAT REFERANSLARI — KRİTİK BÖLÜM:
+HER TESPİT İÇİN en az 1, tercihen 2-3 mevzuat referansı ver. Referanslar GERÇEK ve DOĞRU olmalı.
+Kanun/yönetmelik adı + madde numarası + fıkra (varsa) + maddenin ne söylediğini detaylı açıkla.
+
+KULLANILACAK ANA MEVZUAT KAYNAKLARI:
+1. 6331 sayılı İş Sağlığı ve Güvenliği Kanunu (özellikle Madde 4-5-10-13-16-17-30)
+2. İş Ekipmanlarının Kullanımında Sağlık ve Güvenlik Şartları Yönetmeliği
+3. Kişisel Koruyucu Donanımların İşyerlerinde Kullanılması Hakkında Yönetmelik
+4. İşyeri Bina ve Eklentilerinde Alınacak Sağlık ve Güvenlik Önlemlerine İlişkin Yönetmelik
+5. Binaların Yangından Korunması Hakkında Yönetmelik (2007/12937)
+6. Elektrik İç Tesisleri Yönetmeliği
+7. Elektrik Kuvvetli Akım Tesisleri Yönetmeliği
+8. Kimyasal Maddelerle Çalışmalarda Sağlık ve Güvenlik Önlemleri Hakkında Yönetmelik
+9. Yapı İşlerinde İş Sağlığı ve Güvenliği Yönetmeliği
+10. Makine Emniyeti Yönetmeliği (2006/42/AT)
+11. İş Sağlığı ve Güvenliği Risk Değerlendirmesi Yönetmeliği
+12. Elle Taşıma İşleri Yönetmeliği
+13. Tehlikeli Maddelerin Karayoluyla Taşınması Hakkında Yönetmelik
+14. Asbestle Çalışmalarda Sağlık ve Güvenlik Önlemleri Hakkında Yönetmelik
+15. Sağlık ve Güvenlik İşaretleri Yönetmeliği
+16. Basınçlı Ekipmanlar Yönetmeliği (2014/68/AB)
+17. İşyerlerinde Acil Durumlar Hakkında Yönetmelik
+
+KATEGORİ BAZLI MEVZUAT ÖRNEKLERİ:
+- KKD: 6331/m.4(1)a, KKD Yönetmeliği m.5-6-7, İşyeri Bina Yönetmeliği m.5
+- Yangın: Binaların Yangından Korunması Yönetmeliği m.30-56-91, 6331/m.11-12
+- Elektrik: Elektrik İç Tesisleri Yönetmeliği m.5-7-12-25, Elektrik Kuvvetli Akım Yönetmeliği m.4
+- Makine: Makine Emniyeti Yönetmeliği m.5-8-10, İş Ekipmanları Yönetmeliği m.5-7-11
+- Depolama: İşyeri Bina Yönetmeliği m.5-8-10, Kimyasal Maddeler Yönetmeliği m.6-8
+- Düzen/Temizlik: İşyeri Bina Yönetmeliği m.5-6-10, 6331/m.4-5
+- Yüksekte Çalışma: Yapı İşleri Yönetmeliği m.7-9-13, 6331/m.4(1)a
+- Kimyasal: Kimyasal Maddeler Yönetmeliği m.6-7-8-10, 6331/m.10
+- Acil Durum: İşyerlerinde Acil Durumlar Yönetmeliği m.5-7-9, 6331/m.11-12
+
+MEVZUAT YAZIM KURALLARI:
+- Tam ve resmi yönetmelik adını yaz (kısaltma yapma)
+- Madde numarası + fıkra numarası yaz (örn: "Madde 5, fıkra 1")
+- Maddenin ne söylediğini 1-2 cümle ile somut açıkla (copy-paste değil, özet)
+- Emin olmadığın madde numarasını YAZMA — ama bildiğin mevzuatı mutlaka referans ver
+- Aynı tespit için farklı yönetmeliklerden çapraz referans ver (daha güçlü dayanak)
 
 KURALLAR:
 - Kaç risk varsa o kadar yaz. Sayı sınırı yok.
@@ -53,6 +136,7 @@ KURALLAR:
 - Sadece JSON döndür.`;
 
 const USER_PROMPT = `Bu görselde ne görüyorsan sadece onu analiz et. Görselde olmayan riskleri uydurma.
+Her tespit için R-SKOR 2D parametrelerini (c1-c9) görselden doğrudan analiz ederek ver.
 
 JSON formatı:
 {
@@ -62,7 +146,7 @@ JSON formatı:
       "category": "Türkçe kategori",
       "severity": "low|medium|high|critical",
       "confidence": 0.85,
-      "recommendation": "Kısa net öneri",
+      "recommendation": "Detaylı öneri (en az 2-3 cümle)",
       "correctiveActionRequired": true,
       "pinX": 50,
       "pinY": 30,
@@ -70,11 +154,15 @@ JSON formatı:
       "boxY": 20,
       "boxW": 20,
       "boxH": 30,
+      "r2dParams": {
+        "c1": 0.65, "c2": 0.00, "c3": 0.00, "c4": 0.10,
+        "c5": 0.70, "c6": 0.40, "c7": 0.30, "c8": 0.05, "c9": 0.35
+      },
       "legalReferences": [
         {
           "law": "Kanun/yönetmelik adı",
-          "article": "Madde X",
-          "description": "Kısa açıklama"
+          "article": "Madde X, fıkra Y",
+          "description": "Maddenin ne söylediği"
         }
       ]
     }

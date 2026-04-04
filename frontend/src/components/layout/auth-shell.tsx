@@ -39,6 +39,8 @@ export function AuthShell({
         <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
           <Card className="overflow-hidden border-transparent bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_30%),linear-gradient(135deg,#0F172A_0%,#1E293B_50%,#0F172A_75%)] text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
             <CardHeader className="gap-4 p-8 sm:p-10">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo/risknova-symbol-only.svg" alt="" className="h-16 w-16 opacity-90" />
               <Badge className="w-fit border-amber-500/20 bg-amber-500/12 text-amber-200">
                 {eyebrow}
               </Badge>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 type BrandProps = {
@@ -17,19 +18,17 @@ export function Brand({
   return (
     <Link
       href={href}
-      className={cn("inline-flex items-center gap-3", className)}
+      className={cn("inline-flex items-center gap-2.5", className)}
     >
-      <span
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo/risknova-favicon-64.svg"
+        alt="RiskNova"
         className={cn(
-          "inline-flex items-center justify-center rounded-2xl text-sm font-semibold shadow-[var(--shadow-soft)]",
-          inverted
-            ? "bg-white text-[#B8860B]"
-            : "bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)] text-white",
-          compact ? "size-9 rounded-xl text-xs" : "size-11",
+          "rounded-xl shadow-[var(--shadow-soft)]",
+          compact ? "h-8 w-8" : "h-10 w-10",
         )}
-      >
-        RN
-      </span>
+      />
 
       <span className="flex min-w-0 flex-col">
         <span
@@ -49,7 +48,7 @@ export function Brand({
               inverted ? "text-amber-100/85" : "text-muted-foreground",
             )}
           >
-            AI destekli İSG karar destek platformu
+            AI destekli İSG platformu
           </span>
         ) : null}
       </span>

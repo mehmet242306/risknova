@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-export type Locale = "tr" | "en" | "ar" | "ru" | "de" | "fr" | "es" | "zh" | "ja" | "hi";
+export type Locale = "tr" | "en" | "ar" | "ru" | "de" | "fr" | "es" | "zh" | "ja" | "hi" | "ko" | "az";
 
 type NestedMessages = { [key: string]: string | NestedMessages };
 
@@ -17,23 +17,23 @@ type NestedMessages = { [key: string]: string | NestedMessages };
 const messages: Record<Locale, NestedMessages> = {
   tr: {
     common: {
-      login: "Giris Yap",
-      register: "Hemen Basla",
-      freeStart: "Ucretsiz Basla",
-      platformLogin: "Platforma Giris Yap",
+      login: "Giriş Yap",
+      register: "Hemen Başla",
+      freeStart: "Ücretsiz Başla",
+      platformLogin: "Platforma Giriş Yap",
       profile: "Profil",
       settings: "Ayarlar",
       save: "Kaydet",
-      cancel: "Iptal",
+      cancel: "İptal",
       delete: "Sil",
-      edit: "Duzenle",
+      edit: "Düzenle",
       close: "Kapat",
       search: "Ara",
-      loading: "Yukleniyor...",
-      noData: "Veri bulunamadi",
-      error: "Hata olustu",
-      success: "Basarili",
-      download: "Indir",
+      loading: "Yükleniyor...",
+      noData: "Veri bulunamadı",
+      error: "Hata oluştu",
+      success: "Başarılı",
+      download: "İndir",
       copy: "Kopyala",
       saved: "Kaydedildi",
     },
@@ -42,25 +42,25 @@ const messages: Record<Locale, NestedMessages> = {
       companies: "Firmalar",
       riskAnalysis: "Risk Analizi",
       incidents: "Olaylar",
-      scoreHistory: "Skor Gecmisi",
-      planner: "Planlayici",
+      scoreHistory: "Skor Geçmişi",
+      planner: "Planlayıcı",
       timesheet: "Puantaj",
-      solutionCenter: "Cozum Merkezi",
+      solutionCenter: "Çözüm Merkezi",
       reports: "Raporlar",
       settings: "Ayarlar",
-      features: "Ozellikler",
-      howItWorks: "Nasil Calisir",
+      features: "Özellikler",
+      howItWorks: "Nasıl Çalışır",
     },
     landing: {
-      badge: "YAPAY ZEKA DESTEKLI ISG PLATFORMU",
-      heroTitle1: "ISG Risk Yonetimini",
+      badge: "YAPAY ZEKA DESTEKLİ İSG PLATFORMU",
+      heroTitle1: "İSG Risk Yönetimini",
       heroTitle2: "Sanata",
-      heroTitle3: "Donusturun",
-      heroDescription: "RiskNova; risk analizi, saha takibi, kayit, raporlama ve karar destegi sureclerini tek urun hissi icinde birlestirmek icin tasarlanmis AI destekli ISG platformudur.",
-      statsUsers: "AKTIF KULLANICI",
+      heroTitle3: "Dönüştürün",
+      heroDescription: "RiskNova; risk analizi, saha takibi, kayıt, raporlama ve karar desteği süreçlerini tek ürün hissi içinde birleştirmek için tasarlanmış AI destekli İSG platformudur.",
+      statsUsers: "AKTİF KULLANICI",
       statsUptime: "UPTIME",
-      statsAnalysis: "ANALIZ SURESI",
-      statsScoring: "RISK PUANLAMA",
+      statsAnalysis: "ANALİZ SÜRESİ",
+      statsScoring: "RİSK PUANLAMA",
       featuresEyebrow: "OZELLIKLER",
       featuresTitle1: "Kapsamli",
       featuresTitle2: "Cozumler",
@@ -399,6 +399,20 @@ const messages: Record<Locale, NestedMessages> = {
     landing: { badge: "AI \u0938\u0902\u091A\u093E\u0932\u093F\u0924 \u0935\u094D\u092F\u093E\u0935\u0938\u093E\u092F\u093F\u0915 \u0938\u094D\u0935\u093E\u0938\u094D\u0925\u094D\u092F \u0914\u0930 \u0938\u0941\u0930\u0915\u094D\u0937\u093E \u092A\u094D\u0932\u0947\u091F\u092B\u0949\u0930\u094D\u092E", heroTitle1: "\u0935\u094D\u092F\u093E\u0935\u0938\u093E\u092F\u093F\u0915 \u0938\u094D\u0935\u093E\u0938\u094D\u0925\u094D\u092F", heroTitle2: "\u091C\u094B\u0916\u093F\u092E \u092A\u094D\u0930\u092C\u0902\u0927\u0928", heroTitle3: "\u0915\u094B \u0915\u0932\u093E \u092E\u0947\u0902 \u092C\u0926\u0932\u0947\u0902" },
     auth: { loginTitle: "\u0932\u0949\u0917 \u0907\u0928 \u0915\u0930\u0947\u0902", loginEmail: "\u0908\u092E\u0947\u0932", loginPassword: "\u092A\u093E\u0938\u0935\u0930\u094D\u0921", loginButton: "\u0932\u0949\u0917 \u0907\u0928" },
     solutionCenter: { title: "\u0938\u092E\u093E\u0927\u093E\u0928 \u0915\u0947\u0902\u0926\u094D\u0930" },
+  },
+  ko: {
+    common: { login: "\uB85C\uADF8\uC778", register: "\uC2DC\uC791\uD558\uAE30", save: "\uC800\uC7A5", cancel: "\uCDE8\uC18C", delete: "\uC0AD\uC81C", search: "\uAC80\uC0C9", loading: "\uB85C\uB529 \uC911...", download: "\uB2E4\uC6B4\uB85C\uB4DC", copy: "\uBCF5\uC0AC" },
+    nav: { dashboard: "\uB300\uC2DC\uBCF4\uB4DC", companies: "\uD68C\uC0AC", riskAnalysis: "\uC704\uD5D8 \uBD84\uC11D", incidents: "\uC0AC\uACE0", solutionCenter: "\uC194\uB8E8\uC158 \uC13C\uD130", reports: "\uBCF4\uACE0\uC11C", settings: "\uC124\uC815" },
+    landing: { badge: "AI \uAE30\uBC18 \uC0B0\uC5C5 \uC548\uC804\uBCF4\uAC74 \uD50C\uB7AB\uD3FC", heroTitle1: "\uC0B0\uC5C5 \uC548\uC804", heroTitle2: "\uC704\uD5D8 \uAD00\uB9AC", heroTitle3: "\uB97C \uD601\uC2E0\uD558\uB2E4" },
+    auth: { loginTitle: "\uB85C\uADF8\uC778", loginEmail: "\uC774\uBA54\uC77C", loginPassword: "\uBE44\uBC00\uBC88\uD638", loginButton: "\uB85C\uADF8\uC778" },
+    solutionCenter: { title: "\uC194\uB8E8\uC158 \uC13C\uD130" },
+  },
+  az: {
+    common: { login: "Daxil ol", register: "Ba\u015Fla", save: "Saxla", cancel: "L\u0259\u011Fv et", delete: "Sil", search: "Axtar", loading: "Y\u00FCkl\u0259nir...", download: "Y\u00FCkl\u0259", copy: "Kopyala" },
+    nav: { dashboard: "\u0130dar\u0259 panel", companies: "\u015Firk\u0259tl\u0259r", riskAnalysis: "Risk t\u0259hlili", incidents: "Hadis\u0259l\u0259r", solutionCenter: "H\u0259ll m\u0259rk\u0259zi", reports: "Hesabatlar", settings: "T\u0259nziml\u0259m\u0259l\u0259r" },
+    landing: { badge: "AI il\u0259 i\u015F sa\u011Flaml\u0131\u011F\u0131 v\u0259 t\u0259hl\u00FCk\u0259sizlik platformas\u0131", heroTitle1: "\u0130\u015F sa\u011Flaml\u0131\u011F\u0131", heroTitle2: "risk idar\u0259etm\u0259sini", heroTitle3: "d\u0259yi\u015Fdirin" },
+    auth: { loginTitle: "Daxil ol", loginEmail: "E-poçt", loginPassword: "\u015Fifr\u0259", loginButton: "Daxil ol" },
+    solutionCenter: { title: "H\u0259ll m\u0259rk\u0259zi" },
   },
 };
 

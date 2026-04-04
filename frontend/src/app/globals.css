@@ -44,11 +44,30 @@
   --shadow-card: 0 8px 20px rgba(15, 23, 42, 0.08);
   --shadow-elevated: 0 14px 32px rgba(15, 23, 42, 0.12);
 
-  --header-bg: #0F172A;
-  --header-text: #F1F5F9;
-  --header-muted: rgba(255, 255, 255, 0.6);
+  /* ── Satır 1: Primary nav — koyu navy ── */
+  --header-bg-solid: #0B1120;
+  --header-muted: #94A3B8;
   --header-active: #ffffff;
-  --header-border: rgba(255, 255, 255, 0.08);
+  --header-border: rgba(255, 255, 255, 0.06);
+  --header-hover-bg: rgba(255, 255, 255, 0.08);
+  --nav-icon-color: #CBD5E1;
+
+  /* ── Satır 2: Secondary nav — header ile aynı koyu ton ── */
+  --secondary-nav-bg-solid: #0F172A;
+  --secondary-nav-text: #94A3B8;
+  --secondary-nav-hover-text: #ffffff;
+  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.06);
+  --secondary-nav-active: #ffffff;
+  --secondary-nav-border: rgba(255, 255, 255, 0.06);
+
+  /* ── Satır 3: Firma tabları — beyaz + gold çerçeve ── */
+  --tab-bar-bg-solid: #ffffff;
+  --tab-bar-text: #64748B;
+  --tab-bar-hover-text: #92600A;
+  --tab-bar-hover-bg: rgba(184, 134, 11, 0.10);
+  --tab-bar-active: #B8860B;
+  --tab-bar-border-top: #B8860B;
+  --tab-bar-border-bottom: #B8860B;
 
   --gold: #D4A017;
   --gold-light: #FBBF24;
@@ -101,11 +120,31 @@
   --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.5);
 
-  --header-bg: #080A12;
-  --header-text: #F1F5F9;
-  --header-muted: rgba(255, 255, 255, 0.5);
+  /* ── Satır 1: Primary nav — koyu navy ── */
+  --header-bg-solid: #060810;
+  --header-muted: #8B9DC3;
   --header-active: #ffffff;
-  --header-border: rgba(255, 255, 255, 0.08);
+  --header-border: rgba(255, 255, 255, 0.06);
+  --header-hover-bg: rgba(255, 255, 255, 0.08);
+  --nav-icon-color: #B0BDD4;
+
+  /* ── Satır 2: Secondary nav — header ile aynı koyu ton ── */
+  --secondary-nav-bg-solid: #080A12;
+  --secondary-nav-text: #7B8DB0;
+  --secondary-nav-hover-text: #E2E8F0;
+  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.06);
+  --secondary-nav-active: #E2E8F0;
+  --secondary-nav-border: rgba(255, 255, 255, 0.04);
+
+  /* ── Satır 3: Firma tabları — gold çerçeveli (dark) ── */
+  --tab-bar-bg-solid: #0A0E18;
+  --tab-bar-text: #7B8DB0;
+  --tab-bar-hover-text: #FBBF24;
+  --tab-bar-hover-bg: rgba(251, 191, 36, 0.12);
+  --tab-bar-active: #FBBF24;
+  --tab-bar-glow: none;
+  --tab-bar-border-top: #8B6914;
+  --tab-bar-border-bottom: #8B6914;
 
   --gold: #FBBF24;
   --gold-light: #FDE68A;
