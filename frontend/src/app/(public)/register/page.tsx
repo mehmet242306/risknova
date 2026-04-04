@@ -2,6 +2,7 @@
 import { AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 import { signup } from "./actions";
 
 export default async function RegisterPage({
@@ -41,6 +42,8 @@ export default async function RegisterPage({
           Kayıt işlemi başlatıldı. Gerekliyse e-posta kutunu kontrol et.
         </div>
       ) : null}
+
+      <SocialLoginButtons mode="register" />
 
       <form className="space-y-5">
         <Input

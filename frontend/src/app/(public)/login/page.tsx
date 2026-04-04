@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 import { login } from "./actions";
 
 export default async function LoginPage({
@@ -41,6 +42,8 @@ export default async function LoginPage({
           Şifren güncellendi. Yeni şifrenle giriş yapabilirsin.
         </div>
       ) : null}
+
+      <SocialLoginButtons mode="login" />
 
       <form className="space-y-5">
         <Input
