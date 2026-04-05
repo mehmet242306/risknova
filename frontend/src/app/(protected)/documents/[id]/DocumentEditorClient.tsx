@@ -243,87 +243,86 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
 
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Breadcrumb row */}
-      <div className="flex items-center gap-2 mb-3">
-        <button
-          onClick={() => router.push('/documents')}
-          className="p-1.5 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)]"
-          title="Geri"
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <nav className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
-          <span className="hover:text-[var(--text-primary)] cursor-pointer" onClick={() => router.push('/documents')}>Dokümanlar</span>
-          <ChevronRight size={14} className="text-[var(--text-secondary)]/50" />
-          {group && <span>{group.title}</span>}
-          {group && <ChevronRight size={14} className="text-[var(--text-secondary)]/50" />}
-          <span className="text-[var(--text-primary)] font-medium truncate max-w-[250px]">{title}</span>
-        </nav>
-      </div>
+      {/* Header card — breadcrumb + title + actions */}
+      <div className="border border-[var(--card-border)] rounded-xl bg-white dark:bg-[#1e293b] shadow-sm mb-6 overflow-hidden">
+        {/* Top row: breadcrumb left + action buttons right */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--card-border)] bg-[var(--bg-secondary)]/30">
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push('/documents')}
+              className="p-1 rounded-md hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)]"
+              title="Geri"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <nav className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
+              <span className="hover:text-[var(--text-primary)] cursor-pointer" onClick={() => router.push('/documents')}>Dokümanlar</span>
+              <ChevronRight size={14} className="opacity-40" />
+              {group && <span>{group.title}</span>}
+              {group && <ChevronRight size={14} className="opacity-40" />}
+              <span className="text-[var(--text-primary)] font-medium">{title}</span>
+            </nav>
+          </div>
 
-      {/* Actions row */}
-      <div className="flex items-center gap-2 mb-5">
-        {/* Title — editable inline */}
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="flex-1 text-xl font-bold text-[var(--text-primary)] bg-transparent border-none outline-none min-w-0"
-          placeholder="Doküman başlığı..."
-        />
-
-        {/* Status badge */}
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium shrink-0 ${statusCfg.color}`}>
-          <StatusIcon size={12} />
-          {statusCfg.label}
+          {/* Action buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)]"
+              title={showSidebar ? 'Paneli Kapat' : 'Değişken Paneli'}
+            >
+              {showSidebar ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
+            </button>
+            <button
+              onClick={handleExport}
+              disabled={exporting || !content}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-[var(--card-border)] rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-primary)] disabled:opacity-50"
+            >
+              <Download size={14} />
+              {exporting ? 'İndiriliyor...' : 'Word İndir'}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving || !content}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-[var(--gold)] text-white rounded-lg hover:bg-[var(--gold-hover)] transition-colors disabled:opacity-50"
+            >
+              {saving ? (
+                <RotateCcw size={14} className="animate-spin" />
+              ) : saved ? (
+                <CheckCircle2 size={14} />
+              ) : (
+                <Save size={14} />
+              )}
+              {saving ? 'Kaydediliyor...' : saved ? 'Kaydedildi' : 'Kaydet'}
+            </button>
+          </div>
         </div>
 
-        {/* Status change dropdown */}
-        <select
-          value={status}
-          onChange={(e) => handleStatusChange(e.target.value as DocumentRecord['status'])}
-          className="text-xs px-2 py-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] shrink-0"
-        >
-          <option value="taslak">Taslak</option>
-          <option value="hazir">Hazır</option>
-          <option value="onay_bekliyor">Onay Bekliyor</option>
-          <option value="revizyon">Revizyon</option>
-        </select>
-
-        {/* Sidebar toggle */}
-        <button
-          onClick={() => setShowSidebar(!showSidebar)}
-          className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)] shrink-0"
-          title={showSidebar ? 'Paneli Kapat' : 'Değişken Paneli'}
-        >
-          {showSidebar ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-        </button>
-
-        {/* Export */}
-        <button
-          onClick={handleExport}
-          disabled={exporting || !content}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-[var(--card-border)] rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-primary)] disabled:opacity-50 shrink-0"
-        >
-          <Download size={14} />
-          {exporting ? 'İndiriliyor...' : 'Word İndir'}
-        </button>
-
-        {/* Save */}
-        <button
-          onClick={handleSave}
-          disabled={saving || !content}
-          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-[var(--gold)] text-white rounded-lg hover:bg-[var(--gold-hover)] transition-colors disabled:opacity-50 shrink-0"
-        >
-          {saving ? (
-            <RotateCcw size={14} className="animate-spin" />
-          ) : saved ? (
-            <CheckCircle2 size={14} />
-          ) : (
-            <Save size={14} />
-          )}
-          {saving ? 'Kaydediliyor...' : saved ? 'Kaydedildi' : 'Kaydet'}
-        </button>
+        {/* Bottom row: title + status */}
+        <div className="flex items-center gap-3 px-5 py-3">
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="flex-1 text-lg font-bold text-[var(--text-primary)] bg-transparent border-none outline-none min-w-0"
+            placeholder="Doküman başlığı..."
+          />
+          <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium shrink-0 ${statusCfg.color}`}>
+            <StatusIcon size={12} />
+            {statusCfg.label}
+          </div>
+          <select
+            value={status}
+            onChange={(e) => handleStatusChange(e.target.value as DocumentRecord['status'])}
+            className="text-xs px-2 py-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] shrink-0"
+          >
+            <option value="taslak">Taslak</option>
+            <option value="hazir">Hazır</option>
+            <option value="onay_bekliyor">Onay Bekliyor</option>
+            <option value="revizyon">Revizyon</option>
+          </select>
+        </div>
       </div>
 
       {/* Main Layout */}
