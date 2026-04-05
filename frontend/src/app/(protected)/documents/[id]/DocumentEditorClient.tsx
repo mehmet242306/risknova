@@ -31,7 +31,7 @@ import {
   type CompanyVariableData,
 } from '@/lib/document-variables';
 import { EditorToolbar } from '@/components/documents/EditorToolbar';
-import { VariableMenu } from '@/components/documents/VariableMenu';
+import { AIAssistantPanel } from '@/components/documents/AIAssistantPanel';
 import type { JSONContent } from '@tiptap/react';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
@@ -282,12 +282,6 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
     }
   }, [editor, title, companyData]);
 
-  // Insert variable
-  const handleInsertVariable = useCallback((key: string) => {
-    if (!editor) return;
-    editor.chain().focus().insertContent(`{{${key}}}`).run();
-  }, [editor]);
-
   const group = getGroupByKey(groupKey);
   const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.taslak;
   const StatusIcon = statusCfg.icon;
@@ -350,7 +344,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           <button
             onClick={() => setShowSidebar(!showSidebar)}
             className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-secondary)]"
-            title={showSidebar ? 'Paneli Kapat' : 'Değişken Paneli'}
+            title={showSidebar ? 'AI Paneli Kapat' : 'AI Asistan'}
           >
             {showSidebar ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           </button>
@@ -392,35 +386,15 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           <div style={{ height: `${60 * zoom}px` }} />
         </div>
 
-        {/* Sidebar */}
+        {/* Sidebar — AI Assistant */}
         {showSidebar && (
-          <aside className="w-[280px] shrink-0 border-l border-[var(--card-border)] bg-white dark:bg-[#1e293b] overflow-y-auto hidden lg:block">
-            <div className="p-4">
-              <VariableMenu onInsert={handleInsertVariable} />
-
-              {/* Document Info */}
-              <div className="mt-5 pt-4 border-t border-[var(--card-border)]">
-                <h4 className="text-xs font-semibold text-[var(--text-primary)] mb-2">Doküman Bilgisi</h4>
-                <div className="space-y-1.5 text-[11px] text-[var(--text-secondary)]">
-                  {group && <div><span className="font-medium">Grup:</span> {group.title}</div>}
-                  <div><span className="font-medium">Durum:</span> {statusCfg.label}</div>
-                  {doc && <div><span className="font-medium">Versiyon:</span> {doc.version}</div>}
-                  {doc && <div><span className="font-medium">Oluşturulma:</span> {new Date(doc.created_at).toLocaleDateString('tr-TR')}</div>}
-                  {versions.length > 0 && <div><span className="font-medium">Geçmiş:</span> {versions.length} sürüm</div>}
-                </div>
-              </div>
-
-              {/* AI Section */}
-              <div className="mt-4 pt-4 border-t border-[var(--card-border)]">
-                <button className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-medium text-[var(--gold)] bg-[var(--gold)]/10 rounded-lg hover:bg-[var(--gold)]/20 transition-colors">
-                  <Sparkles size={14} />
-                  AI İçerik Önerisi
-                </button>
-                <p className="text-[10px] text-[var(--text-secondary)] mt-1.5">
-                  Mevzuata uygun içerik önerisi alın.
-                </p>
-              </div>
-            </div>
+          <aside className="w-[320px] shrink-0 border-l border-[var(--card-border)] bg-white dark:bg-[#1e293b] hidden lg:flex lg:flex-col">
+            <AIAssistantPanel
+              editor={editor}
+              documentTitle={title}
+              groupKey={groupKey}
+              companyName={companyData.official_name || ''}
+            />
           </aside>
         )}
       </div>
