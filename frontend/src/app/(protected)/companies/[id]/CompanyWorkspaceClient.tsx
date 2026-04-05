@@ -272,7 +272,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
 
       {/* ── Sticky Tab Bar (Satır 3 — firma tabları) ── */}
       <div
-        className="sticky top-[96px] z-30 -mx-4 bg-white px-4 dark:bg-[#0A0E18] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+        className="sticky top-[138px] z-30 -mx-4 bg-white px-4 dark:bg-[#0A0E18] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
         style={{
           borderTop: "2px solid var(--tab-bar-border-top)",
           borderBottom: "2px solid var(--tab-bar-border-bottom)",
