@@ -243,26 +243,37 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
 
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Top Bar */}
-      <div className="flex items-center gap-3 mb-4">
+      {/* Breadcrumb row */}
+      <div className="flex items-center gap-2 mb-3">
         <button
           onClick={() => router.push('/documents')}
-          className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)]"
+          className="p-1.5 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)]"
           title="Geri"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={16} />
         </button>
-        <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
-          <span>Dokümanlar</span>
-          <ChevronRight size={12} />
+        <nav className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
+          <span className="hover:text-[var(--text-primary)] cursor-pointer" onClick={() => router.push('/documents')}>Dokümanlar</span>
+          <ChevronRight size={14} className="text-[var(--text-secondary)]/50" />
           {group && <span>{group.title}</span>}
-          {group && <ChevronRight size={12} />}
-          <span className="text-[var(--text-primary)] font-medium truncate max-w-[200px]">{title}</span>
-        </div>
-        <div className="flex-1" />
+          {group && <ChevronRight size={14} className="text-[var(--text-secondary)]/50" />}
+          <span className="text-[var(--text-primary)] font-medium truncate max-w-[250px]">{title}</span>
+        </nav>
+      </div>
+
+      {/* Actions row */}
+      <div className="flex items-center gap-2 mb-5">
+        {/* Title — editable inline */}
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="flex-1 text-xl font-bold text-[var(--text-primary)] bg-transparent border-none outline-none min-w-0"
+          placeholder="Doküman başlığı..."
+        />
 
         {/* Status badge */}
-        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${statusCfg.color}`}>
+        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium shrink-0 ${statusCfg.color}`}>
           <StatusIcon size={12} />
           {statusCfg.label}
         </div>
@@ -271,7 +282,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
         <select
           value={status}
           onChange={(e) => handleStatusChange(e.target.value as DocumentRecord['status'])}
-          className="text-xs px-2 py-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
+          className="text-xs px-2 py-1.5 rounded-lg border border-[var(--card-border)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] shrink-0"
         >
           <option value="taslak">Taslak</option>
           <option value="hazir">Hazır</option>
@@ -279,28 +290,30 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           <option value="revizyon">Revizyon</option>
         </select>
 
-        {/* Actions */}
+        {/* Sidebar toggle */}
         <button
           onClick={() => setShowSidebar(!showSidebar)}
-          className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)]"
+          className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-secondary)] shrink-0"
           title={showSidebar ? 'Paneli Kapat' : 'Değişken Paneli'}
         >
           {showSidebar ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
         </button>
 
+        {/* Export */}
         <button
           onClick={handleExport}
           disabled={exporting || !content}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-[var(--card-border)] rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-primary)] disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-[var(--card-border)] rounded-lg hover:bg-[var(--bg-secondary)] transition-colors text-[var(--text-primary)] disabled:opacity-50 shrink-0"
         >
           <Download size={14} />
           {exporting ? 'İndiriliyor...' : 'Word İndir'}
         </button>
 
+        {/* Save */}
         <button
           onClick={handleSave}
           disabled={saving || !content}
-          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-[var(--gold)] text-white rounded-lg hover:bg-[var(--gold-hover)] transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium bg-[var(--gold)] text-white rounded-lg hover:bg-[var(--gold-hover)] transition-colors disabled:opacity-50 shrink-0"
         >
           {saving ? (
             <RotateCcw size={14} className="animate-spin" />
@@ -312,15 +325,6 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           {saving ? 'Kaydediliyor...' : saved ? 'Kaydedildi' : 'Kaydet'}
         </button>
       </div>
-
-      {/* Title Input */}
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="w-full text-xl font-bold text-[var(--text-primary)] bg-transparent border-none outline-none mb-4 px-1"
-        placeholder="Doküman başlığı..."
-      />
 
       {/* Main Layout */}
       <div className="flex gap-4">
