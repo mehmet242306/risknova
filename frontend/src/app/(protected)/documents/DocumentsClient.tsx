@@ -144,8 +144,11 @@ export function DocumentsClient() {
   };
 
   const handleAddCustomDocument = (group: DocumentGroup) => {
+    const name = window.prompt(`"${group.title}" grubuna eklenecek evrak adını girin:`);
+    if (!name || !name.trim()) return;
     const params = new URLSearchParams({
       group: group.key,
+      title: name.trim(),
       mode: 'custom',
       companyId: selectedCompanyId,
     });

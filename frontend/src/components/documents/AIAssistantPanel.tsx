@@ -4,11 +4,24 @@ import { useState } from 'react';
 import { Sparkles, Send, RotateCcw, Copy, Check, Wand2, FileText, AlertTriangle, BookOpen } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
 
+interface CompanyDataForAI {
+  sector?: string;
+  hazard_class?: string;
+  nace_code?: string;
+  address?: string;
+  city?: string;
+  district?: string;
+  tax_number?: string;
+  employee_count?: number;
+  specialist_name?: string;
+}
+
 interface AIAssistantPanelProps {
   editor: Editor | null;
   documentTitle: string;
   groupKey: string;
   companyName: string;
+  companyData?: CompanyDataForAI;
 }
 
 const QUICK_PROMPTS = [
@@ -18,7 +31,7 @@ const QUICK_PROMPTS = [
   { icon: BookOpen, label: 'Mevzuat Referansları', prompt: 'Bu doküman türü için geçerli tüm mevzuat referanslarını listele.' },
 ];
 
-export function AIAssistantPanel({ editor, documentTitle, groupKey, companyName }: AIAssistantPanelProps) {
+export function AIAssistantPanel({ editor, documentTitle, groupKey, companyName, companyData }: AIAssistantPanelProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -29,18 +42,22 @@ export function AIAssistantPanel({ editor, documentTitle, groupKey, companyName 
     setLoading(true);
     setResult(null);
 
-    const fullPrompt = `Sen bir İSG (İş Sağlığı ve Güvenliği) uzman asistanısın. ${companyName ? `${companyName} firması için` : ''} "${documentTitle}" dokümanı hazırlanıyor${groupKey ? ` (kategori: ${groupKey})` : ''}.\n\n${prompt}\n\n6331 sayılı İSG Kanunu ve ilgili yönetmeliklere referans ver. Türkçe, profesyonel ve doğrudan kullanılabilir içerik üret.`;
-
     try {
-      const res = await fetch('/api/analyze-risk', {
+      const res = await fetch('/api/document-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: fullPrompt }),
+        body: JSON.stringify({
+          prompt,
+          companyName,
+          companyData,
+          documentTitle,
+          groupKey,
+        }),
       });
 
       if (res.ok) {
         const data = await res.json();
-        setResult(data.analysis || data.response || data.result || 'Yanıt alınamadı.');
+        setResult(data.content || data.analysis || data.response || 'Yanıt alınamadı.');
       } else {
         setResult('Hata: AI servisi şu anda yanıt veremiyor. Lütfen tekrar deneyin.');
       }

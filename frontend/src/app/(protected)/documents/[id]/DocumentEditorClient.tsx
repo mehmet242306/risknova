@@ -394,6 +394,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
               documentTitle={title}
               groupKey={groupKey}
               companyName={companyData.official_name || ''}
+              companyData={companyData}
             />
           </aside>
         )}
