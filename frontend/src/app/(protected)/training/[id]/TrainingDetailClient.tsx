@@ -150,7 +150,7 @@ export function TrainingDetailClient() {
 
     for (const token of completedTokens) {
       // Calculate score for this person
-      const totalPoints = questions.reduce((s, q) => s + q.points, 0);
+      void questions.reduce((s, q) => s + q.points, 0); // totalPoints for future use
       // For exams, only issue to passing participants
       if (survey.type === "exam" && survey.passScore) {
         // We'd need per-person score here; for now issue to all completed

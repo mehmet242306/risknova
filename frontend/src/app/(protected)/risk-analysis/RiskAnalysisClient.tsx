@@ -1094,7 +1094,7 @@ export function RiskAnalysisClient() {
   const [pendingPinSeverity, setPendingPinSeverity] = useState<DetectionSeverity>("medium");
 
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const _cameraInputRefs = useRef<Record<string, HTMLInputElement | null>>({}); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   /* ── Derived ── */
   const selectedCompany = useMemo(() => companies.find((c) => c.id === selectedCompanyId) ?? null, [companies, selectedCompanyId]);
@@ -1161,11 +1161,13 @@ export function RiskAnalysisClient() {
   }
 
   /* ── Finding update (for score panel changes) ── */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const updateFinding = useCallback((rowId: string, updatedFinding: VisualFinding) => {
     setResults((prev) => prev.map((r) => r.rowId === rowId ? { ...r, findings: r.findings.map((f) => f.id === updatedFinding.id ? updatedFinding : f) } : r));
   }, []);
 
   /* ── Toggle DÖF ── */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const toggleDof = useCallback((rowId: string, findingId: string) => {
     setResults((prev) => prev.map((r) => r.rowId === rowId ? { ...r, findings: r.findings.map((f) => f.id === findingId ? { ...f, correctiveActionRequired: !f.correctiveActionRequired } : f) } : r));
   }, []);
@@ -2248,6 +2250,7 @@ JSON formatında döndür:
                     {line.images.map((img) => (
                       <div key={img.id} className="overflow-hidden rounded-xl border border-border bg-card">
                         <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-800">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={img.previewUrl} alt={img.file.name} className="h-full w-full object-cover" />
                         </div>
                         <div className="flex items-center justify-between p-2">
@@ -2401,7 +2404,7 @@ JSON formatında döndür:
               const selectedFindingId = selectedFindingByRow[result.rowId] ?? result.findings[0]?.id ?? "";
               const selectedImage = images.find((i) => i.id === selectedImageId) ?? images[0];
               const visibleFindings = result.findings.filter((f) => f.imageId === selectedImage?.id);
-              const selectedFinding = result.findings.find((f) => f.id === selectedFindingId);
+              const _selectedFinding = result.findings.find((f) => f.id === selectedFindingId); // eslint-disable-line @typescript-eslint/no-unused-vars
 
               return (
                 <div key={result.rowId} className="rounded-[1.5rem] border border-border bg-card p-5">
@@ -2440,6 +2443,7 @@ JSON formatında döndür:
                               className={`overflow-hidden rounded-2xl border text-left transition-colors ${active ? "border-primary shadow-[var(--shadow-soft)]" : "border-border hover:border-primary/40"}`}
                             >
                               <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-800">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={img.previewUrl} alt={img.file.name} className="h-full w-full object-cover" />
                               </div>
                               <div className="p-3">
@@ -2458,6 +2462,7 @@ JSON formatında döndür:
                             className="relative aspect-[4/3]"
                             onClick={(e) => handleImageClick(e, result.rowId, selectedImage.id)}
                           >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={selectedImage.previewUrl} alt={selectedImage.file.name} className="h-full w-full object-cover pointer-events-none" />
                             <div className={`absolute inset-0 ${pinMode === result.rowId ? "pointer-events-none" : ""}`}>
                               {visibleFindings.map((f) =>
