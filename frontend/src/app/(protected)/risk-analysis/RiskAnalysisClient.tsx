@@ -43,6 +43,7 @@ import {
   type FKResult,
   type MatrixValues,
   type MatrixResult,
+  METHOD_CATALOG,
 } from "@/lib/risk-scoring";
 import {
   exportRiskAnalysisPDF,
@@ -66,7 +67,7 @@ import { createNotification } from "@/lib/supabase/notification-api";
 /* Types                                                               */
 /* ================================================================== */
 
-type AnalysisMethod = "r_skor" | "fine_kinney" | "l_matrix";
+type AnalysisMethod = "r_skor" | "fine_kinney" | "l_matrix" | "fmea" | "hazop" | "bow_tie" | "fta" | "checklist" | "jsa" | "lopa";
 type DetectionSeverity = "low" | "medium" | "high" | "critical";
 
 type UploadedImage = {
@@ -264,12 +265,8 @@ function createParticipant(): Participant {
 }
 
 function methodLabel(method: AnalysisMethod) {
-  switch (method) {
-    case "r_skor": return "R-SKOR 2D";
-    case "fine_kinney": return "Fine-Kinney";
-    case "l_matrix": return "L-Tipi Matris";
-    default: return method;
-  }
+  const info = METHOD_CATALOG.find(m => m.id === method);
+  return info?.name || method;
 }
 
 function severityLabel(severity: DetectionSeverity) {
@@ -1848,7 +1845,7 @@ JSON formatında döndür:
     try { return new Date(d).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" }); } catch { return d; }
   }
   function methodBadge(m: string) {
-    return m === "r_skor" ? "R-SKOR 2D" : m === "fine_kinney" ? "Fine-Kinney" : m === "l_matrix" ? "L-Matris" : m;
+    return methodLabel(m as AnalysisMethod);
   }
   function riskBadgeColor(level: string | null) {
     if (!level) return "bg-muted text-muted-foreground";
@@ -2051,10 +2048,37 @@ JSON formatında döndür:
 
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-foreground">Analiz Yöntemi</label>
-              <div className="grid grid-cols-3 gap-3">
-                <Button type="button" variant={method === "r_skor" ? "accent" : "outline"} onClick={() => setMethod("r_skor")}>R-SKOR</Button>
-                <Button type="button" variant={method === "fine_kinney" ? "accent" : "outline"} onClick={() => setMethod("fine_kinney")}>Fine-Kinney</Button>
-                <Button type="button" variant={method === "l_matrix" ? "accent" : "outline"} onClick={() => setMethod("l_matrix")}>L Matris</Button>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {METHOD_CATALOG.map((m) => (
+                  <div key={m.id} className="group relative">
+                    <button
+                      type="button"
+                      onClick={() => setMethod(m.id as AnalysisMethod)}
+                      className={`flex w-full flex-col items-center gap-1 rounded-xl border-2 px-2 py-3 text-center transition-all ${
+                        method === m.id
+                          ? "border-primary bg-primary/5 shadow-sm"
+                          : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <span className="text-lg">{m.icon}</span>
+                      <span className="text-[11px] font-semibold text-foreground leading-tight">{m.shortName}</span>
+                      <span className="text-[9px] text-muted-foreground leading-tight line-clamp-1">{m.name}</span>
+                    </button>
+                    {/* Tooltip */}
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-xl border border-border bg-card p-3 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="text-base">{m.icon}</span>
+                        <span className="font-semibold text-sm text-foreground">{m.name}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{m.tooltip}</p>
+                      <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <span className="rounded bg-muted px-1.5 py-0.5">Skor: {m.scoreRange}</span>
+                        {m.paramCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5">{m.paramCount} parametre</span>}
+                      </div>
+                      <div className="absolute left-1/2 top-full -translate-x-1/2 border-[6px] border-transparent border-t-border" />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
