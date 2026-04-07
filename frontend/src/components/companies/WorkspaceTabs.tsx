@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DOCUMENT_GROUPS } from "@/lib/document-groups";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { CompanyRecord } from "@/lib/company-directory";
@@ -1494,8 +1495,6 @@ export function DocumentsTab({ company, companyId }: { company: CompanyRecord; c
     load();
   }, [companyId]);
 
-  // Import DOCUMENT_GROUPS lazily
-  const { DOCUMENT_GROUPS } = require('@/lib/document-groups');
   const allGroups = DOCUMENT_GROUPS as Array<{ key: string; title: string; icon: string; color: string; items: Array<{ id: string; title: string }> }>;
 
   // Define which groups belong to each role

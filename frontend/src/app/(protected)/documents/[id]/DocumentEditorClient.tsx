@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, use, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -13,7 +13,7 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import {
   ArrowLeft, Save, Download, ChevronRight,
-  CheckCircle2, RotateCcw, Sparkles,
+  CheckCircle2, RotateCcw,
   PanelRightOpen, PanelRightClose,
   FileText, Clock, FileEdit, AlertCircle,
   ZoomIn, Trash2, Share2, PenTool,
@@ -52,7 +52,6 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const searchParams = useSearchParams();
   const resolvedParams = paramsPromise ? use(paramsPromise) : null;
   const documentId = resolvedParams?.id;
-  const isNewDoc = !documentId;
 
   const qGroup = searchParams.get('group') || '';
   const qTitle = searchParams.get('title') || '';

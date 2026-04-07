@@ -304,7 +304,7 @@ export function AdminAITab() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent)] text-sm font-bold text-white">N</div>
           <div>
             <h3 className="text-sm font-semibold text-foreground">Nova AI</h3>
-            <p className="text-xs text-muted-foreground">RiskNova'nin yerlesik yapay zekasi</p>
+            <p className="text-xs text-muted-foreground">RiskNova&apos;nın yerleşik yapay zekası</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -354,7 +354,7 @@ export function AdminAITab() {
 
             {/* PDF'den ogren */}
             <div className="rounded-xl border border-border bg-muted/30 p-3">
-              <p className="mb-2 text-xs font-semibold text-muted-foreground">PDF'DEN ÖĞREN</p>
+              <p className="mb-2 text-xs font-semibold text-muted-foreground">PDF&apos;DEN ÖĞREN</p>
               <input
                 ref={fileInputRef}
                 type="file"
