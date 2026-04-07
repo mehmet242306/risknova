@@ -62,7 +62,7 @@ const TABS: { k: WTab; l: string }[] = [
   { k: "personnel", l: "Personel" },
   { k: "planner", l: "Planlama" },
   { k: "tracking", l: "Takip" },
-  { k: "documents", l: "Dökümanlar" },
+  { k: "documents", l: "Arşiv" },
   { k: "organization", l: "Organizasyon" },
   { k: "history", l: "Geçmiş" },
   { k: "digital_twin", l: "Dijital İkiz" },
@@ -316,7 +316,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
           {tab === "personnel" && <PersonnelManagementPanel companyId={companyId} companyName={company.name} departments={company.departments.filter(Boolean)} locations={company.locations.filter(Boolean)} />}
           {tab === "planner" && <CompanyPlannerTab companyId={companyId} companyName={company.name} />}
           {tab === "tracking" && <TrackingTab company={company} />}
-          {tab === "documents" && <DocumentsTab company={company} />}
+          {tab === "documents" && <DocumentsTab company={company} companyId={companyId} />}
           {tab === "organization" && <OrganizationPanel companyId={companyId} />}
           {tab === "history" && <HistoryTab />}
           {tab === "digital_twin" && <DigitalTwinTab />}

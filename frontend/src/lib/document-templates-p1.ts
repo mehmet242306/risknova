@@ -14,19 +14,19 @@ export interface P1Template {
   content: JSONContent;
 }
 
-function p(text: string): JSONContent {
+export function p(text: string): JSONContent {
   return { type: 'paragraph', content: [{ type: 'text', text }] };
 }
 
-function h(level: 1 | 2 | 3, text: string): JSONContent {
+export function h(level: 1 | 2 | 3, text: string): JSONContent {
   return { type: 'heading', attrs: { level }, content: [{ type: 'text', text }] };
 }
 
-function bold(text: string): JSONContent['content'] {
+export function bold(text: string): JSONContent['content'] {
   return [{ type: 'text', marks: [{ type: 'bold' }], text }];
 }
 
-function bullet(items: string[]): JSONContent {
+export function bullet(items: string[]): JSONContent {
   return {
     type: 'bulletList',
     content: items.map((t) => ({
@@ -36,7 +36,7 @@ function bullet(items: string[]): JSONContent {
   };
 }
 
-function table(headers: string[], rows: string[][]): JSONContent {
+export function table(headers: string[], rows: string[][]): JSONContent {
   return {
     type: 'table',
     content: [
@@ -485,7 +485,7 @@ export const TESPIT_ONERI_DEFTERI: P1Template = {
   },
 };
 
-// All P1 Templates
+// All P1 Templates (original 5)
 export const P1_TEMPLATES: P1Template[] = [
   RISK_RAPORU,
   KURUL_TUTANAGI,
@@ -494,7 +494,45 @@ export const P1_TEMPLATES: P1Template[] = [
   TESPIT_ONERI_DEFTERI,
 ];
 
-// Get template by id
+// Lazy-loaded full template registry (all 101 templates)
+let _allTemplates: P1Template[] | null = null;
+
+async function loadAllTemplates(): Promise<P1Template[]> {
+  if (_allTemplates) return _allTemplates;
+
+  const [g1, g2, g3, g4, g5, g6] = await Promise.all([
+    import('./document-templates-g1'),
+    import('./document-templates-g2'),
+    import('./document-templates-g3'),
+    import('./document-templates-g4'),
+    import('./document-templates-g5'),
+    import('./document-templates-g6'),
+  ]);
+
+  _allTemplates = [
+    ...P1_TEMPLATES,
+    ...g1.GROUP1_TEMPLATES, ...g1.GROUP2_TEMPLATES,
+    ...g2.GROUP3_TEMPLATES, ...g2.GROUP4_TEMPLATES, ...g2.GROUP5_TEMPLATES,
+    ...g3.GROUP6_TEMPLATES, ...g3.GROUP7_TEMPLATES, ...g3.GROUP8_TEMPLATES, ...g3.GROUP9_TEMPLATES, ...g3.GROUP10_TEMPLATES,
+    ...g4.GROUP11_TEMPLATES, ...g4.GROUP12_TEMPLATES, ...g4.GROUP13_TEMPLATES, ...g4.GROUP14_TEMPLATES, ...g4.GROUP15_TEMPLATES,
+    ...g5.GROUP16_TEMPLATES, ...g5.GROUP17_TEMPLATES, ...g5.GROUP18_TEMPLATES, ...g5.GROUP19_TEMPLATES, ...g5.GROUP20_TEMPLATES,
+    ...g6.GROUP21_TEMPLATES,
+  ];
+  return _allTemplates;
+}
+
+// Sync: search P1 first (fast), fallback returns undefined
 export function getP1Template(id: string): P1Template | undefined {
   return P1_TEMPLATES.find((t) => t.id === id);
+}
+
+// Async: search ALL templates including lazy-loaded groups
+export async function getTemplate(id: string): Promise<P1Template | undefined> {
+  // Check P1 first (no import needed)
+  const p1 = P1_TEMPLATES.find((t) => t.id === id);
+  if (p1) return p1;
+
+  // Load all templates
+  const all = await loadAllTemplates();
+  return all.find((t) => t.id === id);
 }

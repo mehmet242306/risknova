@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { Editor } from '@tiptap/react';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -17,19 +17,9 @@ interface EditorToolbarProps {
 
 /* ── Reusable Button ── */
 function Btn({
-  onClick,
-  active,
-  disabled,
-  title,
-  children,
-  className = '',
+  onClick, active, disabled, title, children, className = '',
 }: {
-  onClick: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  title: string;
-  children: React.ReactNode;
-  className?: string;
+  onClick: () => void; active?: boolean; disabled?: boolean; title: string; children: React.ReactNode; className?: string;
 }) {
   return (
     <button
@@ -52,6 +42,25 @@ function Divider() {
   return <div className="w-px h-6 bg-[var(--card-border)] mx-1" />;
 }
 
+/* ── Hook: fixed popup positioning ── */
+function useFixedPopup() {
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const toggle = useCallback(() => {
+    if (!open && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: rect.left });
+    }
+    setOpen(!open);
+  }, [open]);
+
+  const close = useCallback(() => setOpen(false), []);
+
+  return { triggerRef, open, pos, toggle, close };
+}
+
 /* ── Color Picker Popover ── */
 const COLORS = [
   '#000000', '#434343', '#666666', '#999999',
@@ -60,63 +69,51 @@ const COLORS = [
 ];
 
 function ColorPicker({
-  icon: Icon,
-  title,
-  currentColor,
-  onSelect,
+  icon: Icon, title, currentColor, onSelect,
 }: {
-  icon: React.ElementType;
-  title: string;
-  currentColor?: string;
-  onSelect: (color: string) => void;
+  icon: React.ElementType; title: string; currentColor?: string; onSelect: (color: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function close(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
+  const { triggerRef, open, pos, toggle, close } = useFixedPopup();
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={triggerRef}>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={toggle}
         title={title}
         className="flex flex-col items-center justify-center w-8 h-8 rounded-md cursor-pointer text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
       >
         <Icon size={15} />
-        <div
-          className="w-4 h-1 rounded-full mt-0.5"
-          style={{ background: currentColor || '#000' }}
-        />
+        <div className="w-4 h-1 rounded-full mt-0.5" style={{ background: currentColor || '#000' }} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-[#1e293b] border border-[var(--card-border)] rounded-lg shadow-lg z-50">
-          <div className="color-grid">
-            {COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className="color-swatch"
-                style={{ background: c }}
-                onClick={() => { onSelect(c); setOpen(false); }}
-                title={c}
-              />
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => { onSelect(''); setOpen(false); }}
-            className="w-full mt-1.5 text-[10px] text-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] py-1"
+        <>
+          <div className="fixed inset-0 z-[100]" onClick={close} />
+          <div
+            className="fixed p-2 bg-white dark:bg-[#1e293b] border border-[var(--card-border)] rounded-lg shadow-2xl z-[101]"
+            style={{ top: pos.top, left: pos.left }}
           >
-            Rengi Kaldır
-          </button>
-        </div>
+            <div className="color-grid">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className="color-swatch"
+                  style={{ background: c }}
+                  onClick={() => { onSelect(c); close(); }}
+                  title={c}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => { onSelect(''); close(); }}
+              className="w-full mt-1.5 text-[10px] text-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] py-1"
+            >
+              Rengi Kaldır
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -124,45 +121,42 @@ function ColorPicker({
 
 /* ── Table Grid Picker ── */
 function TablePicker({ editor }: { editor: Editor }) {
-  const [open, setOpen] = useState(false);
+  const { triggerRef, open, pos, toggle, close } = useFixedPopup();
   const [hover, setHover] = useState({ r: 0, c: 0 });
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function close(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, []);
 
   return (
-    <div ref={ref} className="relative">
-      <Btn onClick={() => setOpen(!open)} title="Tablo Ekle">
+    <div ref={triggerRef}>
+      <Btn onClick={toggle} title="Tablo Ekle">
         <TableIcon size={15} />
       </Btn>
       {open && (
-        <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-[#1e293b] border border-[var(--card-border)] rounded-lg shadow-lg z-50">
-          <div className="text-[10px] text-[var(--text-secondary)] text-center mb-1.5">
-            {hover.r > 0 ? `${hover.r} × ${hover.c}` : 'Tablo boyutu seçin'}
+        <>
+          <div className="fixed inset-0 z-[100]" onClick={close} />
+          <div
+            className="fixed p-2 bg-white dark:bg-[#1e293b] border border-[var(--card-border)] rounded-lg shadow-2xl z-[101]"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            <div className="text-[10px] text-[var(--text-secondary)] text-center mb-1.5">
+              {hover.r > 0 ? `${hover.r} × ${hover.c}` : 'Tablo boyutu seçin'}
+            </div>
+            <div className="table-grid">
+              {Array.from({ length: 6 }, (_, r) =>
+                Array.from({ length: 8 }, (_, c) => (
+                  <div
+                    key={`${r}-${c}`}
+                    className={`table-grid-cell ${r < hover.r && c < hover.c ? 'active' : ''}`}
+                    onMouseEnter={() => setHover({ r: r + 1, c: c + 1 })}
+                    onClick={() => {
+                      editor.chain().focus().insertTable({ rows: hover.r, cols: hover.c, withHeaderRow: true }).run();
+                      close();
+                      setHover({ r: 0, c: 0 });
+                    }}
+                  />
+                ))
+              )}
+            </div>
           </div>
-          <div className="table-grid">
-            {Array.from({ length: 6 }, (_, r) =>
-              Array.from({ length: 8 }, (_, c) => (
-                <div
-                  key={`${r}-${c}`}
-                  className={`table-grid-cell ${r < hover.r && c < hover.c ? 'active' : ''}`}
-                  onMouseEnter={() => setHover({ r: r + 1, c: c + 1 })}
-                  onClick={() => {
-                    editor.chain().focus().insertTable({ rows: hover.r, cols: hover.c, withHeaderRow: true }).run();
-                    setOpen(false);
-                    setHover({ r: 0, c: 0 });
-                  }}
-                />
-              ))
-            )}
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -172,22 +166,42 @@ function TablePicker({ editor }: { editor: Editor }) {
 const FONT_SIZES = ['12', '14', '16', '18', '20', '24', '28', '32'];
 
 function FontSizeSelect({ editor }: { editor: Editor }) {
+  const { triggerRef, open, pos, toggle, close } = useFixedPopup();
+
   return (
-    <select
-      value=""
-      onChange={(e) => {
-        if (e.target.value) {
-          editor.chain().focus().setMark('textStyle', { fontSize: `${e.target.value}px` }).run();
-        }
-      }}
-      title="Yazı Boyutu"
-      className="h-7 w-14 text-xs rounded border border-[var(--card-border)] bg-transparent text-[var(--text-primary)] cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--gold)] px-1"
-    >
-      <option value="" disabled>Boyut</option>
-      {FONT_SIZES.map((s) => (
-        <option key={s} value={s}>{s}px</option>
-      ))}
-    </select>
+    <div ref={triggerRef}>
+      <button
+        type="button"
+        onClick={toggle}
+        title="Yazı Boyutu"
+        className="h-7 px-2 text-xs rounded border border-[var(--card-border)] bg-transparent text-[var(--text-primary)] cursor-pointer hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-1"
+      >
+        Boyut <span className="text-[10px] opacity-50">&#9662;</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[100]" onClick={close} />
+          <div
+            className="fixed py-1 bg-white dark:bg-[#1e293b] border border-[var(--card-border)] rounded-lg shadow-2xl z-[101] min-w-[70px]"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {FONT_SIZES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => {
+                  editor.chain().focus().setMark('textStyle', { fontSize: `${s}px` }).run();
+                  close();
+                }}
+                className="w-full px-3 py-1.5 text-xs text-left text-[var(--text-primary)] hover:bg-[var(--gold)]/10 transition-colors"
+              >
+                {s}px
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -215,25 +229,13 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
       <Divider />
 
       {/* Headings */}
-      <Btn
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        active={editor.isActive('heading', { level: 1 })}
-        title="Başlık 1"
-      >
+      <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive('heading', { level: 1 })} title="Başlık 1">
         <Heading1 size={s} />
       </Btn>
-      <Btn
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        active={editor.isActive('heading', { level: 2 })}
-        title="Başlık 2"
-      >
+      <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive('heading', { level: 2 })} title="Başlık 2">
         <Heading2 size={s} />
       </Btn>
-      <Btn
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        active={editor.isActive('heading', { level: 3 })}
-        title="Başlık 3"
-      >
+      <Btn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive('heading', { level: 3 })} title="Başlık 3">
         <Heading3 size={s} />
       </Btn>
 

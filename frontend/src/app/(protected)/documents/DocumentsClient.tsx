@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FileText, Plus, Search, ChevronDown, ChevronRight,
@@ -9,7 +9,7 @@ import {
   AlertTriangle, Mail, ClipboardList, BookOpen, Eye as SearchIcon,
   UserCog, CalendarCheck, UserPlus, Award, MapPin, Wrench,
   Clock as ClockIcon, FolderOpen, Flame, Heart,
-  Building2, User, PlusCircle,
+  Building2, User, PlusCircle, Upload, Camera, MoreVertical, Loader2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/page-header';
 import { DOCUMENT_GROUPS, getTotalDocumentCount, type DocumentGroup, type DocumentGroupItem } from '@/lib/document-groups';
@@ -159,6 +159,78 @@ export function DocumentsClient() {
     router.push(`/documents/${doc.id}`);
   };
 
+  // ── Import / Camera ──
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const pendingImportRef = useRef<{ group: DocumentGroup; item: DocumentGroupItem } | null>(null);
+
+  const handleImportFile = (group: DocumentGroup, item: DocumentGroupItem) => {
+    pendingImportRef.current = { group, item };
+    setOpenMenuId(null);
+    fileInputRef.current?.click();
+  };
+
+  const handleCameraCapture = (group: DocumentGroup, item: DocumentGroupItem) => {
+    pendingImportRef.current = { group, item };
+    setOpenMenuId(null);
+    cameraInputRef.current?.click();
+  };
+
+  const processImportedFile = useCallback(async (file: File) => {
+    const ref = pendingImportRef.current;
+    if (!ref) return;
+
+    const itemKey = `${ref.group.key}-${ref.item.id}`;
+    setImportingId(itemKey);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('documentTitle', ref.item.title);
+      formData.append('groupKey', ref.group.key);
+      if (selectedCompany) {
+        formData.append('companyName', selectedCompany.name);
+        formData.append('sector', selectedCompany.sector);
+        formData.append('hazardClass', selectedCompany.hazard_class);
+      }
+
+      const res = await fetch('/api/document-import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Navigate to editor with imported content
+        const params = new URLSearchParams({
+          group: ref.group.key,
+          title: ref.item.title,
+          templateId: ref.item.id,
+          mode: 'import',
+          companyId: selectedCompanyId,
+        });
+        // Store imported content in sessionStorage for the editor to pick up
+        sessionStorage.setItem('importedContent', data.content);
+        router.push(`/documents/new?${params.toString()}`);
+      } else {
+        alert('Dosya işlenirken bir hata oluştu. Lütfen tekrar deneyin.');
+      }
+    } catch {
+      alert('Bağlantı hatası. Lütfen tekrar deneyin.');
+    } finally {
+      setImportingId(null);
+      pendingImportRef.current = null;
+    }
+  }, [selectedCompany, selectedCompanyId, router]);
+
+  const handleFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processImportedFile(file);
+    e.target.value = '';
+  }, [processImportedFile]);
+
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto">
@@ -179,7 +251,7 @@ export function DocumentsClient() {
         actions={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => router.push('/documents/new?mode=personal')}
+              onClick={() => router.push('/documents/personal')}
               className="inline-flex items-center gap-2 px-4 py-2 border border-[var(--gold)]/30 rounded-lg hover:bg-[var(--gold)]/10 transition-colors text-sm font-medium text-[var(--text-primary)]"
             >
               <User size={16} />
@@ -302,26 +374,72 @@ export function DocumentsClient() {
                       {group.items.map((item) => {
                         const doc = findDocForItem(group, item);
 
+                        const itemKey = `${group.key}-${item.id}`;
+                        const isImporting = importingId === itemKey;
+                        const isMenuOpen = openMenuId === itemKey;
+
                         return (
                           <div key={item.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--gold)]/5 transition-colors border-b border-[var(--gold)]/10 last:border-b-0">
                             <FileText size={14} className="text-[var(--text-secondary)] shrink-0" />
                             <span className="flex-1 text-sm text-[var(--text-primary)] truncate">{item.title}</span>
-                            {doc ? (
+
+                            {isImporting ? (
+                              <span className="flex items-center gap-1.5 text-xs text-[var(--gold)]">
+                                <Loader2 size={14} className="animate-spin" />
+                                İşleniyor...
+                              </span>
+                            ) : doc ? (
                               <>
                                 <span className="text-[10px] text-[var(--text-secondary)]">v{doc.version}</span>
                                 <button onClick={() => handleOpenDocument(doc)} className="px-3 py-1 text-xs font-medium text-[var(--gold)] hover:bg-[var(--gold)]/10 rounded-lg transition-colors">Düzenle</button>
                               </>
                             ) : (
-                              <button
-                                onClick={() => handleCreateDocument(group, item)}
-                                className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
-                                  item.isP1
-                                    ? 'bg-[var(--gold)] text-white hover:bg-[var(--gold-hover)]'
-                                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--gold)]/20 hover:border-[var(--gold)]/40'
-                                }`}
-                              >
-                                {item.isP1 ? 'Şablondan Oluştur' : 'Oluştur'}
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => handleCreateDocument(group, item)}
+                                  className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                                    item.isP1
+                                      ? 'bg-[var(--gold)] text-white hover:bg-[var(--gold-hover)]'
+                                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--gold)]/20 hover:border-[var(--gold)]/40'
+                                  }`}
+                                >
+                                  {item.isP1 ? 'Şablondan Oluştur' : 'Oluştur'}
+                                </button>
+
+                                {/* Dropdown: Import / Camera */}
+                                <div className="relative">
+                                  <button
+                                    onClick={() => setOpenMenuId(isMenuOpen ? null : itemKey)}
+                                    className="p-1 rounded-md hover:bg-[var(--gold)]/10 text-[var(--text-secondary)] hover:text-[var(--gold)] transition-colors"
+                                    title="Daha fazla seçenek"
+                                  >
+                                    <MoreVertical size={14} />
+                                  </button>
+                                  {isMenuOpen && (
+                                    <>
+                                      <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+                                      <div className="absolute right-0 top-full mt-1 z-20 w-52 bg-white dark:bg-[#1e293b] border border-[var(--gold)]/20 rounded-lg shadow-lg py-1">
+                                        <button
+                                          onClick={() => handleImportFile(group, item)}
+                                          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--gold)]/10 transition-colors"
+                                        >
+                                          <Upload size={13} className="text-[var(--gold)]" />
+                                          Dosya İmport Et
+                                          <span className="ml-auto text-[10px] text-[var(--text-secondary)]">PDF, Word, Görüntü</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleCameraCapture(group, item)}
+                                          className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--gold)]/10 transition-colors"
+                                        >
+                                          <Camera size={13} className="text-[var(--gold)]" />
+                                          Kameradan Çek
+                                          <span className="ml-auto text-[10px] text-[var(--text-secondary)]">OCR + AI</span>
+                                        </button>
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
                             )}
                           </div>
                         );
@@ -352,6 +470,23 @@ export function DocumentsClient() {
           )}
         </>
       )}
+
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
     </div>
   );
 }

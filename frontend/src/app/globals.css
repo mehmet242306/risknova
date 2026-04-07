@@ -419,6 +419,8 @@ body,
 /* Canvas: gray background behind the page */
 .editor-canvas {
   background: #F0F1F3;
+  position: relative;
+  z-index: 1;
 }
 .dark .editor-canvas {
   background: #111827;
@@ -527,15 +529,24 @@ body,
 }
 
 /* Lists */
-.a4-page .tiptap ul,
+.a4-page .tiptap ul {
+  padding-left: 24px;
+  margin: 8px 0;
+  list-style-type: disc;
+}
 .a4-page .tiptap ol {
   padding-left: 24px;
   margin: 8px 0;
+  list-style-type: decimal;
 }
 .a4-page .tiptap li {
   margin: 4px 0;
   line-height: 1.6;
   font-size: 14px;
+  display: list-item;
+}
+.a4-page .tiptap li p {
+  margin: 0;
 }
 
 /* Blockquote */
@@ -575,10 +586,30 @@ body,
 .editor-toolbar {
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
+  position: relative;
+  z-index: 30;
 }
 .dark .editor-toolbar {
   background: #1e293b;
   border-bottom-color: #334155;
+}
+/* Fix dark mode for native select/option */
+.editor-toolbar select {
+  background: #ffffff;
+  color: #0f172a;
+}
+.dark .editor-toolbar select {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+.editor-toolbar select option {
+  background: #ffffff;
+  color: #0f172a;
+  padding: 4px 8px;
+}
+.dark .editor-toolbar select option {
+  background: #1e293b;
+  color: #e2e8f0;
 }
 
 /* Status bar */

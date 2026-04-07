@@ -18,8 +18,24 @@ export interface DocumentRecord {
   prepared_by: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  share_token: string | null;
+  is_shared: boolean;
+  shared_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface DocumentSignatureRecord {
+  id: string;
+  document_id: string;
+  signer_user_id: string | null;
+  signer_name: string;
+  signer_role: string;
+  signature_image_url: string | null;
+  signed_at: string;
+  ip_address: string | null;
+  certificate_hash: string | null;
+  created_at: string;
 }
 
 export interface DocumentVersionRecord {
@@ -78,7 +94,7 @@ export async function fetchDocument(id: string): Promise<DocumentRecord | null> 
 }
 
 export async function createDocument(
-  doc: Omit<DocumentRecord, 'id' | 'created_at' | 'updated_at' | 'version' | 'approved_by' | 'approved_at'>
+  doc: Omit<DocumentRecord, 'id' | 'created_at' | 'updated_at' | 'version' | 'approved_by' | 'approved_at' | 'share_token' | 'is_shared' | 'shared_at'>
 ): Promise<DocumentRecord | null> {
   const supabase = createClient();
   if (!supabase) return null;
@@ -178,4 +194,77 @@ export async function fetchVersions(documentId: string): Promise<DocumentVersion
     return [];
   }
   return (data || []) as DocumentVersionRecord[];
+}
+
+// ---- Sharing ----
+
+export async function toggleDocumentSharing(id: string, shared: boolean): Promise<DocumentRecord | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('editor_documents')
+    .update({
+      is_shared: shared,
+      shared_at: shared ? new Date().toISOString() : null,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('toggleDocumentSharing error:', error);
+    return null;
+  }
+  return data as DocumentRecord;
+}
+
+export async function fetchDocumentByShareToken(token: string): Promise<DocumentRecord | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('editor_documents')
+    .select('*')
+    .eq('share_token', token)
+    .eq('is_shared', true)
+    .single();
+
+  if (error) return null;
+  return data as DocumentRecord;
+}
+
+// ---- Signatures ----
+
+export async function createSignature(
+  sig: Omit<DocumentSignatureRecord, 'id' | 'created_at' | 'signed_at'>
+): Promise<DocumentSignatureRecord | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('document_signatures')
+    .insert(sig)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('createSignature error:', error);
+    return null;
+  }
+  return data as DocumentSignatureRecord;
+}
+
+export async function fetchSignatures(documentId: string): Promise<DocumentSignatureRecord[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('document_signatures')
+    .select('*')
+    .eq('document_id', documentId)
+    .order('signed_at', { ascending: true });
+
+  if (error) return [];
+  return (data || []) as DocumentSignatureRecord[];
 }

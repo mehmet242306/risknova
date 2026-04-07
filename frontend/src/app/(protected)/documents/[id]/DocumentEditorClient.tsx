@@ -16,22 +16,24 @@ import {
   CheckCircle2, RotateCcw, Sparkles,
   PanelRightOpen, PanelRightClose,
   FileText, Clock, FileEdit, AlertCircle,
-  ZoomIn,
+  ZoomIn, Trash2, Share2, PenTool,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   fetchDocument, createDocument, updateDocument,
-  createVersion, fetchVersions,
-  type DocumentRecord, type DocumentVersionRecord,
+  createVersion, fetchVersions, fetchSignatures,
+  type DocumentRecord, type DocumentVersionRecord, type DocumentSignatureRecord,
 } from '@/lib/supabase/document-api';
-import { getP1Template } from '@/lib/document-templates-p1';
+import { getTemplate } from '@/lib/document-templates-p1';
 import { getGroupByKey } from '@/lib/document-groups';
 import {
-  resolveVariables,
   type CompanyVariableData,
 } from '@/lib/document-variables';
 import { EditorToolbar } from '@/components/documents/EditorToolbar';
 import { AIAssistantPanel } from '@/components/documents/AIAssistantPanel';
+import { ShareModal } from '@/components/documents/ShareModal';
+import { SignatureModal } from '@/components/documents/SignatureModal';
+import QRCode from 'qrcode';
 import type { JSONContent } from '@tiptap/react';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
@@ -55,6 +57,8 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const qGroup = searchParams.get('group') || '';
   const qTitle = searchParams.get('title') || '';
   const qTemplateId = searchParams.get('templateId') || '';
+  const qMode = searchParams.get('mode') || '';
+  const qCompanyId = searchParams.get('companyId') || '';
 
   // State
   const [doc, setDoc] = useState<DocumentRecord | null>(null);
@@ -74,6 +78,13 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const [zoom, setZoom] = useState(1);
   const [initialContent, setInitialContent] = useState<JSONContent | undefined>(undefined);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [signatures, setSignatures] = useState<DocumentSignatureRecord[]>([]);
+  const [userName, setUserName] = useState('');
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   // Word/char count
   const [wordCount, setWordCount] = useState(0);
@@ -101,12 +112,14 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
       const text = ed.state.doc.textContent;
       setCharCount(text.length);
       setWordCount(text.split(/\s+/).filter(Boolean).length);
+      setHasUnsavedChanges(true);
 
-      // Auto-save debounce
+      // Auto-save debounce (5 seconds)
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
       autoSaveTimer.current = setTimeout(() => {
         handleAutoSave(ed.getJSON());
-      }, 30000);
+        setHasUnsavedChanges(false);
+      }, 5000);
     },
     editorProps: {
       attributes: {
@@ -121,6 +134,27 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
       editor.commands.setContent(initialContent);
     }
   }, [editor, initialContent]);
+
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  // Generate QR code when doc has share_token
+  useEffect(() => {
+    if (doc?.share_token) {
+      const url = `${window.location.origin}/share/${doc.share_token}`;
+      QRCode.toDataURL(url, { width: 80, margin: 1, color: { dark: '#0F172A', light: '#FFFFFF' } })
+        .then(setQrDataUrl)
+        .catch(() => {});
+    }
+  }, [doc?.share_token]);
 
   // Load context
   useEffect(() => {
@@ -140,6 +174,17 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
       if (!profile?.organization_id) { setLoading(false); return; }
       setOrgId(profile.organization_id);
       setUserId(profile.id);
+
+      // Resolve workspace_id from companyId (if provided)
+      if (qCompanyId) {
+        const { data: ws } = await supabase
+          .from('company_workspaces')
+          .select('id')
+          .eq('company_identity_id', qCompanyId)
+          .eq('organization_id', profile.organization_id)
+          .limit(1);
+        if (ws?.[0]) setWorkspaceId(ws[0].id);
+      }
 
       // Company data for variables
       const { data: workspaces } = await supabase
@@ -172,6 +217,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
             specialist_name: profile.full_name || '',
           });
         }
+        setUserName(profile.full_name || '');
       }
 
       // Load existing doc or template
@@ -185,9 +231,20 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           setStatus(existingDoc.status);
           const vers = await fetchVersions(documentId);
           setVersions(vers);
+          const sigs = await fetchSignatures(documentId);
+          setSignatures(sigs);
+        }
+      } else if (qMode === 'import') {
+        // Load imported content from sessionStorage (set by DocumentsClient)
+        const importedMarkdown = sessionStorage.getItem('importedContent');
+        if (importedMarkdown) {
+          sessionStorage.removeItem('importedContent');
+          const { markdownToTipTapJSON } = await import('@/lib/markdown-to-tiptap');
+          const json = markdownToTipTapJSON(importedMarkdown);
+          setInitialContent(json);
         }
       } else if (qTemplateId) {
-        const template = getP1Template(qTemplateId);
+        const template = await getTemplate(qTemplateId);
         if (template) {
           setInitialContent(template.content);
           setTitle(template.title);
@@ -238,7 +295,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
       } else {
         const newDoc = await createDocument({
           organization_id: orgId,
-          company_workspace_id: null,
+          company_workspace_id: workspaceId,
           template_id: null,
           group_key: groupKey,
           title,
@@ -254,6 +311,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
       }
       setLastSavedAt(new Date());
       setSaved(true);
+      setHasUnsavedChanges(false);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       console.error('Save error:', err);
@@ -267,13 +325,12 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
     if (!editor) return;
     setExporting(true);
     try {
-      const { generateDocx } = await import('@/lib/document-generator');
-      const textContent = tiptapToMarkdown(editor.getJSON());
-      const resolvedContent = resolveVariables(textContent, companyData);
-      await generateDocx({
-        title: resolveVariables(title, companyData),
-        content: resolvedContent,
-        type: 'docx',
+      const { generateDocxFromTipTap } = await import('@/lib/document-generator');
+      await generateDocxFromTipTap({
+        title,
+        json: editor.getJSON(),
+        companyData,
+        companyName: companyData.official_name,
       });
     } catch (err) {
       console.error('Export error:', err);
@@ -281,6 +338,56 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
       setExporting(false);
     }
   }, [editor, title, companyData]);
+
+  // PDF Export (browser print)
+  const handlePdfExport = useCallback(() => {
+    if (!editor) return;
+    const content = editor.getHTML();
+    const companyName = companyData.official_name || '';
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`<!DOCTYPE html>
+<html><head><title>${title}</title>
+<style>
+  @page { margin: 2cm; size: A4; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #0F172A; margin: 0; padding: 0; }
+  h1 { font-size: 18pt; color: #D4A017; margin-bottom: 4pt; }
+  h2 { font-size: 14pt; color: #0F172A; margin-top: 16pt; border-bottom: 1px solid #E2E8F0; padding-bottom: 4pt; }
+  h3 { font-size: 12pt; color: #0F172A; margin-top: 12pt; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #CBD5E1; padding: 6px 8px; text-align: left; }
+  th { background: #F1F5F9; font-weight: bold; }
+  ul, ol { margin: 4pt 0; padding-left: 20pt; }
+  blockquote { border-left: 3px solid #D4A017; padding-left: 12px; color: #64748B; font-style: italic; }
+  hr { border: none; border-top: 1px solid #E2E8F0; margin: 12pt 0; }
+  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #D4A017; padding-bottom: 8pt; margin-bottom: 16pt; }
+  .header-brand { color: #D4A017; font-weight: bold; font-size: 10pt; }
+  .header-company { color: #64748B; font-size: 9pt; }
+  .footer { margin-top: 24pt; border-top: 1px solid #E2E8F0; padding-top: 8pt; font-size: 8pt; color: #94A3B8; display: flex; justify-content: space-between; align-items: flex-end; }
+  .qr-section { text-align: right; }
+  .qr-section img { width: 60px; height: 60px; }
+  .qr-section p { font-size: 6pt; color: #94A3B8; margin: 2pt 0 0; }
+  @media print { .no-print { display: none; } }
+</style></head><body>
+<div class="header">
+  <span class="header-brand">RiskNova</span>
+  <span class="header-company">${companyName}</span>
+</div>
+<h1>${title}</h1>
+${content}
+<div class="footer">
+  <div>
+    <span>${title}</span><br/>
+    <span>${new Date().toLocaleDateString('tr-TR')}</span>
+  </div>
+  ${qrDataUrl ? `<div class="qr-section"><img src="${qrDataUrl}" alt="QR"/><p>RiskNova Doğrulama</p></div>` : ''}
+</div>
+<script>setTimeout(()=>window.print(),500)<\/script>
+</body></html>`);
+    printWindow.document.close();
+  }, [editor, title, companyData]);
+
 
   const group = getGroupByKey(groupKey);
   const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.taslak;
@@ -350,12 +457,62 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           </button>
 
           <button
+            onClick={() => {
+              if (!editor) return;
+              if (editor.state.doc.textContent.trim().length === 0) return;
+              if (window.confirm('Editör içeriği temizlenecek. Emin misiniz?')) {
+                editor.commands.clearContent();
+                setHasUnsavedChanges(false);
+              }
+            }}
+            className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-[var(--text-secondary)] hover:text-red-500"
+            title="Sayfayı Temizle"
+          >
+            <Trash2 size={14} />
+          </button>
+
+          <button
             onClick={handleExport}
             disabled={exporting}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-[var(--card-border)] rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-primary)] disabled:opacity-50"
           >
             <Download size={13} />
-            {exporting ? 'İndiriliyor...' : 'Word'}
+            {exporting ? '...' : 'Word'}
+          </button>
+          <button
+            onClick={handlePdfExport}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-[var(--card-border)] rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-primary)]"
+          >
+            <FileText size={13} />
+            PDF
+          </button>
+
+          <button
+            onClick={() => doc && setShowShareModal(true)}
+            disabled={!doc}
+            title={!doc ? 'Önce dokümanı kaydedin' : 'QR Kod, Link, WhatsApp ile paylaş'}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              doc?.is_shared
+                ? 'border-green-300 text-green-600 bg-green-50 dark:bg-green-900/20 dark:border-green-800'
+                : 'border-[var(--card-border)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
+            }`}
+          >
+            <Share2 size={13} />
+            Paylaş
+          </button>
+
+          <button
+            onClick={() => doc && setShowSignModal(true)}
+            disabled={!doc}
+            title={!doc ? 'Önce dokümanı kaydedin' : 'E-İmza / Mobil İmza ile imzala'}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              signatures.length > 0
+                ? 'border-blue-300 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800'
+                : 'border-[var(--card-border)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
+            }`}
+          >
+            <PenTool size={13} />
+            İmzala {signatures.length > 0 && `(${signatures.length})`}
           </button>
 
           <button
@@ -381,6 +538,13 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
           >
             {editor && <EditorContent editor={editor} />}
+            {/* QR Code — sağ alt köşe */}
+            {qrDataUrl && doc && (
+              <div className="absolute bottom-6 right-6 flex flex-col items-center gap-1 opacity-70 hover:opacity-100 transition-opacity print:opacity-100" title={`Doğrulama: /share/${doc.share_token}`}>
+                <img src={qrDataUrl} alt="QR Doğrulama" className="w-16 h-16 rounded" />
+                <span className="text-[7px] text-gray-400 font-mono">RiskNova Doğrulama</span>
+              </div>
+            )}
           </div>
           {/* Bottom spacer */}
           <div style={{ height: `${60 * zoom}px` }} />
@@ -430,71 +594,37 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           </select>
         </div>
       </div>
+
+      {/* ── Modals ── */}
+      {doc && (
+        <>
+          <ShareModal
+            isOpen={showShareModal}
+            onClose={() => setShowShareModal(false)}
+            documentId={doc.id}
+            documentTitle={title}
+            shareToken={doc.share_token}
+            isShared={doc.is_shared}
+            onShareChanged={(shared, token) => {
+              setDoc({ ...doc, is_shared: shared, share_token: token });
+            }}
+          />
+          <SignatureModal
+            isOpen={showSignModal}
+            onClose={() => setShowSignModal(false)}
+            documentId={doc.id}
+            signerName={userName || 'İmzalayan'}
+            signerRole="İSG Uzmanı"
+            signerUserId={userId}
+            contentHash={JSON.stringify(editor?.getJSON() || {}).slice(0, 64)}
+            onSigned={async () => {
+              const sigs = await fetchSignatures(doc.id);
+              setSignatures(sigs);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }
 
-/* ── Helper: TipTap JSON → Markdown ── */
-function tiptapToMarkdown(json: JSONContent): string {
-  if (!json.content) return '';
-  const lines: string[] = [];
-
-  for (const node of json.content) {
-    switch (node.type) {
-      case 'heading': {
-        const level = node.attrs?.level || 1;
-        lines.push(`${'#'.repeat(level)} ${extractText(node)}`);
-        lines.push('');
-        break;
-      }
-      case 'paragraph':
-        lines.push(extractText(node));
-        lines.push('');
-        break;
-      case 'bulletList':
-        if (node.content) node.content.forEach((li) => lines.push(`- ${extractText(li)}`));
-        lines.push('');
-        break;
-      case 'orderedList':
-        if (node.content) node.content.forEach((li, i) => lines.push(`${i + 1}. ${extractText(li)}`));
-        lines.push('');
-        break;
-      case 'blockquote':
-        lines.push(`> ${extractText(node)}`);
-        lines.push('');
-        break;
-      case 'horizontalRule':
-        lines.push('---');
-        lines.push('');
-        break;
-      case 'table':
-        if (node.content) {
-          for (const row of node.content) {
-            if (row.content) {
-              lines.push(`| ${row.content.map((cell) => extractText(cell)).join(' | ')} |`);
-            }
-          }
-        }
-        lines.push('');
-        break;
-      default:
-        lines.push(extractText(node));
-        lines.push('');
-    }
-  }
-  return lines.join('\n');
-}
-
-function extractText(node: JSONContent): string {
-  if (node.text) {
-    let t = node.text;
-    if (node.marks) {
-      for (const m of node.marks) {
-        if (m.type === 'bold') t = `**${t}**`;
-        if (m.type === 'italic') t = `*${t}*`;
-      }
-    }
-    return t;
-  }
-  return node.content ? node.content.map(extractText).join('') : '';
-}

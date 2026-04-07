@@ -1453,28 +1453,222 @@ function CommitteeMeetingForm({ companyId, nextNumber, periodMonths, editing, on
   );
 }
 
-/* ── DOCUMENTS ── */
-export function DocumentsTab({ company }: { company: CompanyRecord }) {
+/* ── DOCUMENTS (Archive System) ── */
+export function DocumentsTab({ company, companyId }: { company: CompanyRecord; companyId: string }) {
+  const [docs, setDocs] = useState<Array<{ id: string; title: string; group_key: string; status: string; version: number; updated_at: string; is_shared: boolean }>>([]);
+  const [archivedDocs, setArchivedDocs] = useState<typeof docs>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'uzman' | 'hekim' | 'diger'>('all');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [showArchive, setShowArchive] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      const sb = createClient();
+      if (!sb) { setLoading(false); return; }
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) { setLoading(false); return; }
+      const { data: profile } = await sb.from('user_profiles').select('organization_id').eq('auth_user_id', user.id).single();
+      if (!profile?.organization_id) { setLoading(false); return; }
+
+      // Get workspace ID for this company
+      const { data: ws } = await sb.from('company_workspaces').select('id').eq('company_identity_id', companyId).eq('organization_id', profile.organization_id).limit(1);
+      const wsId = ws?.[0]?.id;
+
+      // Fetch active docs
+      let q = sb.from('editor_documents').select('id, title, group_key, status, version, updated_at, is_shared').eq('organization_id', profile.organization_id).neq('status', 'arsiv').order('updated_at', { ascending: false });
+      if (wsId) q = q.eq('company_workspace_id', wsId);
+      const { data: activeDocs } = await q;
+
+      // Fetch archived docs
+      let aq = sb.from('editor_documents').select('id, title, group_key, status, version, updated_at, is_shared').eq('organization_id', profile.organization_id).eq('status', 'arsiv').order('updated_at', { ascending: false });
+      if (wsId) aq = aq.eq('company_workspace_id', wsId);
+      const { data: archDocs } = await aq;
+
+      setDocs(activeDocs || []);
+      setArchivedDocs(archDocs || []);
+      setLoading(false);
+    }
+    load();
+  }, [companyId]);
+
+  // Import DOCUMENT_GROUPS lazily
+  const { DOCUMENT_GROUPS } = require('@/lib/document-groups');
+  const allGroups = DOCUMENT_GROUPS as Array<{ key: string; title: string; icon: string; color: string; items: Array<{ id: string; title: string }> }>;
+
+  // Define which groups belong to each role
+  const hekimGroups = new Set(['isyeri-hekimi', 'ilkyardim']);
+  const digerGroups = new Set(['personel-ozluk', 'iletisim-yazisma', 'diger-kayitlar']);
+
+  // Filter docs
+  const filtered = docs.filter((d) => {
+    if (search && !d.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (statusFilter !== 'all' && d.status !== statusFilter) return false;
+    if (roleFilter === 'hekim' && !hekimGroups.has(d.group_key)) return false;
+    if (roleFilter === 'uzman' && (hekimGroups.has(d.group_key) || digerGroups.has(d.group_key))) return false;
+    if (roleFilter === 'diger' && !digerGroups.has(d.group_key)) return false;
+    return true;
+  });
+
+  // Group docs by group_key
+  const groupedDocs = new Map<string, typeof docs>();
+  for (const d of filtered) {
+    const arr = groupedDocs.get(d.group_key) || [];
+    arr.push(d);
+    groupedDocs.set(d.group_key, arr);
+  }
+
+  const stats = {
+    total: docs.length,
+    hazir: docs.filter(d => d.status === 'hazir').length,
+    taslak: docs.filter(d => d.status === 'taslak').length,
+    arsiv: archivedDocs.length,
+  };
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  const stCfg: Record<string, { l: string; c: string }> = {
+    taslak: { l: 'Taslak', c: 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30' },
+    hazir: { l: 'Hazır', c: 'text-green-600 bg-green-100 dark:bg-green-900/30' },
+    onay_bekliyor: { l: 'Onay', c: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' },
+    revizyon: { l: 'Revizyon', c: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30' },
+    arsiv: { l: 'Arşiv', c: 'text-gray-500 bg-gray-100 dark:bg-gray-800/30' },
+  };
+
+  if (loading) return <Sec title="Döküman Arşivi" desc="Yükleniyor..."><div className="h-32 animate-pulse bg-muted rounded-lg" /></Sec>;
+
   return (
-    <Sec title="Döküman Yönetimi" desc="Firma dökümanları ve belge durumu.">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-border p-3.5 text-center">
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Toplam Döküman</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{company.documentCount}</p>
+    <div className="space-y-4">
+      <Sec title="Arşiv" desc={`${company.name} — firma dökümanları, arşiv ve belge yönetimi.`}>
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          {[
+            { l: 'Toplam', v: stats.total, c: 'text-foreground' },
+            { l: 'Hazır', v: stats.hazir, c: 'text-green-600' },
+            { l: 'Taslak', v: stats.taslak, c: 'text-yellow-600' },
+            { l: 'Arşiv', v: stats.arsiv, c: 'text-gray-500' },
+          ].map(s => (
+            <div key={s.l} className="rounded-lg border border-border p-3 text-center">
+              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{s.l}</p>
+              <p className={`mt-1 text-xl font-semibold tabular-nums ${s.c}`}>{s.v}</p>
+            </div>
+          ))}
         </div>
-        <div className="rounded-lg border border-border p-3.5 text-center">
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Risk Değerlendirme</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">{company.openRiskAssessments}</p>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Input placeholder="Doküman ara..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs h-8 text-xs" />
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="h-8 text-xs rounded border border-border bg-card text-foreground px-2">
+            <option value="all">Tüm Durumlar</option>
+            <option value="taslak">Taslak</option>
+            <option value="hazir">Hazır</option>
+            <option value="onay_bekliyor">Onay Bekliyor</option>
+            <option value="revizyon">Revizyon</option>
+          </select>
+          {/* Role dropdown */}
+          <select
+            value={roleFilter}
+            onChange={e => setRoleFilter(e.target.value as typeof roleFilter)}
+            className="h-8 text-xs rounded border border-border bg-card text-foreground px-2 ml-auto"
+          >
+            <option value="all">Tüm Personel</option>
+            <option value="uzman">İSG Uzmanı</option>
+            <option value="hekim">İşyeri Hekimi</option>
+            <option value="diger">Diğer Sağlık Personeli</option>
+          </select>
         </div>
-        <div className="rounded-lg border border-border p-3.5 text-center">
-          <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Kapsam</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums text-foreground">%{company.completionRate}</p>
+
+        {/* Grouped Accordion */}
+        {filtered.length === 0 && !loading ? (
+          <div className="text-center py-8 text-sm text-muted-foreground">
+            {docs.length === 0 ? 'Bu firma için henüz doküman oluşturulmadı.' : 'Filtrelere uygun doküman bulunamadı.'}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {allGroups.filter(g => {
+              if (roleFilter === 'all') return true;
+              if (roleFilter === 'hekim') return hekimGroups.has(g.key);
+              if (roleFilter === 'diger') return digerGroups.has(g.key);
+              // uzman: everything except hekim and diger
+              return !hekimGroups.has(g.key) && !digerGroups.has(g.key);
+            }).map(group => {
+              const gDocs = groupedDocs.get(group.key) || [];
+              if (gDocs.length === 0 && search) return null;
+              const isExp = expandedGroups.has(group.key);
+              const isHekim = group.key === 'isyeri-hekimi';
+
+              return (
+                <div key={group.key} className={`rounded-lg border overflow-hidden ${isHekim ? 'border-emerald-300 dark:border-emerald-800' : 'border-border'}`}>
+                  <button onClick={() => toggleGroup(group.key)} className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 transition-colors ${isHekim ? 'bg-emerald-50 dark:bg-emerald-900/10' : ''}`}>
+                    <span className="text-xs">{isExp ? '▾' : '▸'}</span>
+                    {isHekim && <span className="text-sm">👨‍⚕️</span>}
+                    <span className="text-xs font-semibold text-foreground flex-1">{group.title}</span>
+                    <span className="text-[10px] text-muted-foreground">{gDocs.length} doküman</span>
+                  </button>
+                  {isExp && (
+                    <div className="border-t border-border">
+                      {gDocs.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-muted-foreground">Bu grupta henüz doküman yok.</p>
+                      ) : (
+                        gDocs.map(d => {
+                          const st = stCfg[d.status] || stCfg.taslak;
+                          return (
+                            <Link key={d.id} href={`/documents/${d.id}`} className="flex items-center gap-3 px-4 py-2 hover:bg-muted/30 transition-colors border-b border-border last:border-b-0">
+                              <span className="text-xs text-foreground flex-1 truncate">{d.title}</span>
+                              <span className="text-[10px] text-muted-foreground">{new Date(d.updated_at).toLocaleDateString('tr-TR')}</span>
+                              <span className="text-[10px] text-muted-foreground">v{d.version}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${st.c}`}>{st.l}</span>
+                              {d.is_shared && <Badge variant="neutral" className="text-[8px] px-1">Paylaşıldı</Badge>}
+                            </Link>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            }).filter(Boolean)}
+          </div>
+        )}
+
+        {/* New Document Button */}
+        <div className="mt-4 flex justify-center">
+          <Link href={`/documents?companyId=${companyId}`} className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors text-xs font-medium">
+            + Yeni Doküman Oluştur
+          </Link>
         </div>
-      </div>
-      <div className="mt-5 rounded-lg border border-info/30 bg-info/5 p-4">
-        <p className="text-sm text-foreground">Döküman yönetimi modülü geliştirme aşamasındadır.</p>
-      </div>
-    </Sec>
+      </Sec>
+
+      {/* Archive Section */}
+      <Sec title="Arşiv" desc="Arşivlenen dokümanlar.">
+        <button onClick={() => setShowArchive(!showArchive)} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <span>{showArchive ? '▾' : '▸'}</span>
+          Arşivlenen Dokümanlar ({archivedDocs.length})
+        </button>
+        {showArchive && archivedDocs.length > 0 && (
+          <div className="mt-3 space-y-1">
+            {archivedDocs.map(d => (
+              <Link key={d.id} href={`/documents/${d.id}`} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border hover:bg-muted/30 transition-colors">
+                <span className="text-xs text-muted-foreground flex-1 truncate line-through">{d.title}</span>
+                <span className="text-[10px] text-muted-foreground">{new Date(d.updated_at).toLocaleDateString('tr-TR')}</span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium text-gray-500 bg-gray-100 dark:bg-gray-800/30">Arşiv</span>
+              </Link>
+            ))}
+          </div>
+        )}
+        {showArchive && archivedDocs.length === 0 && (
+          <p className="mt-2 text-xs text-muted-foreground">Arşivde doküman yok.</p>
+        )}
+      </Sec>
+    </div>
   );
 }
 

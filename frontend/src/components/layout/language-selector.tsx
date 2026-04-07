@@ -132,10 +132,19 @@ function FlagAZ() {
   );
 }
 
+function FlagID() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 30" className="h-4 w-6 rounded-sm">
+      <rect width="60" height="15" fill="#CE1126"/>
+      <rect width="60" height="15" y="15" fill="#fff"/>
+    </svg>
+  );
+}
+
 const flagComponents: Record<string, () => React.JSX.Element> = {
   tr: FlagTR, en: FlagGB, ar: FlagSA, ru: FlagRU, de: FlagDE,
   fr: FlagFR, es: FlagES, zh: FlagCN, ja: FlagJP, hi: FlagIN,
-  ko: FlagKR, az: FlagAZ,
+  ko: FlagKR, az: FlagAZ, id: FlagID,
 };
 
 /* ------------------------------------------------------------------ */
@@ -158,7 +167,8 @@ const languages: Language[] = [
   { code: "zh", label: "\u4E2D\u6587" },
   { code: "ja", label: "\u65E5\u672C\u8A9E" },
   { code: "ko", label: "\uD55C\uAD6D\uC5B4" },
-  { code: "az", label: "Az\u0259rbaycanca" },
+  { code: "az", label: "Az\u0259rbaycan Dili" },
+  { code: "id", label: "Bahasa Indonesia" },
   { code: "hi", label: "\u0939\u093F\u0928\u094D\u0926\u0940" },
 ];
 
