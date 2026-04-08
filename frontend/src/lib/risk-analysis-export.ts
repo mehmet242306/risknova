@@ -34,6 +34,12 @@ export type ExportImage = {
   dataUrl: string;
   fileName: string;
   findingCount: number;
+  /** Yeni: Gorsel meta verileri */
+  imageRelevance?: "relevant" | "irrelevant" | "not_real_photo";
+  imageDescription?: string;
+  areaSummary?: string;
+  positiveObservations?: string[];
+  photoQuality?: "good" | "moderate" | "poor";
 };
 
 export type ExportFinding = {
@@ -56,6 +62,13 @@ export type ExportFinding = {
   paramDetails?: { code: string; label: string; value: number; contribution: number }[];
   fkDetails?: { likelihood: number; severity: number; exposure: number };
   matrixDetails?: { likelihood: number; severity: number };
+  fmeaDetails?: { severity: number; occurrence: number; detection: number; rpn: number };
+  hazopDetails?: { severity: number; likelihood: number; detectability: number; guideWord: string; parameter: string; deviation: string };
+  bowTieDetails?: { threatProbability: number; consequenceSeverity: number; preventionBarriers: number; mitigationBarriers: number; rawRisk: number; residualRisk: number };
+  ftaDetails?: { componentCount: number; gateType: string; systemProbability: number; systemCriticality: number };
+  checklistDetails?: { compliancePercent: number; totalItems: number; compliantCount: number; nonCompliantCount: number };
+  jsaDetails?: { jobTitle: string; stepCount: number; highRiskStepCount: number; maxStepScore: number; avgStepScore: number };
+  lopaDetails?: { initiatingEventFreq: number; mitigatedFreq: number; riskReductionFactor: number; layerCount: number; meetsTarget: boolean };
   legalReferences?: { law: string; article: string; description: string }[];
 };
 
@@ -101,7 +114,31 @@ function severityBg(s: string): string {
 }
 
 function scoreDisplay(f: ExportFinding): string {
-  return f.score < 2 ? (f.score * 100).toFixed(0) : String(Math.round(f.score));
+  const m = f.method;
+  // Percentage-based methods (0-1 range)
+  if (m === "r_skor" || m === "bow_tie" || m === "fta") return (f.score * 100).toFixed(0);
+  // Checklist: compliance percent
+  if (m === "checklist" && f.checklistDetails) return `%${f.checklistDetails.compliancePercent}`;
+  // LOPA: scientific notation
+  if (m === "lopa" && f.lopaDetails) return f.lopaDetails.mitigatedFreq.toExponential(1);
+  // JSA: decimal
+  if (m === "jsa") return f.score.toFixed(1);
+  // Integer-based methods (FK, Matrix, FMEA, HAZOP)
+  return String(Math.round(f.score));
+}
+
+function methodScoreDetail(f: ExportFinding): string {
+  if (f.fmeaDetails) return `S(${f.fmeaDetails.severity}) x O(${f.fmeaDetails.occurrence}) x D(${f.fmeaDetails.detection}) = RPN ${f.fmeaDetails.rpn}`;
+  if (f.hazopDetails) return `S(${f.hazopDetails.severity}) x L(${f.hazopDetails.likelihood}) x (6-D)(${6 - f.hazopDetails.detectability}) | ${f.hazopDetails.guideWord}`;
+  if (f.bowTieDetails) return `Ham: ${f.bowTieDetails.rawRisk} → Artık: ${f.bowTieDetails.residualRisk.toFixed(1)} | Ö:${f.bowTieDetails.preventionBarriers} A:${f.bowTieDetails.mitigationBarriers}`;
+  if (f.ftaDetails) return `${f.ftaDetails.gateType} kapı | ${f.ftaDetails.componentCount} bileşen | P=${f.ftaDetails.systemProbability.toExponential(2)}`;
+  if (f.checklistDetails) return `%${f.checklistDetails.compliancePercent} uygun | ${f.checklistDetails.compliantCount}/${f.checklistDetails.totalItems}`;
+  if (f.jsaDetails) return `${f.jsaDetails.stepCount} adım | Max: ${f.jsaDetails.maxStepScore.toFixed(1)} | Yüksek risk: ${f.jsaDetails.highRiskStepCount}`;
+  if (f.lopaDetails) return `RRF: ${f.lopaDetails.riskReductionFactor.toFixed(0)}x | ${f.lopaDetails.layerCount} katman | ${f.lopaDetails.meetsTarget ? "Hedef OK" : "Hedef KARŞILANMADI"}`;
+  if (f.fkDetails) return `L(${f.fkDetails.likelihood}) x S(${f.fkDetails.severity}) x E(${f.fkDetails.exposure})`;
+  if (f.matrixDetails) return `O(${f.matrixDetails.likelihood}) x Ş(${f.matrixDetails.severity})`;
+  if (f.paramDetails) return f.paramDetails.map(p => `${p.code}: ${(p.value * 100).toFixed(0)}%`).join(", ");
+  return "";
 }
 
 type RowGroup = { rowTitle: string; images: ExportImage[]; findings: ExportFinding[] };
@@ -151,6 +188,46 @@ function groupByRow(data: RiskAnalysisExportData): RowGroup[] {
 /* HTML Generator — SATIR BAZLI (Professional ISG Report)              */
 /* ================================================================== */
 
+function buildFindingCardHTML(f: ExportFinding): string {
+  return `
+    <div style="margin:10px 0;border:1px solid #dee2e6;border-radius:8px;overflow:hidden;page-break-inside:avoid;">
+      <div style="background:${severityBg(f.severity)};padding:8px 12px;border-bottom:1px solid #dee2e6;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-weight:700;font-size:13px;color:#1a1a2e;">${f.title}</span>
+          <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700;color:#fff;background:${severityColor(f.severity)};">
+            ${f.scoreLabel} — ${scoreDisplay(f)}
+          </span>
+        </div>
+        <div style="margin-top:3px;font-size:10px;color:#666;">${f.category}${f.correctiveActionRequired ? ' · <strong style="color:#DC2626;">DÖF Adayı</strong>' : ""}</div>
+      </div>
+      <div style="padding:10px 12px;">
+        <div style="margin-bottom:6px;">
+          <p style="margin:0 0 2px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Tespit ve Değerlendirme</p>
+          <p style="margin:0;font-size:11px;line-height:1.5;">${f.recommendation || "Detaylı değerlendirme yapılmalıdır."}</p>
+        </div>
+        <div style="margin-bottom:6px;">
+          <p style="margin:0 0 2px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Alınması Gereken Önlem</p>
+          <p style="margin:0;font-size:11px;line-height:1.5;">${f.action}</p>
+        </div>
+        ${methodScoreDetail(f) ? `
+        <div style="margin-bottom:6px;">
+          <p style="margin:0 0 2px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Skorlama Detayı (${f.methodLabel})</p>
+          <p style="margin:0;font-size:10px;line-height:1.4;color:#333;font-family:monospace;">${methodScoreDetail(f)}</p>
+        </div>` : ""}
+        ${(f.legalReferences ?? []).length > 0 ? `
+          <div>
+            <p style="margin:0 0 3px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Mevzuat Dayanağı</p>
+            ${(f.legalReferences ?? []).map((r) => `
+              <p style="margin:2px 0;font-size:10px;line-height:1.4;">
+                <strong>§ ${r.law}</strong>${r.article ? ` — ${r.article}` : ""}${r.description ? `<br/><span style="color:#666;margin-left:12px;">${r.description}</span>` : ""}
+              </p>
+            `).join("")}
+          </div>
+        ` : ""}
+      </div>
+    </div>`;
+}
+
 function generateHTML(data: RiskAnalysisExportData): string {
   const now = data.date || new Date().toLocaleDateString("tr-TR");
   const rows = groupByRow(data);
@@ -169,20 +246,18 @@ function generateHTML(data: RiskAnalysisExportData): string {
   // Satir bazli section'lar
   let globalIdx = 0;
   const rowSections = rows.map((group, gi) => {
-    // Gorseller (kucuk thumbnail satiri)
-    const imgCells = group.images.map((img) => `
-      <td style="border:none;padding:3px;width:${Math.floor(100 / Math.min(group.images.length, 4))}%;vertical-align:top;">
-        <img src="${img.dataUrl}" style="width:100%;height:auto;max-height:160px;object-fit:contain;border:1px solid #dee2e6;border-radius:4px;background:#f9fafb;" />
-        <p style="margin:2px 0 0;font-size:7px;color:#999;text-align:center;">${img.fileName} (${img.findingCount} tespit)</p>
-      </td>
-    `).join("");
 
-    const imagesBlock = group.images.length > 0 ? `
-      <table style="border:none;margin:8px 0 10px;"><tr>${imgCells}</tr></table>
-    ` : "";
+    // ── Gorsel bazli gruplama: her gorsel altinda kendi tespitleri ──
+    const imageGroups = group.images.map((img, imgIdx) => {
+      const imgFindings = group.findings.filter((f) => f.imageId === img.imageId);
+      return { img, imgIdx, findings: imgFindings };
+    });
+    // Gorsele atanamamis tespitler (eger varsa)
+    const orphanFindings = group.findings.filter((f) => !group.images.some((img) => img.imageId === f.imageId));
 
-    // Ozet tablo (bu satirin tespitleri)
-    const summaryRows = group.findings.map((f) => {
+    // Ozet tablo (tum tespitler)
+    const allFindingsInRow = group.findings;
+    const summaryRows = allFindingsInRow.map((f) => {
       globalIdx++;
       return `
         <tr style="background:${globalIdx % 2 === 0 ? "#fff" : "#f9fafb"};">
@@ -195,47 +270,69 @@ function generateHTML(data: RiskAnalysisExportData): string {
         </tr>`;
     }).join("");
 
-    const summaryTable = group.findings.length > 0 ? `
+    const summaryTable = allFindingsInRow.length > 0 ? `
       <table>
         <tr class="hdr"><th>#</th><th>Tespit</th><th>Kategori</th><th>Risk Sınıfı</th><th>Skor</th><th>DÖF</th></tr>
         ${summaryRows}
       </table>
     ` : "";
 
-    // Detayli tespit kartlari
-    const findingCards = group.findings.map((f) => `
-      <div style="margin:10px 0;border:1px solid #dee2e6;border-radius:8px;overflow:hidden;page-break-inside:avoid;">
-        <div style="background:${severityBg(f.severity)};padding:8px 12px;border-bottom:1px solid #dee2e6;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:700;font-size:13px;color:#1a1a2e;">${f.title}</span>
-            <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:9px;font-weight:700;color:#fff;background:${severityColor(f.severity)};">
-              ${f.scoreLabel} — ${scoreDisplay(f)}
-            </span>
-          </div>
-          <div style="margin-top:3px;font-size:10px;color:#666;">${f.category}${f.correctiveActionRequired ? ' · <strong style="color:#DC2626;">DÖF Adayı</strong>' : ""}</div>
-        </div>
-        <div style="padding:10px 12px;">
-          <div style="margin-bottom:6px;">
-            <p style="margin:0 0 2px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Tespit ve Değerlendirme</p>
-            <p style="margin:0;font-size:11px;line-height:1.5;">${f.recommendation || "Detaylı değerlendirme yapılmalıdır."}</p>
-          </div>
-          <div style="margin-bottom:6px;">
-            <p style="margin:0 0 2px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Alınması Gereken Önlem</p>
-            <p style="margin:0;font-size:11px;line-height:1.5;">${f.action}</p>
-          </div>
-          ${(f.legalReferences ?? []).length > 0 ? `
-            <div>
-              <p style="margin:0 0 3px 0;font-size:9px;font-weight:600;color:#B8860B;text-transform:uppercase;letter-spacing:0.05em;">Mevzuat Dayanağı</p>
-              ${(f.legalReferences ?? []).map((r) => `
-                <p style="margin:2px 0;font-size:10px;line-height:1.4;">
-                  <strong>§ ${r.law}</strong>${r.article ? ` — ${r.article}` : ""}${r.description ? `<br/><span style="color:#666;margin-left:12px;">${r.description}</span>` : ""}
-                </p>
-              `).join("")}
+    // ── Gorsel bazli detay kartlari ──
+    const imageDetailSections = imageGroups.map(({ img, imgIdx, findings }) => {
+      if (findings.length === 0 && !img.dataUrl && img.imageRelevance === "relevant") return "";
+
+      const isIrrelevant = img.imageRelevance === "not_real_photo" || img.imageRelevance === "irrelevant";
+
+      // Analiz yapilamayan gorseller icin ozel aciklama
+      const relevanceNote = isIrrelevant
+        ? `<div style="margin:6px 0;padding:8px 10px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:6px;font-size:10px;color:#92400E;">
+            <strong>Analiz Yapılamadı:</strong> ${img.imageRelevance === "not_real_photo" ? "Bu görsel gerçek bir fotoğraf değil (çizim/illüstrasyon/dijital üretim)." : "Bu görsel risk analizi kapsamında değerlendirilmedi."}
+            ${img.imageDescription ? `<br/>Tespit: ${img.imageDescription}` : ""}
+          </div>`
+        : "";
+
+      // Olumlu tespitler
+      const positiveNote = !isIrrelevant && (img.positiveObservations ?? []).length > 0
+        ? `<div style="margin:6px 0;padding:8px 10px;background:#D1FAE5;border:1px solid #10B981;border-radius:6px;font-size:10px;color:#065F46;">
+            <strong>Olumlu Tespitler:</strong>
+            ${(img.positiveObservations ?? []).map(o => `<br/>✓ ${o}`).join("")}
+          </div>`
+        : "";
+
+      // Alan ozeti
+      const summaryNote = !isIrrelevant && img.areaSummary
+        ? `<p style="margin:4px 0 0;font-size:10px;color:#555;font-style:italic;">${img.areaSummary}</p>`
+        : "";
+
+      // Gorsel kalite uyarisi
+      const qualityNote = img.photoQuality && img.photoQuality !== "good"
+        ? `<span style="margin-left:8px;padding:1px 6px;border-radius:4px;font-size:9px;font-weight:600;${img.photoQuality === "poor" ? "background:#FEE2E2;color:#DC2626;" : "background:#FEF3C7;color:#D97706;"}">${img.photoQuality === "poor" ? "Düşük Kalite" : "Orta Kalite"}</span>`
+        : "";
+
+      const imgBlock = `
+        <div style="margin:12px 0 6px;padding:8px 12px;background:#f0f4f8;border-radius:8px;border:1px solid #d1d5db;">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <img src="${img.dataUrl}" style="width:220px;height:auto;max-height:165px;object-fit:contain;border:1px solid #dee2e6;border-radius:4px;background:#fff;" />
+            <div style="flex:1;">
+              <p style="margin:0;font-weight:700;font-size:12px;color:#1a1a2e;">Görsel ${imgIdx + 1}: ${img.fileName}${qualityNote}</p>
+              <p style="margin:3px 0 0;font-size:10px;color:#666;">${isIrrelevant ? "Analiz yapılamadı" : `${findings.length} tespit`}</p>
+              ${summaryNote}
             </div>
-          ` : ""}
-        </div>
-      </div>
-    `).join("");
+          </div>
+          ${relevanceNote}
+          ${positiveNote}
+        </div>`;
+
+      const findingCardsForImg = findings.map((f) => buildFindingCardHTML(f)).join("");
+
+      return imgBlock + findingCardsForImg;
+    }).join("");
+
+    // Sahipsiz tespitler (gorsele atanamamis)
+    const orphanSection = orphanFindings.length > 0 ? orphanFindings.map((f) => buildFindingCardHTML(f)).join("") : "";
+
+    // Detayli tespit kartlari — artik gorsel bazli gruplama icinde
+    const findingCards = imageDetailSections + orphanSection;
 
     return `
       <div style="margin-top:${gi === 0 ? "0" : "8"}px;page-break-before:${gi === 0 ? "auto" : "always"};">
@@ -245,7 +342,6 @@ function generateHTML(data: RiskAnalysisExportData): string {
           </h3>
           <p style="margin:2px 0 0;font-size:10px;color:#666;">${group.findings.length} tespit · ${group.images.length} görsel</p>
         </div>
-        ${imagesBlock}
         ${summaryTable}
         <div style="margin-top:10px;">
           ${findingCards}
@@ -550,6 +646,19 @@ export async function exportRiskAnalysisWord(data: RiskAnalysisExportData) {
         spacing: { after: 80 },
       }));
 
+      // Skorlama detayı
+      const mDetail = methodScoreDetail(f);
+      if (mDetail) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: `Skorlama Detayı (${f.methodLabel})`, bold: true, size: 16, font: "Segoe UI", color: GOLD_HEX, allCaps: true })],
+          spacing: { after: 20 },
+        }));
+        children.push(new Paragraph({
+          children: [new TextRun({ text: mDetail, size: 18, font: "Consolas", color: DARK_HEX })],
+          spacing: { after: 80 },
+        }));
+      }
+
       // Mevzuat
       if ((f.legalReferences ?? []).length > 0) {
         children.push(new Paragraph({
@@ -709,7 +818,7 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
     }
 
     // ── Tablo basligi (her grup icin) ──
-    const headers = ["#", "Tespit", "Kategori", "Risk Sınıfı", "Skor", "DÖF", "Tespit Detayı ve Çözüm Önerisi", "Mevzuat Dayanağı", "Alınacak Önlem"];
+    const headers = ["#", "Tespit", "Kategori", "Risk Sınıfı", "Skor", "Skor Detayı", "DÖF", "Tespit Detayı ve Çözüm Önerisi", "Mevzuat Dayanağı", "Alınacak Önlem"];
     const hRow = ws.addRow(headers);
     hRow.height = 20;
     hRow.eachCell((cell) => {
@@ -724,12 +833,14 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
       globalIdx++;
       const mevzuat = (f.legalReferences ?? []).map((r) => `${r.law}${r.article ? ` — ${r.article}` : ""}${r.description ? `: ${r.description}` : ""}`).join("\n");
 
+      const mDetail = methodScoreDetail(f);
       const row = ws.addRow([
         globalIdx,
         f.title,
         f.category,
         f.scoreLabel,
         f.score < 2 ? Number((f.score * 100).toFixed(0)) : Math.round(f.score),
+        mDetail || "-",
         f.correctiveActionRequired ? "Evet" : "-",
         f.recommendation || "Detaylı değerlendirme yapılmalıdır.",
         mevzuat || "-",
@@ -737,13 +848,14 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
       ]);
 
       row.alignment = { wrapText: true, vertical: "top" };
-      const COL_WIDTHS = [5, 30, 14, 10, 8, 6, 35, 30, 25];
+      const COL_WIDTHS = [5, 30, 14, 10, 8, 22, 6, 35, 30, 25];
       row.height = calcRowHeight([
         String(globalIdx),
         f.title,
         f.category,
         f.scoreLabel,
         String(f.score),
+        mDetail || "-",
         f.correctiveActionRequired ? "Evet" : "-",
         f.recommendation || "",
         mevzuat || "-",
@@ -754,9 +866,10 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
       const rColor = riskColor(f.severity);
       row.getCell(4).font = { bold: true, color: { argb: rColor }, size: 9 };
       row.getCell(5).font = { bold: true, size: 9 };
+      row.getCell(6).font = { size: 8, color: { argb: "555555" } };
 
       if (f.correctiveActionRequired) {
-        row.getCell(6).font = { bold: true, color: { argb: RED }, size: 9 };
+        row.getCell(7).font = { bold: true, color: { argb: RED }, size: 9 };
       }
 
       // Zebra renk

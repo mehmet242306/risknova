@@ -30,11 +30,25 @@ import {
   calculateR2D,
   calculateFK,
   calculateMatrix,
+  calculateFMEA,
+  calculateHAZOP,
+  calculateBowTie,
+  calculateFTA,
+  calculateChecklist,
+  calculateJSA,
+  calculateLOPA,
   getMatrixGrid,
   R2D_PARAMS,
   FK_LIKELIHOOD,
   FK_SEVERITY,
   FK_EXPOSURE,
+  FMEA_SEVERITY_OPTIONS,
+  FMEA_OCCURRENCE_OPTIONS,
+  FMEA_DETECTION_OPTIONS,
+  HAZOP_GUIDE_WORDS,
+  HAZOP_PARAMETERS,
+  LOPA_INIT_FREQ_OPTIONS,
+  LOPA_PFD_OPTIONS,
   MATRIX_LIKELIHOOD_LABELS,
   MATRIX_SEVERITY_LABELS,
   type R2DValues,
@@ -43,8 +57,27 @@ import {
   type FKResult,
   type MatrixValues,
   type MatrixResult,
+  type FMEAValues,
+  type FMEAResult,
+  type HAZOPValues,
+  type HAZOPResult,
+  type BowTieValues,
+  type BowTieResult,
+  type FTAValues,
+  type FTAResult,
+  type ChecklistValues,
+  type ChecklistResult,
+  type ChecklistItem,
+  type JSAValues,
+  type JSAResult,
+  type JSAStep,
+  type LOPAValues,
+  type LOPAResult,
+  type LOPALayer,
   METHOD_CATALOG,
 } from "@/lib/risk-scoring";
+import { MethodIcon } from "@/components/risk-analysis/MethodIcon";
+import { FMEAPanel, HAZOPPanel, BowTiePanel, FTAPanel, ChecklistPanel, JSAPanel, LOPAPanel } from "@/components/risk-analysis/panels";
 import {
   exportRiskAnalysisPDF,
   exportRiskAnalysisWord,
@@ -131,6 +164,24 @@ type LegalReference = {
   description: string;
 };
 
+type FaceRegion = {
+  faceX: number;
+  faceY: number;
+  faceW: number;
+  faceH: number;
+};
+
+type ImageMeta = {
+  imageId: string;
+  faces: FaceRegion[];
+  positiveObservations: string[];
+  photoQuality: { level: "good" | "moderate" | "poor"; note: string };
+  areaSummary: string;
+  personCount: number;
+  imageRelevance: "relevant" | "irrelevant" | "not_real_photo";
+  imageDescription: string;
+};
+
 type VisualFinding = {
   id: string;
   imageId: string;
@@ -143,6 +194,7 @@ type VisualFinding = {
   annotations: FindingAnnotation[];
   isManual: boolean;
   legalReferences: LegalReference[];
+  confidenceTier?: "high" | "medium" | "low";
   /** Scoring */
   r2dValues: R2DValues;
   r2dResult: R2DResult | null;
@@ -150,6 +202,20 @@ type VisualFinding = {
   fkResult: FKResult | null;
   matrixValues: MatrixValues;
   matrixResult: MatrixResult | null;
+  fmeaValues: FMEAValues;
+  fmeaResult: FMEAResult | null;
+  hazopValues: HAZOPValues;
+  hazopResult: HAZOPResult | null;
+  bowTieValues: BowTieValues;
+  bowTieResult: BowTieResult | null;
+  ftaValues: FTAValues;
+  ftaResult: FTAResult | null;
+  checklistValues: ChecklistValues;
+  checklistResult: ChecklistResult | null;
+  jsaValues: JSAValues;
+  jsaResult: JSAResult | null;
+  lopaValues: LOPAValues;
+  lopaResult: LOPAResult | null;
 };
 
 type LineResult = {
@@ -290,24 +356,59 @@ function _severityBadge(severity: DetectionSeverity) {
   }
 }
 
+/* ── Default value factories for new methods ── */
+function getDefaultFMEAValues(): FMEAValues { return { severity: 5, occurrence: 5, detection: 5 }; }
+function getDefaultHAZOPValues(): HAZOPValues { return { severity: 3, likelihood: 3, detectability: 3, guideWord: "Çok (More)", parameter: "Akış (Flow)", deviation: "" }; }
+function getDefaultBowTieValues(): BowTieValues { return { threatProbability: 3, consequenceSeverity: 3, preventionBarriers: 1, mitigationBarriers: 1 }; }
+function getDefaultFTAValues(): FTAValues { return { components: [{ name: "Bileşen 1", failureRate: 0.1 }], gateType: "OR", systemCriticality: 3 }; }
+function getDefaultChecklistValues(): ChecklistValues { return { items: [{ id: crypto.randomUUID(), text: "Kontrol maddesi 1", status: "uygun", weight: 1 }], category: "Genel" }; }
+function getDefaultJSAValues(): JSAValues { return { jobTitle: "", steps: [{ id: crypto.randomUUID(), stepDescription: "Adım 1", hazard: "", severity: 3, likelihood: 3, controlEffectiveness: 3, controlMeasures: "" }] }; }
+function getDefaultLOPAValues(): LOPAValues { return { initiatingEventFreq: 0.1, consequenceSeverity: 3, layers: [{ id: crypto.randomUUID(), name: "Koruma Katmanı 1", pfd: 0.1 }] }; }
+
+/** Severity bazli default degerler (yeni yontemler icin) */
+function getDefaultsForSeverity(severity: DetectionSeverity) {
+  const sev = severity === "critical" ? 5 : severity === "high" ? 4 : severity === "medium" ? 3 : 2;
+  return {
+    fmea: { severity: sev * 2, occurrence: sev * 2, detection: 11 - sev * 2 } as FMEAValues,
+    hazop: { severity: sev, likelihood: sev, detectability: 6 - sev, guideWord: "Çok (More)", parameter: "Akış (Flow)", deviation: "" } as HAZOPValues,
+    bowTie: { threatProbability: sev, consequenceSeverity: sev, preventionBarriers: Math.max(0, 3 - sev), mitigationBarriers: Math.max(0, 3 - sev) } as BowTieValues,
+    fta: { components: [{ name: "Bileşen 1", failureRate: sev * 0.15 }], gateType: "OR" as const, systemCriticality: sev },
+    checklist: { items: [{ id: crypto.randomUUID(), text: "Kontrol maddesi", status: (sev >= 4 ? "uygun_degil" : sev >= 3 ? "kismi" : "uygun") as ChecklistItem["status"], weight: 2 }], category: "Genel" } as ChecklistValues,
+    jsa: { jobTitle: "", steps: [{ id: crypto.randomUUID(), stepDescription: "Adım 1", hazard: "", severity: sev, likelihood: sev, controlEffectiveness: 6 - sev, controlMeasures: "" }] } as JSAValues,
+    lopa: { initiatingEventFreq: Math.pow(10, -(5 - sev)), consequenceSeverity: sev, layers: [{ id: crypto.randomUUID(), name: "Koruma Katmanı 1", pfd: 0.1 }] } as LOPAValues,
+  };
+}
+
 function getActiveScore(finding: VisualFinding, method: AnalysisMethod): { score: number; label: string; color: string; action: string } {
-  if (method === "r_skor" && finding.r2dResult) {
-    return { score: finding.r2dResult.score, label: finding.r2dResult.label, color: finding.r2dResult.color, action: finding.r2dResult.action };
-  }
-  if (method === "fine_kinney" && finding.fkResult) {
-    return { score: finding.fkResult.score, label: finding.fkResult.label, color: finding.fkResult.color, action: finding.fkResult.action };
-  }
-  if (method === "l_matrix" && finding.matrixResult) {
-    return { score: finding.matrixResult.score, label: finding.matrixResult.label, color: finding.matrixResult.color, action: finding.matrixResult.action };
-  }
-  return { score: 0, label: "-", color: "#64748B", action: "-" };
+  const resultMap: Record<AnalysisMethod, { score: number; label: string; color: string; action: string } | null> = {
+    r_skor: finding.r2dResult ? { score: finding.r2dResult.score, label: finding.r2dResult.label, color: finding.r2dResult.color, action: finding.r2dResult.action } : null,
+    fine_kinney: finding.fkResult ? { score: finding.fkResult.score, label: finding.fkResult.label, color: finding.fkResult.color, action: finding.fkResult.action } : null,
+    l_matrix: finding.matrixResult ? { score: finding.matrixResult.score, label: finding.matrixResult.label, color: finding.matrixResult.color, action: finding.matrixResult.action } : null,
+    fmea: finding.fmeaResult ? { score: finding.fmeaResult.score, label: finding.fmeaResult.label, color: finding.fmeaResult.color, action: finding.fmeaResult.action } : null,
+    hazop: finding.hazopResult ? { score: finding.hazopResult.score, label: finding.hazopResult.label, color: finding.hazopResult.color, action: finding.hazopResult.action } : null,
+    bow_tie: finding.bowTieResult ? { score: finding.bowTieResult.score, label: finding.bowTieResult.label, color: finding.bowTieResult.color, action: finding.bowTieResult.action } : null,
+    fta: finding.ftaResult ? { score: finding.ftaResult.score, label: finding.ftaResult.label, color: finding.ftaResult.color, action: finding.ftaResult.action } : null,
+    checklist: finding.checklistResult ? { score: finding.checklistResult.score, label: finding.checklistResult.label, color: finding.checklistResult.color, action: finding.checklistResult.action } : null,
+    jsa: finding.jsaResult ? { score: finding.jsaResult.score, label: finding.jsaResult.label, color: finding.jsaResult.color, action: finding.jsaResult.action } : null,
+    lopa: finding.lopaResult ? { score: finding.lopaResult.score, label: finding.lopaResult.label, color: finding.lopaResult.color, action: finding.lopaResult.action } : null,
+  };
+  return resultMap[method] ?? { score: 0, label: "-", color: "#64748B", action: "-" };
 }
 
 function getActiveRiskClass(finding: VisualFinding, method: AnalysisMethod): string {
-  if (method === "r_skor" && finding.r2dResult) return finding.r2dResult.riskClass;
-  if (method === "fine_kinney" && finding.fkResult) return finding.fkResult.riskClass;
-  if (method === "l_matrix" && finding.matrixResult) return finding.matrixResult.riskClass;
-  return "follow_up";
+  const classMap: Record<AnalysisMethod, string | null> = {
+    r_skor: finding.r2dResult?.riskClass ?? null,
+    fine_kinney: finding.fkResult?.riskClass ?? null,
+    l_matrix: finding.matrixResult?.riskClass ?? null,
+    fmea: finding.fmeaResult?.riskClass ?? null,
+    hazop: finding.hazopResult?.riskClass ?? null,
+    bow_tie: finding.bowTieResult?.riskClass ?? null,
+    fta: finding.ftaResult?.riskClass ?? null,
+    checklist: finding.checklistResult?.riskClass ?? null,
+    jsa: finding.jsaResult?.riskClass ?? null,
+    lopa: finding.lopaResult?.riskClass ?? null,
+  };
+  return classMap[method] ?? "follow_up";
 }
 
 function computeAllScores(finding: VisualFinding): VisualFinding {
@@ -316,16 +417,20 @@ function computeAllScores(finding: VisualFinding): VisualFinding {
     r2dResult: calculateR2D(finding.r2dValues),
     fkResult: calculateFK(finding.fkValues),
     matrixResult: calculateMatrix(finding.matrixValues),
+    fmeaResult: calculateFMEA(finding.fmeaValues),
+    hazopResult: calculateHAZOP(finding.hazopValues),
+    bowTieResult: calculateBowTie(finding.bowTieValues),
+    ftaResult: calculateFTA(finding.ftaValues),
+    checklistResult: calculateChecklist(finding.checklistValues),
+    jsaResult: calculateJSA(finding.jsaValues),
+    lopaResult: calculateLOPA(finding.lopaValues),
   };
 }
 
-/* ================================================================== */
-/* Mock findings generator (AI simulation)                             */
-/* ================================================================== */
+/* Mock fallback kaldırıldı — yalnızca gerçek AI analizi kullanılıyor */
 
-type MockPattern = Omit<VisualFinding, "id" | "imageId" | "r2dResult" | "fkResult" | "matrixResult">;
-
-const mockPatterns: MockPattern[] = [
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _mockPatterns_removed: Record<string, unknown>[] = [
   {
     title: "KKD eksikliği — baret takılı değil",
     category: "PPE",
@@ -338,6 +443,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: categoryR2DProfiles.ppe,
     fkValues: categoryFKProfiles.ppe,
     matrixValues: categoryMatrixProfiles.ppe,
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R1", x: 58, y: 22 },
       { id: crypto.randomUUID(), kind: "box", label: "Kişi (baş)", x: 48, y: 10, width: 18, height: 28 },
@@ -355,6 +461,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: categoryR2DProfiles.housekeeping,
     fkValues: categoryFKProfiles.housekeeping,
     matrixValues: categoryMatrixProfiles.housekeeping,
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R2", x: 42, y: 82 },
       { id: crypto.randomUUID(), kind: "polygon", label: "Zemin engeli", points: [{ x: 18, y: 72 }, { x: 62, y: 70 }, { x: 68, y: 88 }, { x: 22, y: 90 }] },
@@ -372,6 +479,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: categoryR2DProfiles.storage,
     fkValues: categoryFKProfiles.storage,
     matrixValues: categoryMatrixProfiles.storage,
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R3", x: 74, y: 35 },
       { id: crypto.randomUUID(), kind: "box", label: "İstif", x: 62, y: 14, width: 24, height: 50 },
@@ -389,6 +497,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: categoryR2DProfiles.electrical,
     fkValues: categoryFKProfiles.electrical,
     matrixValues: categoryMatrixProfiles.electrical,
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R4", x: 18, y: 40 },
       { id: crypto.randomUUID(), kind: "box", label: "Pano/Kablo", x: 8, y: 28, width: 20, height: 28 },
@@ -406,6 +515,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: categoryR2DProfiles.ergonomi,
     fkValues: categoryFKProfiles.ergonomi,
     matrixValues: categoryMatrixProfiles.ergonomi,
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R5", x: 50, y: 52 },
       { id: crypto.randomUUID(), kind: "box", label: "Yük/Kişi", x: 36, y: 34, width: 28, height: 36 },
@@ -423,6 +533,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: { c1: 0.5, c2: 0.1, c3: 0.3, c4: 0.15, c5: 0.4, c6: 0.8, c7: 0.2, c8: 0.1, c9: 0.15 },
     fkValues: { likelihood: 3, severity: 40, exposure: 6 },
     matrixValues: { likelihood: 3, severity: 4 },
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R6", x: 88, y: 70 },
       { id: crypto.randomUUID(), kind: "box", label: "Söndürücü", x: 80, y: 60, width: 16, height: 24 },
@@ -440,6 +551,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: { c1: 0.3, c2: 0.05, c3: 0.7, c4: 0.1, c5: 0.1, c6: 0.9, c7: 0.1, c8: 0.2, c9: 0.4 },
     fkValues: { likelihood: 6, severity: 40, exposure: 10 },
     matrixValues: { likelihood: 4, severity: 5 },
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R7", x: 12, y: 88 },
     ],
@@ -456,6 +568,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: { c1: 0.6, c2: 0.2, c3: 0.5, c4: 0.1, c5: 0.05, c6: 0.2, c7: 0.9, c8: 0.15, c9: 0.2 },
     fkValues: { likelihood: 6, severity: 15, exposure: 6 },
     matrixValues: { likelihood: 4, severity: 4 },
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R8", x: 35, y: 58 },
       { id: crypto.randomUUID(), kind: "box", label: "Makine", x: 22, y: 44, width: 30, height: 30 },
@@ -473,6 +586,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: { c1: 0.4, c2: 0.6, c3: 0.85, c4: 0.15, c5: 0.05, c6: 0.6, c7: 0.3, c8: 0.1, c9: 0.35 },
     fkValues: { likelihood: 6, severity: 40, exposure: 3 },
     matrixValues: { likelihood: 3, severity: 5 },
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R9", x: 65, y: 15 },
     ],
@@ -489,6 +603,7 @@ const mockPatterns: MockPattern[] = [
     r2dValues: { c1: 0.35, c2: 0.15, c3: 0.3, c4: 0.25, c5: 0.85, c6: 0.3, c7: 0.2, c8: 0.1, c9: 0.3 },
     fkValues: { likelihood: 3, severity: 7, exposure: 6 },
     matrixValues: { likelihood: 3, severity: 3 },
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R10", x: 82, y: 48 },
     ],
@@ -505,67 +620,14 @@ const mockPatterns: MockPattern[] = [
     r2dValues: { c1: 0.2, c2: 0.1, c3: 0.3, c4: 0.7, c5: 0.05, c6: 0.4, c7: 0.1, c8: 0.15, c9: 0.3 },
     fkValues: { likelihood: 3, severity: 3, exposure: 10 },
     matrixValues: { likelihood: 3, severity: 2 },
+    fmeaValues: getDefaultFMEAValues(), hazopValues: getDefaultHAZOPValues(), bowTieValues: getDefaultBowTieValues(), ftaValues: getDefaultFTAValues(), checklistValues: getDefaultChecklistValues(), jsaValues: getDefaultJSAValues(), lopaValues: getDefaultLOPAValues(),
     annotations: [
       { id: crypto.randomUUID(), kind: "pin", label: "R11", x: 50, y: 10 },
     ],
   },
 ];
 
-/** Her gorselde 4-6 arasi tespit uretir (ISG uzmani hassasiyetinde) */
-function getMockFindings(imageId: string, imageIndex: number, lineIndex: number): VisualFinding[] {
-  const seed = lineIndex * 7 + imageIndex * 3;
-  // Her gorsel icin 4-6 tespit sec (gercekci ISG uzmani gibi)
-  const count = 4 + (seed % 3); // 4, 5 veya 6
-  const indices: number[] = [];
-  for (let i = 0; i < count; i++) {
-    indices.push((seed + i * 3 + i) % mockPatterns.length);
-  }
-  // Tekrarlari kaldir
-  const unique = [...new Set(indices)];
-  const selectedIndexes = unique.length >= 4 ? unique : [...unique, ...([0, 5, 7, 8].filter((i) => !unique.includes(i)))].slice(0, Math.max(4, unique.length));
-
-  return selectedIndexes.map((pi) => {
-    const p = mockPatterns[pi];
-    const finding: VisualFinding = {
-      ...p,
-      id: crypto.randomUUID(),
-      imageId,
-      annotations: p.annotations.map((a) => ({ ...a, id: crypto.randomUUID() })),
-      r2dValues: { ...p.r2dValues },
-      fkValues: { ...p.fkValues },
-      matrixValues: { ...p.matrixValues },
-      r2dResult: null,
-      fkResult: null,
-      matrixResult: null,
-    };
-    return computeAllScores(finding);
-  });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function buildMockResults(lines: RiskLine[]): {
-  results: LineResult[];
-  selectedImages: Record<string, string>;
-  selectedFindings: Record<string, string>;
-} {
-  const validLines = lines.filter((l) => l.images.length > 0);
-  const results = validLines.map((line, li) => {
-    const findings = line.images.flatMap((img, ii) => getMockFindings(img.id, ii, li));
-    return { rowId: line.id, rowTitle: line.title.trim() || `Satır ${li + 1}`, imageCount: line.images.length, findings };
-  });
-
-  const selectedImages: Record<string, string> = {};
-  const selectedFindings: Record<string, string> = {};
-  results.forEach((r) => {
-    const f = r.findings[0];
-    if (f) {
-      selectedImages[r.rowId] = f.imageId;
-      selectedFindings[r.rowId] = f.id;
-    }
-  });
-
-  return { results, selectedImages, selectedFindings };
-}
+/* Mock fallback functions removed — only real AI analysis is used */
 
 /* ================================================================== */
 /* Annotation render                                                   */
@@ -995,6 +1057,20 @@ export function RiskAnalysisClient() {
           fkResult: (f.fkResult ?? null) as FKResult | null,
           matrixValues: (f.matrixValues ?? { likelihood: 3, severity: 3 }) as MatrixValues,
           matrixResult: (f.matrixResult ?? null) as MatrixResult | null,
+          fmeaValues: ((f as Record<string, unknown>).fmeaValues ?? getDefaultFMEAValues()) as FMEAValues,
+          fmeaResult: ((f as Record<string, unknown>).fmeaResult ?? null) as FMEAResult | null,
+          hazopValues: ((f as Record<string, unknown>).hazopValues ?? getDefaultHAZOPValues()) as HAZOPValues,
+          hazopResult: ((f as Record<string, unknown>).hazopResult ?? null) as HAZOPResult | null,
+          bowTieValues: ((f as Record<string, unknown>).bowTieValues ?? getDefaultBowTieValues()) as BowTieValues,
+          bowTieResult: ((f as Record<string, unknown>).bowTieResult ?? null) as BowTieResult | null,
+          ftaValues: ((f as Record<string, unknown>).ftaValues ?? getDefaultFTAValues()) as FTAValues,
+          ftaResult: ((f as Record<string, unknown>).ftaResult ?? null) as FTAResult | null,
+          checklistValues: ((f as Record<string, unknown>).checklistValues ?? getDefaultChecklistValues()) as ChecklistValues,
+          checklistResult: ((f as Record<string, unknown>).checklistResult ?? null) as ChecklistResult | null,
+          jsaValues: ((f as Record<string, unknown>).jsaValues ?? getDefaultJSAValues()) as JSAValues,
+          jsaResult: ((f as Record<string, unknown>).jsaResult ?? null) as JSAResult | null,
+          lopaValues: ((f as Record<string, unknown>).lopaValues ?? getDefaultLOPAValues()) as LOPAValues,
+          lopaResult: ((f as Record<string, unknown>).lopaResult ?? null) as LOPAResult | null,
         }));
 
         newResults.push({
@@ -1053,6 +1129,8 @@ export function RiskAnalysisClient() {
   const [selectedImageByRow, setSelectedImageByRow] = useState<Record<string, string>>({});
   const [selectedFindingByRow, setSelectedFindingByRow] = useState<Record<string, string>>({});
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [imageMetaMap, setImageMetaMap] = useState<Record<string, ImageMeta>>({});
+  const [noRiskImages, setNoRiskImages] = useState<Set<string>>(new Set());
 
   /* ── Wizard step ── */
   const [step, setStep] = usePersistedState<1 | 2 | 3 | 4>("risk:step", 1);
@@ -1149,7 +1227,31 @@ export function RiskAnalysisClient() {
     }));
     setResults((prev) => prev.map((r) => r.rowId === lid ? { ...r, findings: r.findings.filter((f) => f.imageId !== imgId) } : r));
   }
-  function addLine() { setLines((prev) => [...prev, createLine()]); setResults([]); }
+  function addLine() { setLines((prev) => [createLine(), ...prev]); setResults([]); }
+
+  /** Toplu yukleme: Her gorsel icin ayri bir satir olustur */
+  const bulkFileInputRef = useRef<HTMLInputElement | null>(null);
+  function bulkUploadToSeparateLines(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const imageFiles = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+
+    const newLines: RiskLine[] = imageFiles.map((file, idx) => {
+      const cleanName = file.name.replace(/\.[^.]+$/, "").replace(/[_-]/g, " ").replace(/\s+/g, " ").trim();
+      return {
+        id: crypto.randomUUID(),
+        title: cleanName || `Alan ${idx + 1}`,
+        description: "",
+        images: [{ id: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file) }],
+      };
+    });
+
+    setLines(() => {
+      // Toplu yuklemede tum mevcut satirlari temizle, sadece yeni satirlarla baslat
+      return [...newLines];
+    });
+    setResults([]);
+  }
   function removeLine(lid: string) {
     setLines((prev) => { const t = prev.find((l) => l.id === lid); t?.images.forEach((i) => URL.revokeObjectURL(i.previewUrl)); return prev.filter((l) => l.id !== lid); });
     setResults((prev) => prev.filter((r) => r.rowId !== lid));
@@ -1209,6 +1311,8 @@ export function RiskAnalysisClient() {
   }
 
   /** Kategori bazli R2D profili — ciddiyet ile carpan uygula */
+  function clamp01(v: unknown): number { return Math.min(1, Math.max(0, Number(v) || 0)); }
+
   function getR2DForCategory(category: string, severity?: DetectionSeverity): R2DValues {
     const key = category.toLowerCase().trim();
     const profile = categoryR2DProfiles[key];
@@ -1249,30 +1353,45 @@ export function RiskAnalysisClient() {
   }
 
   /** Nova AI Vision ile tek gorsel analiz et */
-  async function analyzeImageWithAI(imageFile: File, imageId: string): Promise<VisualFinding[]> {
+  async function analyzeImageWithAI(imageFile: File, imageId: string): Promise<{ findings: VisualFinding[]; meta: ImageMeta }> {
     try {
       const { base64, mimeType } = await fileToBase64(imageFile);
       const res = await fetch("/api/analyze-risk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mimeType }),
+        body: JSON.stringify({ imageBase64: base64, mimeType, method }),
       });
+
+      const emptyMeta: ImageMeta = { imageId, faces: [], positiveObservations: [], photoQuality: { level: "good", note: "" }, areaSummary: "", personCount: 0, imageRelevance: "relevant", imageDescription: "" };
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         console.error("AI analiz hatası:", res.status, errBody);
-        return [];
+        return { findings: [], meta: emptyMeta };
       }
 
-      const data = await res.json() as { risks: Array<{
-        title: string; category: string; severity: DetectionSeverity;
-        confidence: number; recommendation: string; correctiveActionRequired: boolean;
-        pinX: number; pinY: number; boxX?: number; boxY?: number; boxW?: number; boxH?: number;
-        legalReferences?: LegalReference[];
-        r2dParams?: { c1: number; c2: number; c3: number; c4: number; c5: number; c6: number; c7: number; c8: number; c9: number };
-      }> };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await res.json() as Record<string, any>;
 
-      return data.risks.map((risk, idx) => {
+      const meta: ImageMeta = {
+        imageId,
+        faces: Array.isArray(data.faces) ? data.faces.map((f: FaceRegion) => ({ faceX: f.faceX ?? 0, faceY: f.faceY ?? 0, faceW: f.faceW ?? 5, faceH: f.faceH ?? 6 })) : [],
+        positiveObservations: Array.isArray(data.positiveObservations) ? data.positiveObservations : [],
+        photoQuality: data.photoQuality ?? { level: "good", note: "" },
+        areaSummary: data.areaSummary ?? "",
+        personCount: data.personCount ?? 0,
+        imageRelevance: data.imageRelevance === "irrelevant" ? "irrelevant" : data.imageRelevance === "not_real_photo" ? "not_real_photo" : "relevant",
+        imageDescription: data.imageDescription ?? "",
+      };
+
+      // Uygunsuz gorsel — risk analizi yapilamaz
+      if (meta.imageRelevance !== "relevant") {
+        return { findings: [], meta };
+      }
+
+      const risks = Array.isArray(data.risks) ? data.risks : [];
+
+      const findings = risks.map((risk, idx) => {
         const annotations: FindingAnnotation[] = [
           { id: crypto.randomUUID(), kind: "pin" as const, label: `R${idx + 1}`, x: risk.pinX, y: risk.pinY },
         ];
@@ -1284,23 +1403,60 @@ export function RiskAnalysisClient() {
         }
 
         // AI'dan gelen C1-C9 parametrelerini kullan, yoksa fallback profil
-        const aiParams = risk.r2dParams;
-        const r2dValues: R2DValues = aiParams
-          ? {
-              c1: Math.min(1, Math.max(0, aiParams.c1 ?? 0)),
-              c2: Math.min(1, Math.max(0, aiParams.c2 ?? 0)),
-              c3: Math.min(1, Math.max(0, aiParams.c3 ?? 0)),
-              c4: Math.min(1, Math.max(0, aiParams.c4 ?? 0)),
-              c5: Math.min(1, Math.max(0, aiParams.c5 ?? 0)),
-              c6: Math.min(1, Math.max(0, aiParams.c6 ?? 0)),
-              c7: Math.min(1, Math.max(0, aiParams.c7 ?? 0)),
-              c8: Math.min(1, Math.max(0, aiParams.c8 ?? 0)),
-              c9: Math.min(1, Math.max(0, aiParams.c9 ?? 0)),
-            }
+        const aiR2D = risk.r2dParams;
+        const r2dValues: R2DValues = aiR2D
+          ? { c1: clamp01(aiR2D.c1), c2: clamp01(aiR2D.c2), c3: clamp01(aiR2D.c3), c4: clamp01(aiR2D.c4), c5: clamp01(aiR2D.c5), c6: clamp01(aiR2D.c6), c7: clamp01(aiR2D.c7), c8: clamp01(aiR2D.c8), c9: clamp01(aiR2D.c9) }
           : getR2DForCategory(risk.category, risk.severity);
-        const fkValues = getFKForCategory(risk.category, risk.severity);
-        const matrixValues = getMatrixForCategory(risk.category, risk.severity);
 
+        // Fine-Kinney: AI'dan veya fallback
+        const aiFk = risk.fkParams;
+        const fkValues: FKValues = aiFk
+          ? { likelihood: aiFk.likelihood ?? 3, severity: aiFk.severity ?? 7, exposure: aiFk.exposure ?? 6 }
+          : getFKForCategory(risk.category, risk.severity);
+
+        // Matrix: AI'dan veya fallback
+        const aiMx = risk.matrixParams;
+        const matrixValues: MatrixValues = aiMx
+          ? { likelihood: aiMx.likelihood ?? 3, severity: aiMx.severity ?? 3 }
+          : getMatrixForCategory(risk.category, risk.severity);
+
+        // Method-specific params from AI
+        const sevDefaults = getDefaultsForSeverity(risk.severity);
+
+        const aiFmea = risk.fmeaParams;
+        const fmeaValues: FMEAValues = aiFmea
+          ? { severity: aiFmea.severity ?? 5, occurrence: aiFmea.occurrence ?? 5, detection: aiFmea.detection ?? 5 }
+          : sevDefaults.fmea;
+
+        const aiHazop = risk.hazopParams;
+        const hazopValues: HAZOPValues = aiHazop
+          ? { severity: aiHazop.severity ?? 3, likelihood: aiHazop.likelihood ?? 3, detectability: aiHazop.detectability ?? 3, guideWord: aiHazop.guideWord ?? "Çok (More)", parameter: aiHazop.parameter ?? "Akış (Flow)", deviation: aiHazop.deviation ?? "" }
+          : sevDefaults.hazop;
+
+        const aiBt = risk.bowTieParams;
+        const bowTieValues: BowTieValues = aiBt
+          ? { threatProbability: aiBt.threatProbability ?? 3, consequenceSeverity: aiBt.consequenceSeverity ?? 3, preventionBarriers: aiBt.preventionBarriers ?? 1, mitigationBarriers: aiBt.mitigationBarriers ?? 1 }
+          : sevDefaults.bowTie;
+
+        const aiFta = risk.ftaParams;
+        const ftaValues: FTAValues = aiFta?.components
+          ? { components: aiFta.components.map((c: { name: string; failureRate: number }) => ({ name: c.name, failureRate: clamp01(c.failureRate) })), gateType: aiFta.gateType === "AND" ? "AND" : "OR", systemCriticality: aiFta.systemCriticality ?? 3 }
+          : sevDefaults.fta;
+
+        const aiCl = risk.checklistParams;
+        const checklistValues: ChecklistValues = aiCl?.items
+          ? { items: aiCl.items.map((i: { text: string; status: string; weight: number }) => ({ id: crypto.randomUUID(), text: i.text, status: (["uygun","uygun_degil","kismi","na"].includes(i.status) ? i.status : "uygun_degil") as ChecklistItem["status"], weight: Math.min(3, Math.max(1, i.weight ?? 1)) })), category: aiCl.category ?? risk.category }
+          : sevDefaults.checklist;
+
+        const aiJsa = risk.jsaParams;
+        const jsaValues: JSAValues = aiJsa?.steps
+          ? { jobTitle: aiJsa.jobTitle ?? "", steps: aiJsa.steps.map((s: { stepDescription: string; hazard: string; severity: number; likelihood: number; controlEffectiveness: number; controlMeasures: string }) => ({ id: crypto.randomUUID(), stepDescription: s.stepDescription, hazard: s.hazard ?? "", severity: s.severity ?? 3, likelihood: s.likelihood ?? 3, controlEffectiveness: s.controlEffectiveness ?? 3, controlMeasures: s.controlMeasures ?? "" })) }
+          : sevDefaults.jsa;
+
+        const aiLopa = risk.lopaParams;
+        const lopaValues: LOPAValues = aiLopa?.layers
+          ? { initiatingEventFreq: aiLopa.initiatingEventFreq ?? 0.1, consequenceSeverity: aiLopa.consequenceSeverity ?? 3, layers: aiLopa.layers.map((l: { name: string; pfd: number }) => ({ id: crypto.randomUUID(), name: l.name, pfd: l.pfd ?? 0.1 })) }
+          : sevDefaults.lopa;
         const scored = computeAllScores({
           id: crypto.randomUUID(),
           imageId,
@@ -1316,9 +1472,23 @@ export function RiskAnalysisClient() {
           r2dValues,
           fkValues,
           matrixValues,
+          fmeaValues,
+          hazopValues,
+          bowTieValues,
+          ftaValues,
+          checklistValues,
+          jsaValues,
+          lopaValues,
           r2dResult: null,
           fkResult: null,
           matrixResult: null,
+          fmeaResult: null,
+          hazopResult: null,
+          bowTieResult: null,
+          ftaResult: null,
+          checklistResult: null,
+          jsaResult: null,
+          lopaResult: null,
         });
 
         // DÖF adayligini R2D skoruna gore belirle (skor >= 0.60 = DÖF adayi)
@@ -1329,9 +1499,11 @@ export function RiskAnalysisClient() {
         }
         return scored;
       });
+
+      return { findings, meta };
     } catch (err) {
       console.error("AI analiz exception:", err);
-      return [];
+      return { findings: [], meta: { imageId, faces: [], positiveObservations: [], photoQuality: { level: "good" as const, note: "" }, areaSummary: "", personCount: 0, imageRelevance: "relevant" as const, imageDescription: "" } };
     }
   }
 
@@ -1358,6 +1530,8 @@ export function RiskAnalysisClient() {
     const newResults: LineResult[] = [];
     const newSelectedImages: Record<string, string> = {};
     const newSelectedFindings: Record<string, string> = {};
+    const newImageMeta: Record<string, ImageMeta> = {};
+    const newNoRiskImages = new Set<string>();
 
     for (let li = 0; li < validLines.length; li++) {
       const line = validLines[li];
@@ -1371,17 +1545,53 @@ export function RiskAnalysisClient() {
         setSetupMessage(`Görsel analiz ediliyor: Satır ${li + 1}, ${img.file.name}...`);
         setSetupMessageType("success");
 
-        const aiFindings = await analyzeImageWithAI(img.file, img.id);
+        const { findings: aiFindings, meta } = await analyzeImageWithAI(img.file, img.id);
+        newImageMeta[img.id] = meta;
 
         if (aiFindings.length > 0) {
-          // Mukerrer risk filtrele (ayni baslik + ayni kategori = mukerrer)
-          const existingTitles = new Set(allFindings.map((f) => `${f.title.toLowerCase()}|${f.category.toLowerCase()}`));
-          const unique = aiFindings.filter((f) => !existingTitles.has(`${f.title.toLowerCase()}|${f.category.toLowerCase()}`));
+          // Confidence filtresi: 0.85 altini ele (v1.7 — siki esik)
+          const validFindings = aiFindings.filter((f) => {
+            const conf = f.confidence ?? 0;
+            if (conf < 0.85) {
+              console.log(`[${img.id}] Dusuk guvenli tespit elendi: ${f.title} (conf=${conf})`);
+              return false;
+            }
+            return true;
+          });
+
+          // Confidence tier etiketle
+          const taggedFindings = validFindings.map((f) => {
+            const conf = f.confidence ?? 0;
+            const tier: "high" | "medium" | "low" = conf >= 0.95 ? "high" : conf >= 0.90 ? "medium" : "low";
+            return { ...f, confidenceTier: tier };
+          });
+
+          // Mukerrer risk filtrele — exact match + fuzzy similarity
+          const unique = taggedFindings.filter((newF) => {
+            const newTitle = newF.title.toLowerCase();
+            const newCat = newF.category.toLowerCase();
+            if (allFindings.some((f) => f.title.toLowerCase() === newTitle && f.category.toLowerCase() === newCat)) return false;
+            const newWords = new Set(newTitle.split(/\s+/).filter(w => w.length > 2));
+            for (const existing of allFindings) {
+              if (existing.category.toLowerCase() !== newCat) continue;
+              const existWords = new Set(existing.title.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+              if (existWords.size === 0 || newWords.size === 0) continue;
+              const overlap = [...newWords].filter(w => existWords.has(w)).length;
+              const similarity = overlap / Math.min(newWords.size, existWords.size);
+              if (similarity >= 0.5) return false;
+            }
+            return true;
+          });
           allFindings.push(...unique);
+
+          // Tum tespitler confidence filtresiyle elendiyse
+          if (unique.length === 0 && aiFindings.length > 0) {
+            newNoRiskImages.add(img.id);
+          }
         } else {
-          // AI basarisiz olursa mock fallback
-          const mockFallback = getMockFindings(img.id, line.images.indexOf(img), li);
-          allFindings.push(...mockFallback);
+          // AI gercekten "risk yok" dedi — BU BIR BASARI, hata degil
+          // Mock uretme, hicbir sey ekleme
+          newNoRiskImages.add(img.id);
         }
       }
 
@@ -1407,10 +1617,13 @@ export function RiskAnalysisClient() {
     setAnalysisProgress(100);
     setAnalysisMessage("Analiz tamamlandı!");
     setResults(newResults);
+    setImageMetaMap(newImageMeta);
+    setNoRiskImages(newNoRiskImages);
     setSelectedImageByRow(newSelectedImages);
     setSelectedFindingByRow(newSelectedFindings);
     const totalFound = newResults.reduce((s, r) => s + r.findings.length, 0);
-    setSetupMessage(`AI analizi tamamlandı. ${totalFound} risk tespit edildi.`);
+    const totalPositive = Object.values(newImageMeta).reduce((s, m) => s + m.positiveObservations.length, 0);
+    setSetupMessage(`AI analizi tamamlandı. ${totalFound} risk, ${totalPositive} olumlu tespit.`);
     setSetupMessageType("success");
     setIsAnalyzing(false);
   }
@@ -1434,6 +1647,7 @@ export function RiskAnalysisClient() {
     const r2dValues = getR2DForCategory("diğer", pendingPinSeverity);
     const fkValues = getFKForCategory("diğer", pendingPinSeverity);
     const matrixValues = getMatrixForCategory("diğer", pendingPinSeverity);
+    const sevDefaults = getDefaultsForSeverity(pendingPinSeverity);
 
     const findingId = crypto.randomUUID();
     const newFinding: VisualFinding = computeAllScores({
@@ -1451,9 +1665,23 @@ export function RiskAnalysisClient() {
       r2dValues,
       fkValues,
       matrixValues,
+      fmeaValues: sevDefaults.fmea,
+      hazopValues: sevDefaults.hazop,
+      bowTieValues: sevDefaults.bowTie,
+      ftaValues: sevDefaults.fta,
+      checklistValues: sevDefaults.checklist,
+      jsaValues: sevDefaults.jsa,
+      lopaValues: sevDefaults.lopa,
       r2dResult: null,
       fkResult: null,
       matrixResult: null,
+      fmeaResult: null,
+      hazopResult: null,
+      bowTieResult: null,
+      ftaResult: null,
+      checklistResult: null,
+      jsaResult: null,
+      lopaResult: null,
     });
 
     setResults((prev) => prev.map((r) => r.rowId === rowId ? { ...r, findings: [...r.findings, newFinding] } : r));
@@ -1520,13 +1748,12 @@ JSON formatında döndür:
   }
 
   /* ── Export ── */
-  /** Blob URL'i base64 data URL'e cevir — export sırasında yüzleri bulanıklaştır */
-  async function blobUrlToDataUrl(blobUrl: string): Promise<string> {
+  /** Blob URL'i base64 data URL'e cevir — annotation overlay + yuz blur */
+  async function blobUrlToDataUrl(blobUrl: string, imageFindings?: VisualFinding[]): Promise<string> {
     try {
       const res = await fetch(blobUrl);
       const blob = await res.blob();
 
-      // Görseli canvas'a çiz → yüz tespiti → bulanıklaştır → dataUrl
       return new Promise((resolve) => {
         const img = new Image();
         img.onload = async () => {
@@ -1542,6 +1769,11 @@ JSON formatında döndür:
             await blurFacesOnCanvas(canvas, ctx);
           } catch { /* yüz tespiti başarısızsa orijinal devam */ }
 
+          // Annotation overlay: pin, box, polygon çiz
+          if (imageFindings && imageFindings.length > 0) {
+            drawAnnotationsOnCanvas(ctx, canvas.width, canvas.height, imageFindings);
+          }
+
           resolve(canvas.toDataURL("image/jpeg", 0.90));
           URL.revokeObjectURL(img.src);
         };
@@ -1549,6 +1781,73 @@ JSON formatında döndür:
         img.src = URL.createObjectURL(blob);
       });
     } catch { return ""; }
+  }
+
+  /** Canvas uzerine annotation cizimleri (pin, box, polygon) */
+  function drawAnnotationsOnCanvas(ctx: CanvasRenderingContext2D, w: number, h: number, findings: VisualFinding[]) {
+    const scale = Math.max(1, Math.min(w, h) / 800); // olceklendirme
+
+    findings.forEach((f, fi) => {
+      f.annotations.forEach((a) => {
+        if (a.kind === "pin") {
+          // Kirmizi daire + beyaz etiket
+          const px = (a.x / 100) * w;
+          const py = (a.y / 100) * h;
+          const r = 14 * scale;
+          ctx.beginPath();
+          ctx.arc(px, py, r, 0, Math.PI * 2);
+          ctx.fillStyle = "#DC2626";
+          ctx.fill();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2 * scale;
+          ctx.stroke();
+          // Etiket
+          ctx.fillStyle = "#fff";
+          ctx.font = `bold ${Math.round(10 * scale)}px Arial`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(a.label || `R${fi + 1}`, px, py);
+        }
+
+        if (a.kind === "box") {
+          // Cyan dikdortgen
+          const bx = (a.x / 100) * w;
+          const by = (a.y / 100) * h;
+          const bw = ((a.width ?? 10) / 100) * w;
+          const bh = ((a.height ?? 10) / 100) * h;
+          ctx.strokeStyle = "#06B6D4";
+          ctx.lineWidth = 2.5 * scale;
+          ctx.strokeRect(bx, by, bw, bh);
+          // Etiket kutusu
+          if (a.label) {
+            const fontSize = Math.round(10 * scale);
+            ctx.font = `bold ${fontSize}px Arial`;
+            const tw = ctx.measureText(a.label).width + 8 * scale;
+            ctx.fillStyle = "#06B6D4";
+            ctx.fillRect(bx, by - fontSize - 6 * scale, tw, fontSize + 4 * scale);
+            ctx.fillStyle = "#fff";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+            ctx.fillText(a.label, bx + 4 * scale, by - fontSize - 4 * scale);
+          }
+        }
+
+        if (a.kind === "polygon" && a.points && a.points.length >= 3) {
+          // Cyan polygon
+          ctx.beginPath();
+          ctx.moveTo((a.points[0].x / 100) * w, (a.points[0].y / 100) * h);
+          for (let i = 1; i < a.points.length; i++) {
+            ctx.lineTo((a.points[i].x / 100) * w, (a.points[i].y / 100) * h);
+          }
+          ctx.closePath();
+          ctx.fillStyle = "rgba(6, 182, 212, 0.15)";
+          ctx.fill();
+          ctx.strokeStyle = "#06B6D4";
+          ctx.lineWidth = 2 * scale;
+          ctx.stroke();
+        }
+      });
+    });
   }
 
   /** Canvas üzerindeki yüzleri tespit edip bulanıklaştır */
@@ -1618,20 +1917,40 @@ JSON formatında döndür:
         })) : undefined,
         fkDetails: f.fkResult ? { likelihood: f.fkValues.likelihood, severity: f.fkValues.severity, exposure: f.fkValues.exposure } : undefined,
         matrixDetails: f.matrixResult ? { likelihood: f.matrixValues.likelihood, severity: f.matrixValues.severity } : undefined,
+        fmeaDetails: f.fmeaResult ? { severity: f.fmeaValues.severity, occurrence: f.fmeaValues.occurrence, detection: f.fmeaValues.detection, rpn: f.fmeaResult.rpn } : undefined,
+        hazopDetails: f.hazopResult ? { severity: f.hazopValues.severity, likelihood: f.hazopValues.likelihood, detectability: f.hazopValues.detectability, guideWord: f.hazopValues.guideWord, parameter: f.hazopValues.parameter, deviation: f.hazopValues.deviation } : undefined,
+        bowTieDetails: f.bowTieResult ? { threatProbability: f.bowTieValues.threatProbability, consequenceSeverity: f.bowTieValues.consequenceSeverity, preventionBarriers: f.bowTieValues.preventionBarriers, mitigationBarriers: f.bowTieValues.mitigationBarriers, rawRisk: f.bowTieResult.rawRisk, residualRisk: f.bowTieResult.residualRisk } : undefined,
+        ftaDetails: f.ftaResult ? { componentCount: f.ftaResult.componentCount, gateType: f.ftaResult.gateType, systemProbability: f.ftaResult.systemProbability, systemCriticality: f.ftaResult.systemCriticality } : undefined,
+        checklistDetails: f.checklistResult ? { compliancePercent: f.checklistResult.compliancePercent, totalItems: f.checklistResult.totalItems, compliantCount: f.checklistResult.compliantCount, nonCompliantCount: f.checklistResult.nonCompliantCount } : undefined,
+        jsaDetails: f.jsaResult ? { jobTitle: f.jsaValues.jobTitle, stepCount: f.jsaValues.steps.length, highRiskStepCount: f.jsaResult.highRiskStepCount, maxStepScore: f.jsaResult.maxStepScore, avgStepScore: f.jsaResult.avgStepScore } : undefined,
+        lopaDetails: f.lopaResult ? { initiatingEventFreq: f.lopaResult.initiatingEventFreq, mitigatedFreq: f.lopaResult.mitigatedFreq, riskReductionFactor: f.lopaResult.riskReductionFactor, layerCount: f.lopaResult.layerCount, meetsTarget: f.lopaResult.meetsTarget } : undefined,
         legalReferences: f.legalReferences.length > 0 ? f.legalReferences : undefined,
       };
     });
 
-    // Gorsel datalarini topla (blob URL -> base64)
+    // Gorsel datalarini topla (blob URL -> base64 + annotation overlay)
     const images: ExportImage[] = [];
     for (const result of results) {
       const sourceLine = lineMap.get(result.rowId);
       if (!sourceLine) continue;
       for (const img of sourceLine.images) {
-        const findingCount = result.findings.filter((f) => f.imageId === img.id).length;
-        const dataUrl = await blobUrlToDataUrl(img.previewUrl);
+        const imgFindings = result.findings.filter((f) => f.imageId === img.id);
+        const meta = imageMetaMap[img.id];
+        const dataUrl = await blobUrlToDataUrl(img.previewUrl, imgFindings);
         if (dataUrl) {
-          images.push({ imageId: img.id, rowTitle: result.rowTitle, dataUrl, fileName: img.file.name, findingCount });
+          images.push({
+            imageId: img.id,
+            rowTitle: result.rowTitle,
+            dataUrl,
+            fileName: img.file.name,
+            findingCount: imgFindings.length,
+            // Yeni meta alanlar
+            imageRelevance: meta?.imageRelevance ?? "relevant",
+            imageDescription: meta?.imageDescription ?? "",
+            areaSummary: meta?.areaSummary ?? "",
+            positiveObservations: meta?.positiveObservations ?? [],
+            photoQuality: meta?.photoQuality?.level ?? "good",
+          });
         }
       }
     }
@@ -1714,6 +2033,20 @@ JSON formatında döndür:
               fkResult: f.fkResult,
               matrixValues: f.matrixValues,
               matrixResult: f.matrixResult,
+              fmeaValues: f.fmeaValues,
+              fmeaResult: f.fmeaResult,
+              hazopValues: f.hazopValues,
+              hazopResult: f.hazopResult,
+              bowTieValues: f.bowTieValues,
+              bowTieResult: f.bowTieResult,
+              ftaValues: f.ftaValues,
+              ftaResult: f.ftaResult,
+              checklistValues: f.checklistValues,
+              checklistResult: f.checklistResult,
+              jsaValues: f.jsaValues,
+              jsaResult: f.jsaResult,
+              lopaValues: f.lopaValues,
+              lopaResult: f.lopaResult,
               annotations: f.annotations,
               legalReferences: f.legalReferences,
             })),
@@ -2037,7 +2370,7 @@ JSON formatında döndür:
             <p className="mt-2 text-sm leading-7 text-muted-foreground">Bu risk analizinin hangi firma, lokasyon ve bölüm için yapıldığını seç.</p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-5">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-foreground">Firma / Kurum</label>
               <select value={selectedCompanyId} onChange={(e) => { setSelectedCompanyId(e.target.value); setSelectedLocation(""); setSelectedDepartment(""); setSetupMessage(""); setSetupMessageType(""); }} className={selectCls}>
@@ -2046,56 +2379,90 @@ JSON formatında döndür:
               </select>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               <label className="text-sm font-medium text-foreground">Analiz Yöntemi</label>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                {METHOD_CATALOG.map((m) => (
-                  <div key={m.id} className="group relative">
-                    <button
-                      type="button"
-                      onClick={() => setMethod(m.id as AnalysisMethod)}
-                      className={`flex w-full flex-col items-center gap-1 rounded-xl border-2 px-2 py-3 text-center transition-all ${
-                        method === m.id
-                          ? "border-primary bg-primary/5 shadow-sm"
-                          : "border-border hover:border-primary/40"
-                      }`}
-                    >
-                      <span className="text-lg">{m.icon}</span>
-                      <span className="text-[11px] font-semibold text-foreground leading-tight">{m.shortName}</span>
-                      <span className="text-[9px] text-muted-foreground leading-tight line-clamp-1">{m.name}</span>
-                    </button>
-                    {/* Tooltip */}
-                    <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-64 -translate-x-1/2 rounded-xl border border-border bg-card p-3 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-base">{m.icon}</span>
-                        <span className="font-semibold text-sm text-foreground">{m.name}</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                {METHOD_CATALOG.map((m) => {
+                  const selected = method === m.id;
+                  return (
+                    <div key={m.id} className="group relative">
+                      <button
+                        type="button"
+                        onClick={() => setMethod(m.id as AnalysisMethod)}
+                        className={`relative flex w-full flex-col items-center overflow-hidden rounded-2xl border-2 px-3 py-5 text-center transition-all duration-300 ${
+                          selected
+                            ? "shadow-xl scale-[1.04]"
+                            : "border-border bg-card hover:shadow-lg hover:scale-[1.02] hover:-translate-y-0.5"
+                        }`}
+                        style={selected ? {
+                          borderColor: m.color,
+                          boxShadow: `0 8px 32px ${m.color}30, 0 0 0 1px ${m.color}50`,
+                          background: `linear-gradient(135deg, ${m.color}08 0%, ${m.color}03 100%)`,
+                        } : undefined}
+                      >
+                        {/* Ust renkli serit */}
+                        <div className="absolute top-0 left-0 right-0 h-1 transition-all duration-300" style={{ backgroundColor: selected ? m.color : "transparent" }} />
+
+                        {/* Buyuk ikon dairesi */}
+                        <div
+                          className={`flex h-16 w-16 items-center justify-center rounded-2xl transition-all duration-300 ${
+                            selected ? "shadow-md" : "bg-muted/60"
+                          }`}
+                          style={selected ? { backgroundColor: `${m.color}18`, boxShadow: `0 4px 12px ${m.color}20` } : undefined}
+                        >
+                          <MethodIcon method={m.id} color={selected ? m.color : "#94a3b8"} size={34} />
+                        </div>
+
+                        {/* Baslik */}
+                        <p className={`mt-3 text-base font-extrabold leading-tight tracking-tight transition-colors ${selected ? "" : "text-foreground/75"}`} style={selected ? { color: m.color } : undefined}>
+                          {m.shortName}
+                        </p>
+
+                        {/* Yontem adi */}
+                        <p className="mt-1 text-[11px] leading-tight text-muted-foreground line-clamp-1">{m.name}</p>
+
+                        {/* Secili gosterge noktasi */}
+                        {selected && (
+                          <div className="mt-2 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: m.color }} />
+                        )}
+                      </button>
+
+                      {/* Tooltip */}
+                      <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-72 -translate-x-1/2 rounded-2xl border border-border bg-card p-4 opacity-0 shadow-2xl transition-opacity group-hover:opacity-100">
+                        <div className="flex items-center gap-2.5 mb-2">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: `${m.color}15` }}>
+                            <MethodIcon method={m.id} color={m.color} size={18} />
+                          </div>
+                          <span className="font-bold text-sm text-foreground">{m.name}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{m.tooltip}</p>
+                        <div className="mt-2.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span className="rounded-md bg-muted px-2 py-0.5 font-medium">Skor: {m.scoreRange}</span>
+                          {m.paramCount > 0 && <span className="rounded-md bg-muted px-2 py-0.5 font-medium">{m.paramCount} parametre</span>}
+                        </div>
+                        <div className="absolute left-1/2 top-full -translate-x-1/2 border-[6px] border-transparent border-t-border" />
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{m.tooltip}</p>
-                      <div className="mt-2 flex items-center gap-2 text-[10px] text-muted-foreground">
-                        <span className="rounded bg-muted px-1.5 py-0.5">Skor: {m.scoreRange}</span>
-                        {m.paramCount > 0 && <span className="rounded bg-muted px-1.5 py-0.5">{m.paramCount} parametre</span>}
-                      </div>
-                      <div className="absolute left-1/2 top-full -translate-x-1/2 border-[6px] border-transparent border-t-border" />
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">Lokasyon / Çalışma Alanı</label>
-              <select value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)} className={selectCls}>
-                <option value="">Lokasyon seç</option>
-                {(selectedCompany?.locations ?? []).map((loc) => <option key={loc} value={loc}>{loc}</option>)}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">Bölüm / Birim</label>
-              <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className={selectCls}>
-                <option value="">Bölüm seç</option>
-                {(selectedCompany?.departments ?? []).map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground">Lokasyon / Çalışma Alanı</label>
+                <select value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)} className={selectCls}>
+                  <option value="">Lokasyon seç</option>
+                  {(selectedCompany?.locations ?? []).map((loc) => <option key={loc} value={loc}>{loc}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground">Bölüm / Birim</label>
+                <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className={selectCls}>
+                  <option value="">Bölüm seç</option>
+                  {(selectedCompany?.departments ?? []).map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -2244,6 +2611,74 @@ JSON formatında döndür:
             </div>
           </div>
 
+          {/* Hidden file inputs */}
+          <input ref={bulkFileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => { bulkUploadToSeparateLines(e.target.files); e.target.value = ""; }} />
+
+          {/* AI Analiz + Satir/Toplu Yukle — full-width bar */}
+          <div className="space-y-2">
+            {/* AI Analiz Baslat — full width */}
+            <button
+              type="button"
+              disabled={totalImageCount === 0 || isAnalyzing}
+              onClick={() => { handleAnalyze(); setStep(4); }}
+              className="group relative w-full overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-400 px-6 py-4 text-left shadow-[0_8px_30px_rgba(245,158,11,0.25)] transition-all hover:shadow-[0_12px_40px_rgba(245,158,11,0.35)] hover:brightness-105 disabled:opacity-50 disabled:shadow-none disabled:hover:brightness-100"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+                    <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" /></svg>
+                  </div>
+                  <div>
+                    <p className="text-base font-bold text-white">{isAnalyzing ? "AI Analiz Yapiliyor..." : "AI ile Risk Analizini Baslat"}</p>
+                    <p className="mt-0.5 text-xs text-white/70">Nova AI her gorseli ayri ayri analiz eder</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  {totalImageCount > 0 && (
+                    <div className="flex items-center gap-3 text-white/90">
+                      <div className="text-center">
+                        <p className="text-lg font-bold">{totalImageCount}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-white/60">Gorsel</p>
+                      </div>
+                      <div className="h-8 w-px bg-white/20" />
+                      <div className="text-center">
+                        <p className="text-lg font-bold">{lines.length}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-white/60">Satir</p>
+                      </div>
+                    </div>
+                  )}
+                  <svg className="h-5 w-5 text-white/80 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                </div>
+              </div>
+            </button>
+
+            {/* Yeni Satir + Toplu Yukle — yan yana full width, belirgin */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={addLine}
+                className="group flex items-center justify-center gap-3 rounded-2xl border border-border bg-card px-4 py-4 text-sm font-semibold text-foreground shadow-[var(--shadow-soft)] transition-all hover:border-primary/40 hover:shadow-[0_8px_24px_rgba(184,134,11,0.12)]"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                </div>
+                Yeni Satir Ekle
+              </button>
+              <button
+                type="button"
+                onClick={() => bulkFileInputRef.current?.click()}
+                className="group flex items-center justify-center gap-3 rounded-2xl border border-emerald-300 bg-emerald-50/50 px-4 py-4 text-sm font-semibold text-emerald-700 shadow-[var(--shadow-soft)] transition-all hover:border-emerald-400 hover:shadow-[0_8px_24px_rgba(16,185,129,0.15)] dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 transition-colors group-hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-400">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                </div>
+                Toplu Yukle (Her Biri Ayri Satir)
+              </button>
+            </div>
+          </div>
+
+          {setupMessage && <StatusAlert tone={setupMessageType === "success" ? "success" : "danger"}>{setupMessage}</StatusAlert>}
+
           <div className="space-y-5">
             {lines.map((line, idx) => (
               <div key={line.id} className="rounded-[1.5rem] border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
@@ -2265,8 +2700,12 @@ JSON formatında döndür:
 
                 <input ref={(n) => { fileInputRefs.current[line.id] = n; }} type="file" accept="image/*" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => appendFiles(line.id, e.target.files)} />
 
+                {/* Gorsel ekleme butonu */}
                 <div className="mt-4">
-                  <Button type="button" onClick={() => fileInputRefs.current[line.id]?.click()}>Görsel Ekle</Button>
+                  <Button type="button" onClick={() => fileInputRefs.current[line.id]?.click()}>
+                    <svg className="h-4 w-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Gorsel Ekle
+                  </Button>
                 </div>
 
                 {line.images.length > 0 && (
@@ -2289,25 +2728,7 @@ JSON formatında döndür:
             ))}
           </div>
 
-          {/* Yeni satir ekle (liste altinda) */}
-          <button
-            type="button"
-            onClick={addLine}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-[1.5rem] border-2 border-dashed border-border py-4 text-sm font-medium text-muted-foreground transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-            Yeni Satır Ekle
-          </button>
-
-          {/* Analiz baslat butonu */}
-          <div className="mt-6 flex items-center gap-4">
-            <Button type="button" size="lg" variant="accent" disabled={totalImageCount === 0 || isAnalyzing} onClick={() => { handleAnalyze(); setStep(4); }}>
-              {isAnalyzing ? "AI Analiz Yapılıyor..." : "AI ile Risk Analizini Başlat"}
-            </Button>
-            <p className="text-sm text-muted-foreground">Nova AI ile her görsel analiz edilecek.</p>
-          </div>
-
-          {setupMessage && <StatusAlert tone={setupMessageType === "success" ? "success" : "danger"} className="mt-5">{setupMessage}</StatusAlert>}
+          {/* Alt aksiyonlar kaldirildi — uste tasindi */}
         </div>
       )}
 
@@ -2386,28 +2807,6 @@ JSON formatında döndür:
               <EmptyState title="Henüz sonuç üretilmedi" description="3. adımda görselleri yükleyip analizi başlat." />
             ) : (
               <div className="space-y-6">
-                {/* ── Pending pin dialog ── */}
-                {pendingPin && (
-              <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-600 dark:bg-amber-950">
-                <p className="text-sm font-semibold text-foreground">Manuel Risk İşareti Ekle</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                  <Input label="Tespit Başlığı" value={pendingPinTitle} onChange={(e) => setPendingPinTitle(e.target.value)} placeholder="Örn. Korkuluk eksik" />
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-foreground">Ciddiyet</label>
-                    <select value={pendingPinSeverity} onChange={(e) => setPendingPinSeverity(e.target.value as DetectionSeverity)} className={selectCls}>
-                      <option value="low">Düşük</option>
-                      <option value="medium">Orta</option>
-                      <option value="high">Yüksek</option>
-                      <option value="critical">Kritik</option>
-                    </select>
-                  </div>
-                  <div className="flex items-end gap-2">
-                    <Button type="button" variant="accent" onClick={confirmManualPin} disabled={!pendingPinTitle.trim()}>Ekle</Button>
-                    <Button type="button" variant="ghost" onClick={() => setPendingPin(null)}>İptal</Button>
-                  </div>
-                </div>
-              </div>
-            )}
 
                 {/* ── Tespit silme onay dialog ── */}
                 {pendingDeleteFinding && (
@@ -2428,7 +2827,7 @@ JSON formatında döndür:
               const selectedFindingId = selectedFindingByRow[result.rowId] ?? result.findings[0]?.id ?? "";
               const selectedImage = images.find((i) => i.id === selectedImageId) ?? images[0];
               const visibleFindings = result.findings.filter((f) => f.imageId === selectedImage?.id);
-              const _selectedFinding = result.findings.find((f) => f.id === selectedFindingId); // eslint-disable-line @typescript-eslint/no-unused-vars
+              const selectedFinding = result.findings.find((f) => f.id === selectedFindingId);
 
               return (
                 <div key={result.rowId} className="rounded-[1.5rem] border border-border bg-card p-5">
@@ -2473,7 +2872,11 @@ JSON formatında döndür:
                               <div className="p-3">
                                 <p className="eyebrow">Görsel {ii + 1}</p>
                                 <p className="mt-1 truncate text-sm font-medium text-foreground">{img.file.name}</p>
-                                <p className="mt-1 text-xs text-muted-foreground">Risk: {imgFindings.length}</p>
+                                {noRiskImages.has(img.id) ? (
+                                  <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">Temiz — risk tespit edilmedi</p>
+                                ) : (
+                                  <p className="mt-1 text-xs text-muted-foreground">Risk: {imgFindings.length}</p>
+                                )}
                               </div>
                             </button>
                           );
@@ -2495,6 +2898,20 @@ JSON formatında döndür:
                                 )
                               )}
                             </div>
+                            {/* KVKK: Yüz bulanıklaştırma */}
+                            {imageMetaMap[selectedImage.id]?.faces.map((face, fi) => (
+                              <div
+                                key={`face-${fi}`}
+                                className="absolute pointer-events-none rounded-full"
+                                style={{
+                                  left: `${face.faceX}%`, top: `${face.faceY}%`,
+                                  width: `${face.faceW}%`, height: `${face.faceH}%`,
+                                  backdropFilter: "blur(16px)",
+                                  WebkitBackdropFilter: "blur(16px)",
+                                  background: "rgba(0,0,0,0.08)",
+                                }}
+                              />
+                            ))}
                             {pinMode === result.rowId && (
                               <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-amber-500/90 px-3 py-1.5 text-center text-xs font-semibold text-white">
                                 Görsele tıklayarak risk işareti ekle
@@ -2503,12 +2920,110 @@ JSON formatında döndür:
                           </div>
                         </div>
                       )}
+
+                      {/* ── Pending pin dialog — görselin hemen altında ── */}
+                      {pendingPin && pendingPin.rowId === result.rowId && (
+                        <div className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 dark:border-amber-600 dark:bg-amber-950">
+                          <p className="text-sm font-semibold text-foreground">Manuel Risk İşareti Ekle</p>
+                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                            <Input label="Tespit Başlığı" value={pendingPinTitle} onChange={(e) => setPendingPinTitle(e.target.value)} placeholder="Örn. Korkuluk eksik" autoFocus />
+                            <div className="flex flex-col gap-2">
+                              <label className="text-sm font-medium text-foreground">Ciddiyet</label>
+                              <select value={pendingPinSeverity} onChange={(e) => setPendingPinSeverity(e.target.value as DetectionSeverity)} className={selectCls}>
+                                <option value="low">Düşük</option>
+                                <option value="medium">Orta</option>
+                                <option value="high">Yüksek</option>
+                                <option value="critical">Kritik</option>
+                              </select>
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <Button type="button" variant="accent" onClick={confirmManualPin} disabled={!pendingPinTitle.trim()}>Ekle</Button>
+                              <Button type="button" variant="ghost" onClick={() => setPendingPin(null)}>İptal</Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* ── Right: findings + score panel ── */}
                     <div className="space-y-3">
+                      {/* Alan özeti + olumlu tespitler + foto kalitesi */}
+                      {selectedImage && imageMetaMap[selectedImage.id] && (() => {
+                        const m = imageMetaMap[selectedImage.id];
+                        return (
+                          <div className="space-y-2">
+                            {/* Uygunsuz görsel uyarısı */}
+                            {m.imageRelevance !== "relevant" && (
+                              <div className="flex items-start gap-3 rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950">
+                                <span className="text-2xl">{m.imageRelevance === "not_real_photo" ? "🖼️" : "🚫"}</span>
+                                <div>
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {m.imageRelevance === "not_real_photo" ? "Gerçek Fotoğraf Değil" : "Risk Analizi Yapılamadı"}
+                                  </p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    {m.imageRelevance === "not_real_photo"
+                                      ? "Bu görsel bir çizim, illüstrasyon veya dijital üretim. Risk analizi yalnızca gerçek saha fotoğrafları üzerinde yapılabilir."
+                                      : "Bu görsel risk analizi için uygun değil."}
+                                    {m.imageDescription ? ` Tespit: ${m.imageDescription}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {/* Risksiz görsel — olumlu durum */}
+                            {selectedImage && noRiskImages.has(selectedImage.id) && m.imageRelevance === "relevant" && (
+                              <div className="flex items-start gap-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 px-4 py-3 dark:border-emerald-700 dark:bg-emerald-950">
+                                <span className="text-2xl">✅</span>
+                                <div>
+                                  <p className="text-sm font-semibold text-foreground">Risk Tespit Edilmedi</p>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    AI analizi bu görselde anlamlı bir risk veya uygunsuzluk tespit edemedi.
+                                    {m.positiveObservations.length > 0 && " Olumlu gözlemler aşağıda listelenmiştir."}
+                                    {" "}Manuel pin ekleyerek kendi tespitinizi oluşturabilirsiniz.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {/* Foto kalitesi uyarısı */}
+                            {m.imageRelevance === "relevant" && m.photoQuality.level !== "good" && (
+                              <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${m.photoQuality.level === "poor" ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300" : "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"}`}>
+                                <span className="text-sm">{m.photoQuality.level === "poor" ? "⚠️" : "📷"}</span>
+                                <span>Görsel kalitesi: {m.photoQuality.level === "poor" ? "Düşük" : "Orta"}{m.photoQuality.note ? ` — ${m.photoQuality.note}` : ""}</span>
+                              </div>
+                            )}
+                            {/* Alan özeti */}
+                            {m.areaSummary && (
+                              <div className="rounded-xl border border-border bg-card px-3 py-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Alan Değerlendirmesi</p>
+                                <p className="text-xs text-foreground leading-relaxed">{m.areaSummary}</p>
+                                {m.personCount > 0 && <p className="mt-1 text-[10px] text-muted-foreground">{m.personCount} kişi tespit edildi</p>}
+                              </div>
+                            )}
+                            {/* Olumlu tespitler */}
+                            {m.positiveObservations.length > 0 && (
+                              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 dark:border-emerald-800 dark:bg-emerald-950">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-1">Olumlu Tespitler</p>
+                                {m.positiveObservations.map((obs, oi) => (
+                                  <div key={oi} className="flex items-start gap-1.5 text-xs text-emerald-800 dark:text-emerald-200">
+                                    <span className="mt-0.5 flex-shrink-0">✓</span>
+                                    <span>{obs}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {visibleFindings.length === 0 ? (
-                        <div className="rounded-2xl border border-border bg-card px-4 py-4 text-sm leading-7 text-muted-foreground">Seçilen görsel için tespit bulunamadı.</div>
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-800 dark:bg-emerald-950">
+                          <div className="flex items-start gap-3">
+                            <span className="text-xl">✅</span>
+                            <div>
+                              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">Bu görselde belirgin risk tespit edilmedi</p>
+                              <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">AI analizi sonucunda somut risk unsuru bulunamamıştır. Manuel risk ekleyebilirsiniz.</p>
+                            </div>
+                          </div>
+                        </div>
                       ) : (
                         visibleFindings.map((finding, fi) => {
                           const active = selectedFindingId === finding.id;
@@ -2533,6 +3048,9 @@ JSON formatında döndür:
                                   <div className="flex items-center gap-2">
                                     <p className="eyebrow">Risk {fi + 1}</p>
                                     {finding.isManual && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900 dark:text-amber-300">Sonradan Eklendi</span>}
+                                    {!finding.isManual && finding.confidenceTier === "high" && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">Kesin Tespit</span>}
+                                    {!finding.isManual && finding.confidenceTier === "medium" && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">AI Tespiti</span>}
+                                    {!finding.isManual && finding.confidenceTier === "low" && <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-semibold text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">Dogrulama Onerilir</span>}
                                   </div>
                                   <h4 className="mt-1 text-base font-semibold text-foreground">{finding.title}</h4>
                                   <p className="mt-1 text-sm text-muted-foreground">{finding.category}</p>
@@ -2583,7 +3101,24 @@ JSON formatında döndür:
                         })
                       )}
 
-                      {/* Skorlama paneli kaldırıldı — son kullanıcı için gereksiz karmaşıklık */}
+                      {/* ── Skorlama Paneli ── */}
+                      {selectedFinding && (
+                        <div className="mt-4 rounded-xl border border-border bg-background p-4">
+                          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Skor Detayı — {METHOD_CATALOG.find(m => m.id === method)?.name ?? method}
+                          </p>
+                          {method === "r_skor" && <R2DPanel finding={selectedFinding} onUpdate={(f) => updateFinding(result.rowId, f)} />}
+                          {method === "fine_kinney" && <FKPanel finding={selectedFinding} onUpdate={(f) => updateFinding(result.rowId, f)} />}
+                          {method === "l_matrix" && <MatrixPanel finding={selectedFinding} onUpdate={(f) => updateFinding(result.rowId, f)} />}
+                          {method === "fmea" && <FMEAPanel fmeaValues={selectedFinding.fmeaValues} fmeaResult={selectedFinding.fmeaResult} onValuesChange={(v) => updateFinding(result.rowId, computeAllScores({ ...selectedFinding, fmeaValues: v }))} />}
+                          {method === "hazop" && <HAZOPPanel hazopValues={selectedFinding.hazopValues} hazopResult={selectedFinding.hazopResult} onValuesChange={(v) => updateFinding(result.rowId, computeAllScores({ ...selectedFinding, hazopValues: v }))} />}
+                          {method === "bow_tie" && <BowTiePanel bowTieValues={selectedFinding.bowTieValues} bowTieResult={selectedFinding.bowTieResult} onValuesChange={(v) => updateFinding(result.rowId, computeAllScores({ ...selectedFinding, bowTieValues: v }))} />}
+                          {method === "fta" && <FTAPanel ftaValues={selectedFinding.ftaValues} ftaResult={selectedFinding.ftaResult} onValuesChange={(v) => updateFinding(result.rowId, computeAllScores({ ...selectedFinding, ftaValues: v }))} />}
+                          {method === "checklist" && <ChecklistPanel checklistValues={selectedFinding.checklistValues} checklistResult={selectedFinding.checklistResult} onValuesChange={(v) => updateFinding(result.rowId, computeAllScores({ ...selectedFinding, checklistValues: v }))} />}
+                          {method === "jsa" && <JSAPanel jsaValues={selectedFinding.jsaValues} jsaResult={selectedFinding.jsaResult} onValuesChange={(v) => updateFinding(result.rowId, computeAllScores({ ...selectedFinding, jsaValues: v }))} />}
+                          {method === "lopa" && <LOPAPanel lopaValues={selectedFinding.lopaValues} lopaResult={selectedFinding.lopaResult} onValuesChange={(v) => updateFinding(result.rowId, computeAllScores({ ...selectedFinding, lopaValues: v }))} />}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2595,27 +3130,29 @@ JSON formatında döndür:
         </div>
       )}
 
-      {/* ═══════════════ NAVIGATION BUTTONS ═══════════════ */}
-      <div className="flex items-center justify-between">
-        <div>
-          {step > 1 && (
-            <Button type="button" variant="outline" size="lg" onClick={goBack}>Geri</Button>
-          )}
-        </div>
-        <div className="flex gap-3">
-          {step < 4 && (
-            <Button type="button" variant="accent" size="lg" onClick={goNext}>
-              {step === 3 ? "Sonuçlara Git" : "İleri"}
-            </Button>
-          )}
-          {step === 4 && (
-            <>
-              <Button type="button" variant="accent" size="lg" onClick={handleSaveAnalysis} disabled={isSaving || results.length === 0}>
-                {isSaving ? "Kaydediliyor..." : currentAssessmentId ? "Güncelle" : "Kaydet"}
+      {/* ═══════════════ NAVIGATION BUTTONS — sticky bottom bar ═══════════════ */}
+      <div className="sticky bottom-0 z-40 -mx-4 mt-6 border-t border-border bg-white/95 px-4 py-3 backdrop-blur-md dark:bg-[#0A0E18]/95 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="flex items-center justify-between">
+          <div>
+            {step > 1 && (
+              <Button type="button" variant="outline" size="sm" onClick={goBack}>Geri</Button>
+            )}
+          </div>
+          <div className="flex gap-3">
+            {step < 4 && (
+              <Button type="button" variant="accent" size="sm" onClick={goNext}>
+                {step === 3 ? "Sonuçlara Git" : "İleri"}
               </Button>
-              <Button type="button" variant="outline" size="lg" onClick={backToList}>Listeye Dön</Button>
-            </>
-          )}
+            )}
+            {step === 4 && (
+              <>
+                <Button type="button" variant="accent" size="sm" onClick={handleSaveAnalysis} disabled={isSaving || results.length === 0}>
+                  {isSaving ? "Kaydediliyor..." : currentAssessmentId ? "Güncelle" : "Kaydet"}
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={backToList}>Listeye Dön</Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

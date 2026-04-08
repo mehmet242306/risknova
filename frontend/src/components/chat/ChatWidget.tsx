@@ -133,10 +133,13 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-50 inline-flex size-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] text-white shadow-[0_8px_32px_rgba(184,134,11,0.4)] transition-all hover:scale-105 hover:shadow-[0_12px_40px_rgba(184,134,11,0.5)]"
+          className="group fixed bottom-6 right-6 z-50 inline-flex size-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] text-white shadow-[0_8px_32px_rgba(184,134,11,0.4)] transition-all hover:scale-110 hover:shadow-[0_12px_40px_rgba(184,134,11,0.5)]"
           aria-label="Sohbet asistanını aç"
         >
-          <MessageCircle className="size-6" />
+          {/* Pulse ring animation */}
+          <span className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] opacity-40 animate-ping" style={{ animationDuration: "2.5s" }} />
+          <span className="absolute -inset-1 rounded-full border-2 border-amber-400/30 animate-pulse" style={{ animationDuration: "3s" }} />
+          <MessageCircle className="relative size-6 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
         </button>
       )}
 

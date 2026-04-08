@@ -10,7 +10,8 @@ import { getGuidedTasks, getOverallRiskState, getReminderItems } from "@/lib/wor
 import { CompanyManagementActions } from "@/components/companies/CompanyManagementActions";
 import { PersonnelManagementPanel } from "@/components/companies/PersonnelManagementPanel";
 import { fetchCompaniesFromSupabase, saveCompanyToSupabase, archiveCompanyInSupabase, deleteCompanyInSupabase, uploadCompanyLogo } from "@/lib/supabase/company-api";
-import { type WTab, OverviewTab, StructureTab, RiskTab, TrackingTab, DocumentsTab, HistoryTab, DigitalTwinTab } from "@/components/companies/WorkspaceTabs";
+import { computeCompanyRiskScores } from "@/lib/supabase/risk-assessment-api";
+import { type WTab, OverviewTab, StructureTab, RiskTab, TrackingTab, DocumentsTab, HistoryTab } from "@/components/companies/WorkspaceTabs";
 import { CompanyPlannerTab } from "@/components/companies/CompanyPlannerTab";
 import { TeamManagementTab } from "@/components/companies/TeamManagementTab";
 import { OrganizationPanel } from "@/components/companies/OrganizationPanel";
@@ -65,7 +66,6 @@ const TABS: { k: WTab; l: string }[] = [
   { k: "documents", l: "Arşiv" },
   { k: "organization", l: "Organizasyon" },
   { k: "history", l: "Geçmiş" },
-  { k: "digital_twin", l: "Dijital İkiz" },
 ];
 
 function rbv(l: string): "success" | "warning" | "danger" | "neutral" { if (l === "Kritik") return "danger"; if (l === "Y\u00FCksek" || l === "Orta") return "warning"; if (l === "Kontroll\u00FC") return "success"; return "neutral"; }
@@ -91,10 +91,21 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
+    let found: CompanyRecord | undefined;
     const sb = await fetchCompaniesFromSupabase();
-    if (sb) { const f = sb.find((c) => c.id === companyId); if (f) { setCompany(f); setLoading(false); return; } }
-    const loc = loadCompanyDirectory(); const f = loc.find((c) => c.id === companyId);
-    if (f) setCompany(f); else if (loc.length > 0) setCompany(loc[0]);
+    if (sb) { found = sb.find((c) => c.id === companyId); }
+    if (!found) {
+      const loc = loadCompanyDirectory();
+      found = loc.find((c) => c.id === companyId) ?? loc[0];
+    }
+    if (found) {
+      // Dinamik skor hesaplama — DB'deki gerçek verilerden
+      try {
+        const scores = await computeCompanyRiskScores(found.id);
+        found = { ...found, ...scores };
+      } catch { /* skor hesaplanamazsa mevcut değerlerle devam */ }
+      setCompany(found);
+    }
     setLoading(false);
   }, [companyId]);
 
@@ -319,7 +330,6 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
           {tab === "documents" && <DocumentsTab company={company} companyId={companyId} />}
           {tab === "organization" && <OrganizationPanel companyId={companyId} />}
           {tab === "history" && <HistoryTab />}
-          {tab === "digital_twin" && <DigitalTwinTab />}
         </main>
 
         {/* Sidebar — sadece Genel Durum sekmesinde */}

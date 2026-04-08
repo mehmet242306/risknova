@@ -52,13 +52,13 @@
   --header-hover-bg: rgba(255, 255, 255, 0.08);
   --nav-icon-color: #CBD5E1;
 
-  /* ── Satır 2: Secondary nav — header ile aynı koyu ton ── */
-  --secondary-nav-bg-solid: #0F172A;
-  --secondary-nav-text: #94A3B8;
+  /* ── Satır 2: Secondary nav — koyu yeşil (opak) ── */
+  --secondary-nav-bg-solid: #0a3d2f;
+  --secondary-nav-text: #6ee7b7;
   --secondary-nav-hover-text: #ffffff;
-  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.06);
+  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.08);
   --secondary-nav-active: #ffffff;
-  --secondary-nav-border: rgba(255, 255, 255, 0.06);
+  --secondary-nav-border: rgba(110, 231, 183, 0.12);
 
   /* ── Satır 3: Firma tabları — beyaz + gold çerçeve ── */
   --tab-bar-bg-solid: #ffffff;
@@ -128,13 +128,13 @@
   --header-hover-bg: rgba(255, 255, 255, 0.08);
   --nav-icon-color: #B0BDD4;
 
-  /* ── Satır 2: Secondary nav — header ile aynı koyu ton ── */
-  --secondary-nav-bg-solid: #080A12;
-  --secondary-nav-text: #7B8DB0;
-  --secondary-nav-hover-text: #E2E8F0;
-  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.06);
-  --secondary-nav-active: #E2E8F0;
-  --secondary-nav-border: rgba(255, 255, 255, 0.04);
+  /* ── Satır 2: Secondary nav — koyu yeşil (dark, opak) ── */
+  --secondary-nav-bg-solid: #0a3d2f;
+  --secondary-nav-text: #6ee7b7;
+  --secondary-nav-hover-text: #ecfdf5;
+  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --secondary-nav-active: #ecfdf5;
+  --secondary-nav-border: rgba(110, 231, 183, 0.10);
 
   /* ── Satır 3: Firma tabları — gold çerçeveli (dark) ── */
   --tab-bar-bg-solid: #0A0E18;

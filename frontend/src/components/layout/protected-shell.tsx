@@ -29,6 +29,7 @@ const secondaryNav = [
   { href: "/timesheet", key: "nav.timesheet" },
   { href: "/solution-center", key: "nav.solutionCenter" },
   { href: "/training", key: "nav.training" },
+  { href: "/digital-twin", key: "nav.digitalTwin" },
   { href: "/reports", key: "nav.reports" },
   { href: "/settings", key: "nav.settings" },
 ];
@@ -277,7 +278,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
           style={{ background: "var(--header-bg-solid)", borderBottom: "1px solid var(--header-border)" }}
         >
           <div className="h-[2px] w-full bg-[linear-gradient(90deg,transparent_5%,var(--gold)_50%,transparent_95%)]" />
-          <div className="relative mx-auto h-[72px] w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="relative mx-auto h-[80px] w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             {/* Left: Brand — absolute so it doesn't affect nav centering */}
             <div className="absolute left-4 top-1/2 -translate-y-1/2 sm:left-6 lg:left-8">
               <Brand href="/dashboard" inverted />
@@ -292,7 +293,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "relative inline-flex h-11 items-center rounded-xl px-5 text-base font-semibold tracking-[-0.01em] transition-all duration-200",
+                      "relative inline-flex h-12 items-center rounded-xl px-5 text-[17px] font-semibold tracking-[-0.01em] transition-all duration-200",
                       act
                         ? "bg-white/12 text-white shadow-[0_0_12px_rgba(251,191,36,0.15)]"
                         : "text-[var(--header-muted)] hover:bg-[var(--header-hover-bg)] hover:text-white",
@@ -314,7 +315,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
               <ThemeToggle />
               <Link
                 href="/profile"
-                className="inline-flex h-10 items-center rounded-xl px-3.5 text-base font-medium text-[var(--nav-icon-color)] transition-all duration-200 hover:bg-white/12 hover:text-white"
+                className="inline-flex h-11 items-center rounded-xl px-4 text-[15px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:bg-white/12 hover:text-white"
               >
                 {t("common.profile")}
               </Link>
@@ -324,9 +325,9 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
 
         {/* ── Secondary navigation bar (centered, sticky with header) ── */}
         {/* Gold ayraç — 1 ile 2 arası (üst üste, boşluksuz) */}
-        <div className="hidden h-[2px] md:block" style={{ background: "var(--gold)", marginBottom: "-1px", position: "relative", zIndex: 1 }} />
-        <div className="hidden md:block backdrop-blur-lg relative z-0" style={{ background: "color-mix(in srgb, var(--secondary-nav-bg-solid) 65%, transparent)", borderBottom: "1px solid var(--secondary-nav-border)" }}>
-          <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
+        <div className="hidden h-[2px] md:block" style={{ background: "linear-gradient(90deg, transparent 5%, #10B981 50%, transparent 95%)", marginBottom: "-1px", position: "relative", zIndex: 1 }} />
+        <div className="hidden md:block relative z-0" style={{ background: "var(--secondary-nav-bg-solid)", borderBottom: "1px solid var(--secondary-nav-border)" }}>
+          <div className="mx-auto flex h-12 w-full max-w-7xl items-center justify-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
             {secondaryNav.map((item) => {
               const act = isActive(pathname, item.href);
               return (
@@ -334,7 +335,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "relative inline-flex shrink-0 items-center rounded-lg px-4 py-2 text-[15px] font-medium transition-all duration-200",
+                    "relative inline-flex shrink-0 items-center rounded-lg px-4 py-2 text-[14px] font-semibold transition-all duration-200",
                     act
                       ? "text-[var(--secondary-nav-active)] bg-[var(--secondary-nav-hover-bg)]"
                       : "text-[var(--secondary-nav-text)] hover:text-[var(--secondary-nav-hover-text)] hover:bg-[var(--secondary-nav-hover-bg)]",

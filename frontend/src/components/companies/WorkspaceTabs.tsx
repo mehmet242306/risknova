@@ -18,7 +18,7 @@ import {
   type TrainingRecord, type PeriodicControlRecord, type OpenAction, type TrackingSummary, type CommitteeMeeting,
 } from "@/lib/supabase/tracking-api";
 
-export type WTab = "overview" | "structure" | "risk" | "people" | "personnel" | "planner" | "tracking" | "documents" | "organization" | "history" | "digital_twin";
+export type WTab = "overview" | "structure" | "risk" | "people" | "personnel" | "planner" | "tracking" | "documents" | "organization" | "history";
 
 function pbv(p: string): "danger" | "warning" | "neutral" {
   if (p === "high") return "danger";
@@ -363,8 +363,37 @@ export function RiskTab({ company }: { company: CompanyRecord }) {
   async function handleDelete(id: string) {
     const ok = await deleteRiskAssessment(id);
     if (ok) {
-      setAnalyses((prev) => prev.filter((a) => a.id !== id));
+      const remaining = analyses.filter((a) => a.id !== id);
+      setAnalyses(remaining);
       if (selectedAnalysis?.id === id) setSelectedAnalysis(null);
+      if (selectedCategory) {
+        setCategoryFindings((prev) => prev.filter((f) => f.assessmentId !== id));
+      }
+      // Kategori istatistiklerini yeniden hesapla
+      const supabase = createClient();
+      if (supabase && remaining.length > 0) {
+        const remainingIds = remaining.map((a) => a.id);
+        const { data: updatedFindings } = await supabase
+          .from("risk_assessment_findings")
+          .select("category, severity")
+          .in("assessment_id", remainingIds);
+        if (updatedFindings) {
+          const stats: Record<string, CategoryStats> = {};
+          for (const cat of RISK_CATEGORIES) stats[cat.key] = { key: cat.key, total: 0, critical: 0, high: 0, medium: 0, low: 0 };
+          for (const f of updatedFindings) {
+            const catKey = mapCategoryToKey(f.category);
+            if (!stats[catKey]) stats[catKey] = { key: catKey, total: 0, critical: 0, high: 0, medium: 0, low: 0 };
+            stats[catKey].total++;
+            if (f.severity === "critical") stats[catKey].critical++;
+            else if (f.severity === "high") stats[catKey].high++;
+            else if (f.severity === "medium") stats[catKey].medium++;
+            else stats[catKey].low++;
+          }
+          setCatStats(Object.values(stats));
+        }
+      } else if (remaining.length === 0) {
+        setCatStats([]);
+      }
     }
     setConfirmDeleteId(null);
   }
@@ -933,6 +962,11 @@ export function TrackingTab({ company }: { company: CompanyRecord }) {
   const [showMeetingForm, setShowMeetingForm] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<CommitteeMeeting | null>(null);
 
+  // Inline action status edit (risk findings only)
+  const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [actionNewStatus, setActionNewStatus] = useState<"open" | "in_progress" | "resolved">("open");
+  const [savingAction, setSavingAction] = useState(false);
+
   useEffect(() => {
     (async () => {
       const [s, a, t, c, m] = await Promise.all([
@@ -1012,6 +1046,32 @@ export function TrackingTab({ company }: { company: CompanyRecord }) {
               {actions.length === 0 ? (
                 <p className="text-center text-sm text-muted-foreground py-6">Açık aksiyon bulunmuyor.</p>
               ) : (
+                <>
+                {/* Severity breakdown */}
+                <div className="mb-4 flex flex-wrap gap-2">
+                  {(() => {
+                    const cr = actions.filter((a) => a.severity === "critical").length;
+                    const hi = actions.filter((a) => a.severity === "high").length;
+                    const md = actions.filter((a) => a.severity === "medium").length;
+                    const lo = actions.filter((a) => a.severity === "low").length;
+                    const risk = actions.filter((a) => a.source === "risk").length;
+                    const dof = actions.filter((a) => a.source === "dof").length;
+                    const task = actions.filter((a) => a.source === "isg_task").length;
+                    return (
+                      <>
+                        <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold text-foreground">Toplam: {actions.length}</span>
+                        {cr > 0 && <span className="rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">Kritik: {cr}</span>}
+                        {hi > 0 && <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">Yüksek: {hi}</span>}
+                        {md > 0 && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Orta: {md}</span>}
+                        {lo > 0 && <span className="rounded-full bg-green-100 px-2.5 py-1 text-[11px] font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">Düşük: {lo}</span>}
+                        <span className="ml-auto" />
+                        {risk > 0 && <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">Risk: {risk}</span>}
+                        {dof > 0 && <span className="rounded-full bg-purple-50 px-2 py-1 text-[10px] font-medium text-purple-600 dark:bg-purple-900/20 dark:text-purple-400">DÖF: {dof}</span>}
+                        {task > 0 && <span className="rounded-full bg-cyan-50 px-2 py-1 text-[10px] font-medium text-cyan-600 dark:bg-cyan-900/20 dark:text-cyan-400">Görev: {task}</span>}
+                      </>
+                    );
+                  })()}
+                </div>
                 <div className="space-y-2">
                   {actions.map((a) => {
                     const sevCls = a.severity === "critical" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
@@ -1022,23 +1082,62 @@ export function TrackingTab({ company }: { company: CompanyRecord }) {
                       : a.source === "dof" ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
                       : "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400";
                     const srcLabel = a.source === "risk" ? "Risk" : a.source === "dof" ? "DÖF" : "Görev";
+                    const isEditingThis = editingActionId === a.id && a.source === "risk";
                     return (
-                      <div key={a.id} className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 p-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-foreground">{a.title}</span>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${sevCls}`}>{a.severity === "critical" ? "Kritik" : a.severity === "high" ? "Yüksek" : a.severity === "medium" ? "Orta" : "Düşük"}</span>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${srcCls}`}>{srcLabel}</span>
+                      <div key={a.id} className="rounded-lg border border-border bg-secondary/20 p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-foreground">{a.title}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${sevCls}`}>{a.severity === "critical" ? "Kritik" : a.severity === "high" ? "Yüksek" : a.severity === "medium" ? "Orta" : "Düşük"}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${srcCls}`}>{srcLabel}</span>
+                              {a.status === "in_progress" && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Devam Ediyor</span>}
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">{a.sourceLabel}</p>
                           </div>
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">{a.sourceLabel}</p>
+                          <div className="flex items-center gap-2">
+                            {a.deadline && (
+                              <span className={`text-xs font-medium ${a.deadline < today ? "text-red-500" : "text-muted-foreground"}`}>{fmtDate(a.deadline)}</span>
+                            )}
+                            {a.source === "risk" && !isEditingThis && (
+                              <button type="button" onClick={() => { setEditingActionId(a.id); setActionNewStatus(a.status === "in_progress" ? "in_progress" : "open"); }}
+                                className="rounded-lg px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors">Durum</button>
+                            )}
+                          </div>
                         </div>
-                        {a.deadline && (
-                          <span className={`text-xs font-medium ${a.deadline < today ? "text-red-500" : "text-muted-foreground"}`}>{fmtDate(a.deadline)}</span>
+                        {isEditingThis && (
+                          <div className="mt-2 flex items-center gap-2 rounded-lg bg-primary/5 p-2">
+                            <select value={actionNewStatus} onChange={(e) => setActionNewStatus(e.target.value as typeof actionNewStatus)}
+                              className="h-8 rounded-lg border border-border bg-card px-2 text-xs text-foreground">
+                              <option value="open">Açık</option>
+                              <option value="in_progress">Devam Ediyor</option>
+                              <option value="resolved">Çözüldü</option>
+                            </select>
+                            <button type="button" disabled={savingAction} onClick={async () => {
+                              setSavingAction(true);
+                              const ok = await updateFindingStatus(a.id, actionNewStatus, "");
+                              if (ok) {
+                                if (actionNewStatus === "resolved") {
+                                  setActions((prev) => prev.filter((x) => x.id !== a.id));
+                                } else {
+                                  setActions((prev) => prev.map((x) => x.id === a.id ? { ...x, status: actionNewStatus } : x));
+                                }
+                                setSummary(await getTrackingSummary(company.id));
+                              }
+                              setSavingAction(false);
+                              setEditingActionId(null);
+                            }} className="rounded-lg bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50">
+                              {savingAction ? "..." : "Kaydet"}
+                            </button>
+                            <button type="button" onClick={() => setEditingActionId(null)}
+                              className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-secondary">Vazgeç</button>
+                          </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
+                </>
               )}
             </Sec>
           )}
@@ -1466,33 +1565,43 @@ export function DocumentsTab({ company, companyId }: { company: CompanyRecord; c
   const [showArchive, setShowArchive] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       const sb = createClient();
       if (!sb) { setLoading(false); return; }
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) { setLoading(false); return; }
-      const { data: profile } = await sb.from('user_profiles').select('organization_id').eq('auth_user_id', user.id).single();
-      if (!profile?.organization_id) { setLoading(false); return; }
+      try {
+        const { data: { user } } = await sb.auth.getUser();
+        if (!user || cancelled) { setLoading(false); return; }
+        const { data: profile } = await sb.from('user_profiles').select('organization_id').eq('auth_user_id', user.id).single();
+        if (!profile?.organization_id || cancelled) { setLoading(false); return; }
 
-      // Get workspace ID for this company
-      const { data: ws } = await sb.from('company_workspaces').select('id').eq('company_identity_id', companyId).eq('organization_id', profile.organization_id).limit(1);
-      const wsId = ws?.[0]?.id;
+        // Get workspace ID for this company
+        const { data: ws } = await sb.from('company_workspaces').select('id').eq('company_identity_id', companyId).eq('organization_id', profile.organization_id).limit(1);
+        if (cancelled) return;
+        const wsId = ws?.[0]?.id;
 
-      // Fetch active docs
-      let q = sb.from('editor_documents').select('id, title, group_key, status, version, updated_at, is_shared').eq('organization_id', profile.organization_id).neq('status', 'arsiv').order('updated_at', { ascending: false });
-      if (wsId) q = q.eq('company_workspace_id', wsId);
-      const { data: activeDocs } = await q;
+        // Fetch active docs
+        let q = sb.from('editor_documents').select('id, title, group_key, status, version, updated_at, is_shared').eq('organization_id', profile.organization_id).neq('status', 'arsiv').order('updated_at', { ascending: false });
+        if (wsId) q = q.eq('company_workspace_id', wsId);
+        const { data: activeDocs } = await q;
+        if (cancelled) return;
 
-      // Fetch archived docs
-      let aq = sb.from('editor_documents').select('id, title, group_key, status, version, updated_at, is_shared').eq('organization_id', profile.organization_id).eq('status', 'arsiv').order('updated_at', { ascending: false });
-      if (wsId) aq = aq.eq('company_workspace_id', wsId);
-      const { data: archDocs } = await aq;
+        // Fetch archived docs
+        let aq = sb.from('editor_documents').select('id, title, group_key, status, version, updated_at, is_shared').eq('organization_id', profile.organization_id).eq('status', 'arsiv').order('updated_at', { ascending: false });
+        if (wsId) aq = aq.eq('company_workspace_id', wsId);
+        const { data: archDocs } = await aq;
+        if (cancelled) return;
 
-      setDocs(activeDocs || []);
-      setArchivedDocs(archDocs || []);
-      setLoading(false);
+        setDocs(activeDocs || []);
+        setArchivedDocs(archDocs || []);
+      } catch (err) {
+        if (!cancelled) console.warn("[DocumentsTab] load error:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
     load();
+    return () => { cancelled = true; };
   }, [companyId]);
 
   const allGroups = DOCUMENT_GROUPS as Array<{ key: string; title: string; icon: string; color: string; items: Array<{ id: string; title: string }> }>;
@@ -1741,16 +1850,3 @@ export function HistoryTab() {
   );
 }
 
-/* ── DIGITAL TWIN ── */
-export function DigitalTwinTab() {
-  return (
-    <Sec title="Dijital İkiz" desc="Firmanın dijital temsili ve simülasyon ortamı.">
-      <div className="rounded-lg border border-border bg-secondary/30 p-6 text-center">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 text-2xl">🤖</div>
-        <h3 className="mt-4 text-base font-semibold text-foreground">Dijital İkiz Modülü</h3>
-        <p className="mt-2 text-sm text-muted-foreground">Firmanın fiziksel yapısının dijital temsili, risk simülasyonları ve senaryo analizleri bu alanda yer alacaktır.</p>
-        <Badge variant="neutral" className="mt-3">Geliştirme Aşamasında</Badge>
-      </div>
-    </Sec>
-  );
-}

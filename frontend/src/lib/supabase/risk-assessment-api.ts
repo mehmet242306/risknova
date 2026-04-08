@@ -64,6 +64,20 @@ export type SavedFinding = {
   fkResult: unknown | null;
   matrixValues: { likelihood: number; severity: number };
   matrixResult: unknown | null;
+  fmeaValues: unknown;
+  fmeaResult: unknown | null;
+  hazopValues: unknown;
+  hazopResult: unknown | null;
+  bowTieValues: unknown;
+  bowTieResult: unknown | null;
+  ftaValues: unknown;
+  ftaResult: unknown | null;
+  checklistValues: unknown;
+  checklistResult: unknown | null;
+  jsaValues: unknown;
+  jsaResult: unknown | null;
+  lopaValues: unknown;
+  lopaResult: unknown | null;
   annotations: unknown[];
   legalReferences: { law: string; article: string; description: string }[];
   sortOrder: number;
@@ -204,6 +218,20 @@ export async function loadRiskAssessment(assessmentId: string): Promise<FullAsse
       fkResult: f.fk_result,
       matrixValues: f.matrix_values ?? { likelihood: 1, severity: 1 },
       matrixResult: f.matrix_result,
+      fmeaValues: f.fmea_values ?? { severity: 5, occurrence: 5, detection: 5 },
+      fmeaResult: f.fmea_result ?? null,
+      hazopValues: f.hazop_values ?? { severity: 3, likelihood: 3, detectability: 3, guideWord: "Çok (More)", parameter: "Akış (Flow)", deviation: "" },
+      hazopResult: f.hazop_result ?? null,
+      bowTieValues: f.bow_tie_values ?? { threatProbability: 3, consequenceSeverity: 3, preventionBarriers: 1, mitigationBarriers: 1 },
+      bowTieResult: f.bow_tie_result ?? null,
+      ftaValues: f.fta_values ?? { components: [], gateType: "OR", systemCriticality: 3 },
+      ftaResult: f.fta_result ?? null,
+      checklistValues: f.checklist_values ?? { items: [], category: "Genel" },
+      checklistResult: f.checklist_result ?? null,
+      jsaValues: f.jsa_values ?? { jobTitle: "", steps: [] },
+      jsaResult: f.jsa_result ?? null,
+      lopaValues: f.lopa_values ?? { initiatingEventFreq: 0.1, consequenceSeverity: 3, layers: [] },
+      lopaResult: f.lopa_result ?? null,
       annotations: f.annotations ?? [],
       legalReferences: f.legal_references ?? [],
       sortOrder: f.sort_order,
@@ -263,6 +291,20 @@ export type SaveRiskAnalysisInput = {
       fkResult: unknown | null;
       matrixValues: { likelihood: number; severity: number };
       matrixResult: unknown | null;
+      fmeaValues?: unknown;
+      fmeaResult?: unknown | null;
+      hazopValues?: unknown;
+      hazopResult?: unknown | null;
+      bowTieValues?: unknown;
+      bowTieResult?: unknown | null;
+      ftaValues?: unknown;
+      ftaResult?: unknown | null;
+      checklistValues?: unknown;
+      checklistResult?: unknown | null;
+      jsaValues?: unknown;
+      jsaResult?: unknown | null;
+      lopaValues?: unknown;
+      lopaResult?: unknown | null;
       annotations: unknown[];
       legalReferences: { law: string; article: string; description: string }[];
     }[];
@@ -290,7 +332,7 @@ export async function saveRiskAnalysis(input: SaveRiskAnalysisInput): Promise<st
         title: input.title,
         analysis_note: input.analysisNote,
         method: input.method,
-        method_version: input.method === "r_skor" ? "r-skor-v1" : input.method === "fine_kinney" ? "fine-kinney-v1" : "l-matrix-v1",
+        method_version: `${input.method}-v1`,
         company_workspace_id: input.companyWorkspaceId || null,
         assessment_date: new Date().toISOString().split("T")[0],
         workplace_name: input.location || null,
@@ -387,6 +429,20 @@ export async function saveRiskAnalysis(input: SaveRiskAnalysisInput): Promise<st
             fk_result: f.fkResult,
             matrix_values: f.matrixValues,
             matrix_result: f.matrixResult,
+            fmea_values: f.fmeaValues ?? null,
+            fmea_result: f.fmeaResult ?? null,
+            hazop_values: f.hazopValues ?? null,
+            hazop_result: f.hazopResult ?? null,
+            bow_tie_values: f.bowTieValues ?? null,
+            bow_tie_result: f.bowTieResult ?? null,
+            fta_values: f.ftaValues ?? null,
+            fta_result: f.ftaResult ?? null,
+            checklist_values: f.checklistValues ?? null,
+            checklist_result: f.checklistResult ?? null,
+            jsa_values: f.jsaValues ?? null,
+            jsa_result: f.jsaResult ?? null,
+            lopa_values: f.lopaValues ?? null,
+            lopa_result: f.lopaResult ?? null,
             annotations: f.annotations,
             legal_references: f.legalReferences,
             sort_order: fi + 1,
@@ -509,6 +565,20 @@ export async function listFindingsByCategory(
       fkResult: f.fk_result,
       matrixValues: f.matrix_values ?? { likelihood: 1, severity: 1 },
       matrixResult: f.matrix_result,
+      fmeaValues: f.fmea_values ?? { severity: 5, occurrence: 5, detection: 5 },
+      fmeaResult: f.fmea_result ?? null,
+      hazopValues: f.hazop_values ?? { severity: 3, likelihood: 3, detectability: 3, guideWord: "Çok (More)", parameter: "Akış (Flow)", deviation: "" },
+      hazopResult: f.hazop_result ?? null,
+      bowTieValues: f.bow_tie_values ?? { threatProbability: 3, consequenceSeverity: 3, preventionBarriers: 1, mitigationBarriers: 1 },
+      bowTieResult: f.bow_tie_result ?? null,
+      ftaValues: f.fta_values ?? { components: [], gateType: "OR", systemCriticality: 3 },
+      ftaResult: f.fta_result ?? null,
+      checklistValues: f.checklist_values ?? { items: [], category: "Genel" },
+      checklistResult: f.checklist_result ?? null,
+      jsaValues: f.jsa_values ?? { jobTitle: "", steps: [] },
+      jsaResult: f.jsa_result ?? null,
+      lopaValues: f.lopa_values ?? { initiatingEventFreq: 0.1, consequenceSeverity: 3, layers: [] },
+      lopaResult: f.lopa_result ?? null,
       annotations: f.annotations ?? [],
       legalReferences: f.legal_references ?? [],
       sortOrder: f.sort_order,
@@ -523,16 +593,42 @@ export async function listFindingsByCategory(
 /** AI kategori adını risk sınıfı key'ine dönüştür (WorkspaceTabs.tsx ile aynı mantık) */
 function mapCategoryToKey(category: string): string {
   const lower = (category || "").toLowerCase().trim();
-  if (lower.includes("elektrik")) return "elektrik";
-  if (lower.includes("yangın") || lower.includes("patlama") || lower.includes("yangin")) return "yangin";
-  if (lower.includes("kimyasal") || lower.includes("kimya")) return "kimyasal";
-  if (lower.includes("makine") || lower.includes("mekanik")) return "mekanik";
-  if (lower.includes("ergonomi")) return "ergonomik";
-  if (lower.includes("trafik") || lower.includes("araç")) return "trafik";
-  if (lower.includes("çevre") || lower.includes("cevre")) return "cevre";
-  if (lower.includes("biyolojik")) return "biyolojik";
-  if (lower.includes("psikososyal") || lower.includes("stres")) return "psikososyal";
-  return "fiziksel";
+
+  // Elektrik
+  if (lower.includes("elektrik") || lower.includes("electrical")) return "elektrik";
+
+  // Yangın / Patlama
+  if (lower.includes("yangın") || lower.includes("yangin") || lower.includes("patlama") || lower.includes("fire") || lower.includes("lpg") || lower.includes("gaz")) return "yangin";
+
+  // Kimyasal
+  if (lower.includes("kimyasal") || lower.includes("kimya") || lower.includes("chemical")) return "kimyasal";
+
+  // Mekanik (makine, ekipman, düşme, sıkışma, depolama)
+  if (lower.includes("makine") || lower.includes("mekanik") || lower.includes("machine") || lower.includes("ekipman") || lower.includes("depolama") || lower.includes("storage") || lower.includes("istifleme") || lower.includes("yüksekte") || lower.includes("yuksekte") || lower.includes("iskele") || lower.includes("düşme") || lower.includes("dusme")) return "mekanik";
+
+  // Ergonomik
+  if (lower.includes("ergonomi") || lower.includes("ergonomic") || lower.includes("elle taşıma") || lower.includes("elle tasima") || lower.includes("kaldırma")) return "ergonomik";
+
+  // Trafik
+  if (lower.includes("trafik") || lower.includes("araç") || lower.includes("arac") || lower.includes("forklift") || lower.includes("traffic")) return "trafik";
+
+  // Çevresel
+  if (lower.includes("çevre") || lower.includes("cevre") || lower.includes("havalandırma") || lower.includes("havalandirma") || lower.includes("aydınlatma") || lower.includes("aydinlatma") || lower.includes("gürültü") || lower.includes("gurultu") || lower.includes("sıcaklık") || lower.includes("sicaklik") || lower.includes("environment")) return "cevre";
+
+  // Biyolojik
+  if (lower.includes("biyolojik") || lower.includes("biological") || lower.includes("hijyen") || lower.includes("enfeksiyon")) return "biyolojik";
+
+  // Psikososyal
+  if (lower.includes("psikososyal") || lower.includes("stres") || lower.includes("mobbing") || lower.includes("vardiya")) return "psikososyal";
+
+  // Fiziksel (düzen, temizlik, KKD, acil durum, uyarı, diğer → hepsi fiziksel'e düş)
+  // Açık eşleşme yapılamazsa varsayılan olarak fiziksel
+  if (lower.includes("kkd") || lower.includes("ppe") || lower.includes("koruyucu") || lower.includes("baret")) return "fiziksel";
+  if (lower.includes("düzen") || lower.includes("duzen") || lower.includes("temizlik") || lower.includes("housekeeping")) return "fiziksel";
+  if (lower.includes("acil") || lower.includes("emergency") || lower.includes("çıkış") || lower.includes("cikis")) return "fiziksel";
+  if (lower.includes("işaret") || lower.includes("isaret") || lower.includes("uyarı") || lower.includes("uyari") || lower.includes("levha")) return "fiziksel";
+
+  return "fiziksel"; // varsayılan
 }
 
 /* ================================================================== */
@@ -566,6 +662,161 @@ export async function updateFindingStatus(
 /* ================================================================== */
 /* ARCHIVE / UPDATE STATUS                                             */
 /* ================================================================== */
+
+/* ================================================================== */
+/* COMPUTE COMPANY RISK SCORES                                         */
+/* Dinamik olarak DB verilerinden coverage, maturity, openPressure hesaplar */
+/* ================================================================== */
+
+export type ComputedRiskScores = {
+  completionRate: number;
+  maturityScore: number;
+  openRiskScore: number;
+  openActions: number;
+  overdueActions: number;
+  openRiskAssessments: number;
+  completedTrainingCount: number;
+  expiringTrainingCount: number;
+  periodicControlCount: number;
+  overduePeriodicControlCount: number;
+  lastAnalysisDate: string;
+};
+
+/**
+ * DB'deki gerçek verilerden firma risk skorlarını hesaplar.
+ *
+ * - coverage (completionRate): Kaç farklı risk kategorisinde tespit var + analiz sayısı + doküman oranı
+ * - maturity (maturityScore): Çözülen tespit oranı + eğitim tamamlanma + kontrol güncelliği
+ * - openPressure (openRiskScore): Açık kritik/yüksek tespit yoğunluğu
+ */
+export async function computeCompanyRiskScores(
+  companyWorkspaceId: string,
+): Promise<ComputedRiskScores> {
+  const fallback: ComputedRiskScores = {
+    completionRate: 0, maturityScore: 0, openRiskScore: 0,
+    openActions: 0, overdueActions: 0, openRiskAssessments: 0,
+    completedTrainingCount: 0, expiringTrainingCount: 0,
+    periodicControlCount: 0, overduePeriodicControlCount: 0,
+    lastAnalysisDate: "",
+  };
+
+  const supabase = createClient();
+  if (!supabase) return fallback;
+
+  const today = new Date().toISOString().split("T")[0];
+  const in30Days = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+
+  // Paralel sorgular
+  const [assessmentsRes, trainingsRes, controlsRes] = await Promise.all([
+    supabase.from("risk_assessments")
+      .select("id, status, assessment_date")
+      .eq("company_workspace_id", companyWorkspaceId),
+    supabase.from("company_trainings")
+      .select("status, training_date")
+      .eq("company_workspace_id", companyWorkspaceId),
+    supabase.from("company_periodic_controls")
+      .select("status, next_inspection_date")
+      .eq("company_workspace_id", companyWorkspaceId),
+  ]);
+
+  const assessments = assessmentsRes.data ?? [];
+  const trainings = trainingsRes.data ?? [];
+  const controls = controlsRes.data ?? [];
+
+  // Analiz sayıları
+  const completedAssessments = assessments.filter((a) => a.status === "completed");
+  const openRiskAssessments = assessments.filter((a) => a.status === "draft").length;
+  const lastAnalysisDate = completedAssessments
+    .map((a) => a.assessment_date)
+    .filter(Boolean)
+    .sort()
+    .pop() ?? "";
+
+  // Eğitim metrikleri
+  const completedTrainingCount = trainings.filter((t) => t.status === "completed").length;
+  const expiringTrainingCount = trainings.filter((t) => t.status === "planned" && t.training_date && t.training_date <= in30Days).length;
+
+  // Kontrol metrikleri
+  const periodicControlCount = controls.length;
+  const overduePeriodicControlCount = controls.filter((c) => c.next_inspection_date && c.next_inspection_date < today).length;
+
+  // Findings sorgula — sadece completed analizlerden
+  if (completedAssessments.length === 0) {
+    return {
+      ...fallback,
+      openRiskAssessments,
+      completedTrainingCount,
+      expiringTrainingCount,
+      periodicControlCount,
+      overduePeriodicControlCount,
+      lastAnalysisDate,
+    };
+  }
+
+  const assessmentIds = completedAssessments.map((a) => a.id);
+  const { data: findings } = await supabase
+    .from("risk_assessment_findings")
+    .select("category, severity, tracking_status")
+    .in("assessment_id", assessmentIds);
+
+  const allFindings = findings ?? [];
+  const totalFindings = allFindings.length;
+
+  // Kategori çeşitliliği (10 risk kategorisi)
+  const uniqueCategories = new Set(allFindings.map((f) => mapCategoryToKey(f.category)));
+  const categoryRatio = uniqueCategories.size / 10; // 0-1
+
+  // Tracking durumu
+  const openFindings = allFindings.filter((f) => !f.tracking_status || f.tracking_status === "open" || f.tracking_status === "in_progress");
+  const resolvedFindings = allFindings.filter((f) => f.tracking_status === "resolved" || f.tracking_status === "archived");
+  const criticalOpen = openFindings.filter((f) => f.severity === "critical").length;
+  const highOpen = openFindings.filter((f) => f.severity === "high").length;
+
+  // ── COVERAGE (completionRate) ──
+  // Analiz sayısı ağırlığı (%40) + kategori çeşitliliği (%30) + eğitim+kontrol (%30)
+  const analysisScore = Math.min(completedAssessments.length / 3, 1); // 3+ analiz = %100
+  const trainingScore = completedTrainingCount > 0 ? Math.min(completedTrainingCount / 5, 1) : 0;
+  const controlScore = periodicControlCount > 0 ? Math.min(periodicControlCount / 3, 1) : 0;
+  const supportScore = (trainingScore + controlScore) / 2;
+  const completionRate = Math.round(
+    (analysisScore * 0.4 + categoryRatio * 0.3 + supportScore * 0.3) * 100,
+  );
+
+  // ── MATURITY (maturityScore) ──
+  // Çözülme oranı (%50) + eğitim tamamlanma (%25) + kontrol güncelliği (%25)
+  const resolveRatio = totalFindings > 0 ? resolvedFindings.length / totalFindings : 0;
+  const trainingMaturity = trainings.length > 0 ? completedTrainingCount / trainings.length : 0;
+  const controlUpToDate = periodicControlCount > 0 ? 1 - (overduePeriodicControlCount / periodicControlCount) : 0;
+  const maturityScore = Math.round(
+    (resolveRatio * 0.5 + trainingMaturity * 0.25 + controlUpToDate * 0.25) * 100,
+  );
+
+  // ── OPEN PRESSURE (openRiskScore) ──
+  // Açık tespit yoğunluğu: kritik x3 + yüksek x2 + orta/düşük x1
+  const weightedOpen = criticalOpen * 3 + highOpen * 2 + (openFindings.length - criticalOpen - highOpen);
+  const maxPressure = totalFindings > 0 ? (totalFindings * 3) : 1; // Normalize edilecek
+  const rawPressure = totalFindings > 0 ? (weightedOpen / maxPressure) * 100 : 0;
+  const openRiskScore = Math.round(Math.min(rawPressure, 100));
+
+  // Açık aksiyonlar (open + in_progress findings)
+  const openActions = openFindings.length;
+  // Gecikmiş aksiyonlar (basit: 30+ gün açık olan kritik/yüksek)
+  const overdueActions = criticalOpen + Math.floor(highOpen * 0.5);
+
+  return {
+    completionRate: Math.min(completionRate, 100),
+    maturityScore: Math.min(maturityScore, 100),
+    openRiskScore: Math.min(openRiskScore, 100),
+    openActions,
+    overdueActions,
+    openRiskAssessments,
+    completedTrainingCount,
+    expiringTrainingCount,
+    periodicControlCount,
+    overduePeriodicControlCount,
+    lastAnalysisDate,
+  };
+}
 
 export async function archiveRiskAssessment(assessmentId: string): Promise<boolean> {
   const supabase = createClient();
