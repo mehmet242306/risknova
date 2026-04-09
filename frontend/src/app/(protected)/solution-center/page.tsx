@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -19,12 +20,22 @@ interface Source {
   article_title: string;
 }
 
+interface NavigationAction {
+  action: "navigate";
+  url: string;
+  label: string;
+  reason: string;
+  destination: string;
+  auto_navigate: boolean;
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
   documents?: DocumentBlock[];
+  navigation?: NavigationAction | null;
   queryId?: string;
   timestamp: Date;
   saved?: boolean;
@@ -131,6 +142,39 @@ function SourceCard({ source }: { source: Source }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Navigation card                                                     */
+/* ------------------------------------------------------------------ */
+
+function NavigationCard({ navigation, onNavigate }: { navigation: NavigationAction; onNavigate: (url: string) => void }) {
+  return (
+    <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">Sayfa Yonlendirme</span>
+          </div>
+          <p className="text-sm font-medium text-foreground">{navigation.label}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{navigation.reason}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onNavigate(navigation.url)}
+          className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
+        >
+          Sayfaya Git
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Document download card                                              */
 /* ------------------------------------------------------------------ */
 
@@ -224,9 +268,11 @@ function DocumentDownloadCard({ doc }: { doc: DocumentBlock }) {
 function MessageBubble({
   message,
   onToggleSave,
+  onNavigate,
 }: {
   message: ChatMessage;
   onToggleSave?: (id: string) => void;
+  onNavigate: (url: string) => void;
 }) {
   const [showSources, setShowSources] = useState(false);
   const isUser = message.role === "user";
@@ -306,6 +352,11 @@ function MessageBubble({
               <DocumentDownloadCard key={i} doc={doc} />
             ))}
           </div>
+        )}
+
+        {/* Navigation */}
+        {!isUser && message.navigation && (
+          <NavigationCard navigation={message.navigation} onNavigate={onNavigate} />
         )}
 
         {/* Actions */}
@@ -437,11 +488,25 @@ function WelcomeScreen({ onQuickQuestion }: { onQuickQuestion: (q: string) => vo
 /* ------------------------------------------------------------------ */
 
 export default function SolutionCenterPage() {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fetch organization_id from user_profiles
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      if (!supabase) return;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("user_profiles").select("organization_id").eq("auth_user_id", user.id).single();
+      if (profile?.organization_id) setOrganizationId(profile.organization_id);
+    })();
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -493,22 +558,24 @@ export default function SolutionCenterPage() {
 
       const { data, error } = await supabase.functions.invoke("solution-chat", {
         body: {
-          query,
-          user_id: user.id,
-          organization_id: null,
+          message: query,
+          organization_id: organizationId,
+          language: "tr",
           history,
         },
       });
 
       if (error) throw error;
 
+      // v13 response: { answer, sources, tools_used, session_id, ... }
       const docs: DocumentBlock[] = data.documents || [];
 
-      // Save generated documents to DB
-      if (docs.length > 0 && data.query_id) {
+      // Save generated documents to DB (if available)
+      const queryId = data.query_id || data.session_id || null;
+      if (docs.length > 0 && queryId) {
         for (const doc of docs) {
           await supabase.from("solution_documents").insert({
-            query_id: data.query_id,
+            query_id: queryId,
             doc_type: doc.type,
             doc_title: doc.title,
             doc_content: doc.content,
@@ -516,13 +583,26 @@ export default function SolutionCenterPage() {
         }
       }
 
+      // Normalize sources — v13 returns {law, article, title}, frontend expects {doc_title, article_number, article_title}
+      const rawSources = data.sources || [];
+      const normalizedSources: Source[] = rawSources.map((s: Record<string, string>) => ({
+        doc_title: s.doc_title || s.law || "",
+        doc_type: s.doc_type || "",
+        doc_number: s.doc_number || "",
+        article_number: s.article_number || s.article || "",
+        article_title: s.article_title || s.title || "",
+      }));
+
+      const navigation: NavigationAction | null = data.navigation || null;
+
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: data.response,
-        sources: data.sources || [],
+        content: data.answer || data.response || "Yanıt alınamadı.",
+        sources: normalizedSources,
         documents: docs,
-        queryId: data.query_id,
+        navigation,
+        queryId: queryId,
         timestamp: new Date(),
         saved: false,
       };
@@ -580,6 +660,7 @@ export default function SolutionCenterPage() {
                 key={msg.id}
                 message={msg}
                 onToggleSave={toggleSave}
+                onNavigate={(url) => router.push(url)}
               />
             ))}
             {loading && <TypingIndicator />}
