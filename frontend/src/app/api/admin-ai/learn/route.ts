@@ -1,16 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
+import { requireSuperAdmin } from "@/lib/supabase/api-auth";
 
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 120;
 
+/**
+ * Supabase admin client (server-side).
+ *
+ * GÜVENLİK NOTU (Parça B Adım 3, 2026-04-11):
+ * Bu fonksiyon SUPABASE_SERVICE_ROLE_KEY kullanır ve RLS'i bypass eder.
+ * "Super admin öğrenme aracı" olduğu için service role meşrudur — global
+ * ai_knowledge_base ve ai_learning_sessions tablolarına yazar. ANCAK bu
+ * fonksiyon SADECE POST handler içinde, requireSuperAdmin guard'ı BAŞARILI
+ * olduktan sonra çağrılmalıdır. Anon/public erişim yok.
+ */
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createClient(url, key);
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 /* ── URL'den icerik cekme ── */
@@ -83,6 +96,17 @@ JSON formati:
 }
 
 export async function POST(request: NextRequest) {
+  // GÜVENLİK KATMANI (Parça B Adım 3):
+  // Bu route "Nova AI öğrenme aracı" — URL veya PDF'ten bilgi çıkarıp
+  // global ai_knowledge_base tablosuna yazar. Sadece super admin'e açık.
+  // requireSuperAdmin guard:
+  //   1. Authorization header'dan JWT doğrular
+  //   2. user_profiles'tan profile çeker
+  //   3. is_super_admin(uid) RPC çağırır
+  //   4. Hata: 401/403/500
+  const auth = await requireSuperAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const formData = await request.formData();
     const type = formData.get("type") as string; // "url" veya "pdf"
@@ -179,7 +203,7 @@ export async function POST(request: NextRequest) {
     }).select("id, title, category").single();
 
     if (error) {
-      console.error("DB insert hatasi:", error);
+      console.error(`[admin-ai/learn] [${new Date().toISOString()}] [user=${auth.userId}] DB insert error:`, error);
       return NextResponse.json({ error: `Veritabani hatasi: ${error.message}` }, { status: 500 });
     }
 
@@ -206,7 +230,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Bilinmeyen hata";
-    console.error("Learn API hatasi:", msg);
+    console.error(`[admin-ai/learn] [${new Date().toISOString()}] [user=${auth.userId}] Learn API error:`, msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
