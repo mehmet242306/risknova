@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PremiumIconBadge } from "@/components/ui/premium-icon-badge";
 import {
   fetchIncidents,
   type IncidentRecord,
@@ -105,9 +106,7 @@ export function IncidentsListClient() {
         <Card className="overflow-hidden">
           <div className="h-1 w-full bg-[linear-gradient(90deg,var(--gold),var(--gold-light))]" />
           <CardContent className="flex items-center gap-4 p-5">
-            <span className="inline-flex size-10 items-center justify-center rounded-xl bg-[var(--gold-glow)]">
-              <ClipboardList className="size-5 text-[var(--gold)]" strokeWidth={1.5} />
-            </span>
+            <PremiumIconBadge icon={ClipboardList} tone="gold" size="sm" />
             <div>
               <p className="text-2xl font-bold text-foreground">{totalCount}</p>
               <p className="text-xs text-muted-foreground">Toplam Olay</p>
@@ -118,9 +117,7 @@ export function IncidentsListClient() {
         <Card className="overflow-hidden">
           <div className="h-1 w-full bg-[linear-gradient(90deg,#F59E0B,#FB923C)]" />
           <CardContent className="flex items-center gap-4 p-5">
-            <span className="inline-flex size-10 items-center justify-center rounded-xl bg-warning/10">
-              <FileWarning className="size-5 text-warning" strokeWidth={1.5} />
-            </span>
+            <PremiumIconBadge icon={FileWarning} tone="amber" size="sm" />
             <div>
               <p className="text-2xl font-bold text-foreground">{openDofCount}</p>
               <p className="text-xs text-muted-foreground">Açık DÖF</p>
@@ -131,9 +128,7 @@ export function IncidentsListClient() {
         <Card className="overflow-hidden">
           <div className="h-1 w-full bg-[linear-gradient(90deg,#10B981,#34D399)]" />
           <CardContent className="flex items-center gap-4 p-5">
-            <span className="inline-flex size-10 items-center justify-center rounded-xl bg-success/10">
-              <TrendingUp className="size-5 text-success" strokeWidth={1.5} />
-            </span>
+            <PremiumIconBadge icon={TrendingUp} tone="success" size="sm" />
             <div>
               <p className="text-2xl font-bold text-foreground">{thisMonthCount}</p>
               <p className="text-xs text-muted-foreground">Bu Ay</p>
@@ -189,9 +184,17 @@ export function IncidentsListClient() {
               <Link key={item.id} href={`/incidents/${item.id}`}>
                 <Card className="transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-elevated)]">
                   <CardContent className="flex items-center gap-4 p-5">
-                    <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--gold-glow)]">
-                      <TypeIcon className="size-5 text-[var(--gold)]" strokeWidth={1.5} />
-                    </span>
+                    <PremiumIconBadge
+                      icon={TypeIcon}
+                      tone={
+                        item.incidentType === "work_accident"
+                          ? "risk"
+                          : item.incidentType === "near_miss"
+                            ? "amber"
+                            : "teal"
+                      }
+                      size="sm"
+                    />
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">

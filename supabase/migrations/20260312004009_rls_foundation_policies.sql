@@ -11,21 +11,18 @@ using (
       and up.auth_user_id = auth.uid()
   )
 );
-
 -- Roles: authenticated users can read roles
 create policy "roles_select_authenticated"
 on public.roles
 for select
 to authenticated
 using (true);
-
 -- User profiles: user can read own profile
 create policy "user_profiles_select_own"
 on public.user_profiles
 for select
 to authenticated
 using (auth.uid() = auth_user_id);
-
 -- User profiles: user can update own profile
 create policy "user_profiles_update_own"
 on public.user_profiles
@@ -33,7 +30,6 @@ for update
 to authenticated
 using (auth.uid() = auth_user_id)
 with check (auth.uid() = auth_user_id);
-
 -- User roles: user can read own assigned roles
 create policy "user_roles_select_own"
 on public.user_roles
@@ -47,7 +43,6 @@ using (
       and up.auth_user_id = auth.uid()
   )
 );
-
 -- Audit logs: user can read logs from own organization
 create policy "audit_logs_select_own_org"
 on public.audit_logs

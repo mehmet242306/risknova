@@ -58,6 +58,9 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const qTemplateId = searchParams.get('templateId') || '';
   const qMode = searchParams.get('mode') || '';
   const qCompanyId = searchParams.get('companyId') || '';
+  const qDownload = searchParams.get('download') || '';
+  const fromLibrary = searchParams.get('library') === '1';
+  const librarySection = searchParams.get('librarySection') || 'documentation';
 
   // State
   const [doc, setDoc] = useState<DocumentRecord | null>(null);
@@ -77,6 +80,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const [zoom, setZoom] = useState(1);
   const [initialContent, setInitialContent] = useState<JSONContent | undefined>(undefined);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoDownloadTriggeredRef = useRef(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -283,30 +287,44 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
 
     try {
       if (doc) {
+        const nextVersion = doc.version + 1;
         const updated = await updateDocument(doc.id, {
           title,
           content_json: content as Record<string, unknown>,
           status,
+          version: nextVersion,
         });
         if (updated) {
           setDoc(updated);
-          await createVersion(doc.id, doc.version + 1, content as Record<string, unknown>, userId);
+          await createVersion(doc.id, nextVersion, content as Record<string, unknown>, userId);
         }
       } else {
+        const isPrivateCustomDocument = qMode === "custom";
         const newDoc = await createDocument({
           organization_id: orgId,
-          company_workspace_id: workspaceId,
+          company_workspace_id: isPrivateCustomDocument ? null : workspaceId,
           template_id: null,
           group_key: groupKey,
           title,
           content_json: content as Record<string, unknown>,
-          variables_data: companyData as Record<string, string>,
+          variables_data: {
+            ...companyData,
+            __company_identity_id: qCompanyId || null,
+            __custom_scope: isPrivateCustomDocument ? "private" : "workspace",
+            __custom_entry: isPrivateCustomDocument,
+          },
           status: 'taslak',
           prepared_by: userId,
         });
         if (newDoc) {
           setDoc(newDoc);
-          router.replace(`/documents/${newDoc.id}`);
+          const nextParams = new URLSearchParams();
+          if (qCompanyId) nextParams.set('companyId', qCompanyId);
+          if (fromLibrary) {
+            nextParams.set('library', '1');
+            nextParams.set('librarySection', librarySection);
+          }
+          router.replace(`/documents/${newDoc.id}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`);
         }
       }
       setLastSavedAt(new Date());
@@ -390,6 +408,38 @@ ${content}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, title, companyData]);
 
+  useEffect(() => {
+    if (!qDownload || !editor || loading || autoDownloadTriggeredRef.current) return;
+    autoDownloadTriggeredRef.current = true;
+
+    const runDownload = async () => {
+      if (qDownload === 'pdf') {
+        handlePdfExport();
+      } else {
+        await handleExport();
+      }
+
+      if (window.opener) {
+        window.setTimeout(() => window.close(), 900);
+      }
+    };
+
+    void runDownload();
+  }, [editor, handleExport, handlePdfExport, loading, qDownload]);
+
+  const documentsBackParams = new URLSearchParams();
+  if (groupKey || qGroup) {
+    documentsBackParams.set('group', groupKey || qGroup);
+  }
+  if (qCompanyId) {
+    documentsBackParams.set('companyId', qCompanyId);
+  }
+  if (fromLibrary) {
+    documentsBackParams.set('library', '1');
+    documentsBackParams.set('librarySection', librarySection);
+  }
+  const documentsBackHref = `/documents${documentsBackParams.toString() ? `?${documentsBackParams.toString()}` : ''}`;
+
 
   const group = getGroupByKey(groupKey);
   const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.taslak;
@@ -413,13 +463,13 @@ ${content}
         {/* Left: breadcrumb */}
         <div className="flex items-center gap-2 min-w-0">
           <button
-            onClick={() => router.push('/documents')}
+            onClick={() => router.push(documentsBackHref)}
             className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-secondary)] shrink-0"
           >
             <ArrowLeft size={16} />
           </button>
           <nav className="flex items-center gap-1 text-sm text-[var(--text-secondary)] min-w-0">
-            <span className="hover:text-[var(--text-primary)] cursor-pointer shrink-0" onClick={() => router.push('/documents')}>Dokümanlar</span>
+            <span className="hover:text-[var(--text-primary)] cursor-pointer shrink-0" onClick={() => router.push(documentsBackHref)}>Dokümanlar</span>
             <ChevronRight size={12} className="opacity-40 shrink-0" />
             {group && <span className="shrink-0">{group.title}</span>}
             {group && <ChevronRight size={12} className="opacity-40 shrink-0" />}

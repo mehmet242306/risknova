@@ -1,5 +1,4 @@
 create extension if not exists citext;
-
 create table if not exists public.company_invitations (
   id uuid primary key default gen_random_uuid(),
   company_identity_id uuid not null references public.company_identities(id) on delete cascade,
@@ -20,7 +19,6 @@ create table if not exists public.company_invitations (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.company_invitation_permissions (
   id uuid primary key default gen_random_uuid(),
   invitation_id uuid not null references public.company_invitations(id) on delete cascade,
@@ -29,7 +27,6 @@ create table if not exists public.company_invitation_permissions (
   created_at timestamptz not null default now(),
   unique (invitation_id, module_key)
 );
-
 create table if not exists public.company_member_module_permissions (
   id uuid primary key default gen_random_uuid(),
   company_membership_id uuid not null references public.company_memberships(id) on delete cascade,
@@ -42,7 +39,6 @@ create table if not exists public.company_member_module_permissions (
   updated_at timestamptz not null default now(),
   unique (company_membership_id, module_key)
 );
-
 alter table public.company_identities
   add column if not exists is_archived boolean not null default false,
   add column if not exists archived_at timestamptz,
@@ -51,33 +47,24 @@ alter table public.company_identities
   add column if not exists delete_requested_by_user_id uuid references auth.users(id) on delete set null,
   add column if not exists deleted_at timestamptz,
   add column if not exists deleted_by_user_id uuid references auth.users(id) on delete set null;
-
 alter table public.company_workspaces
   add column if not exists is_archived boolean not null default false;
-
 create index if not exists idx_company_invitations_company_identity_id
   on public.company_invitations (company_identity_id);
-
 create index if not exists idx_company_invitations_invitee_email
   on public.company_invitations (invitee_email);
-
 create index if not exists idx_company_invitations_invitee_user_id
   on public.company_invitations (invitee_user_id);
-
 create unique index if not exists uq_company_invitations_pending_per_email
   on public.company_invitations (company_identity_id, invitee_email)
   where status = 'pending';
-
 create index if not exists idx_company_invitation_permissions_invitation_id
   on public.company_invitation_permissions (invitation_id);
-
 create index if not exists idx_company_member_module_permissions_membership
   on public.company_member_module_permissions (company_membership_id);
-
 create unique index if not exists uq_company_memberships_active_company_user
   on public.company_memberships (company_identity_id, user_id)
   where status in ('active', 'approved');
-
 create or replace function public.touch_updated_at_generic()
 returns trigger
 language plpgsql
@@ -87,19 +74,16 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists trg_company_invitations_updated_at on public.company_invitations;
 create trigger trg_company_invitations_updated_at
 before update on public.company_invitations
 for each row
 execute function public.touch_updated_at_generic();
-
 drop trigger if exists trg_company_member_module_permissions_updated_at on public.company_member_module_permissions;
 create trigger trg_company_member_module_permissions_updated_at
 before update on public.company_member_module_permissions
 for each row
 execute function public.touch_updated_at_generic();
-
 create or replace function public.normalize_email(p_email text)
 returns citext
 language sql
@@ -107,7 +91,6 @@ immutable
 as $$
   select nullif(lower(trim(coalesce(p_email, ''))), '')::citext
 $$;
-
 create or replace function public.current_user_email()
 returns citext
 language sql
@@ -121,7 +104,6 @@ as $$
   order by up.created_at desc nulls last
   limit 1
 $$;
-
 create or replace function public.can_manage_company_invitations(p_company_identity_id uuid)
 returns boolean
 language sql
@@ -131,7 +113,6 @@ set search_path = public
 as $$
   select public.is_company_approver(p_company_identity_id)
 $$;
-
 create or replace function public.validate_company_member_module_permission_identity()
 returns trigger
 language plpgsql
@@ -156,14 +137,12 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists trg_validate_company_member_module_permission_identity
   on public.company_member_module_permissions;
 create trigger trg_validate_company_member_module_permission_identity
 before insert or update on public.company_member_module_permissions
 for each row
 execute function public.validate_company_member_module_permission_identity();
-
 create or replace function public.guard_company_invitation_status_transition()
 returns trigger
 language plpgsql
@@ -191,13 +170,11 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists trg_guard_company_invitation_status_transition on public.company_invitations;
 create trigger trg_guard_company_invitation_status_transition
 before insert or update on public.company_invitations
 for each row
 execute function public.guard_company_invitation_status_transition();
-
 create or replace function public.block_company_invitation_permissions_mutation()
 returns trigger
 language plpgsql
@@ -206,21 +183,18 @@ begin
   raise exception 'company_invitation_permissions is immutable after insert';
 end;
 $$;
-
 drop trigger if exists trg_block_company_invitation_permissions_update
   on public.company_invitation_permissions;
 create trigger trg_block_company_invitation_permissions_update
 before update on public.company_invitation_permissions
 for each row
 execute function public.block_company_invitation_permissions_mutation();
-
 drop trigger if exists trg_block_company_invitation_permissions_delete
   on public.company_invitation_permissions;
 create trigger trg_block_company_invitation_permissions_delete
 before delete on public.company_invitation_permissions
 for each row
 execute function public.block_company_invitation_permissions_mutation();
-
 create or replace function public.apply_member_module_permissions_from_invitation(
   p_invitation_id uuid,
   p_membership_id uuid
@@ -268,7 +242,6 @@ begin
     updated_at = now();
 end;
 $$;
-
 create or replace function public.link_pending_invitations_to_user(
   p_auth_user_id uuid,
   p_email text
@@ -298,7 +271,6 @@ begin
   return v_updated_count;
 end;
 $$;
-
 create or replace function public.accept_company_invitation(
   p_invitation_id uuid,
   p_note text default null
@@ -415,7 +387,6 @@ begin
   return v_membership_id;
 end;
 $$;
-
 create or replace function public.decline_company_invitation(
   p_invitation_id uuid,
   p_note text default null
@@ -464,7 +435,6 @@ begin
    where id = p_invitation_id;
 end;
 $$;
-
 create or replace function public.revoke_company_invitation(
   p_invitation_id uuid,
   p_note text default null
@@ -500,7 +470,6 @@ begin
      and status = 'pending';
 end;
 $$;
-
 create or replace function public.archive_company_identity(
   p_company_identity_id uuid,
   p_note text default null
@@ -527,7 +496,6 @@ begin
      and is_archived = false;
 end;
 $$;
-
 create or replace function public.guard_company_delete_allowed(
   p_company_identity_id uuid
 )
@@ -555,7 +523,6 @@ begin
   return v_pending_invites = 0 and v_active_memberships = 0;
 end;
 $$;
-
 create or replace function public.request_company_delete(
   p_company_identity_id uuid,
   p_note text default null
@@ -582,11 +549,9 @@ begin
    where id = p_company_identity_id;
 end;
 $$;
-
 alter table public.company_invitations enable row level security;
 alter table public.company_invitation_permissions enable row level security;
 alter table public.company_member_module_permissions enable row level security;
-
 drop policy if exists company_invitations_select on public.company_invitations;
 create policy company_invitations_select
 on public.company_invitations
@@ -598,7 +563,6 @@ using (
   or invitee_email = public.current_user_email()
   or public.is_company_member(company_identity_id)
 );
-
 drop policy if exists company_invitations_insert on public.company_invitations;
 create policy company_invitations_insert
 on public.company_invitations
@@ -609,7 +573,6 @@ with check (
   and status = 'pending'
   and public.can_manage_company_invitations(company_identity_id)
 );
-
 drop policy if exists company_invitations_update on public.company_invitations;
 create policy company_invitations_update
 on public.company_invitations
@@ -625,7 +588,6 @@ with check (
   or invitee_user_id = auth.uid()
   or invitee_email = public.current_user_email()
 );
-
 drop policy if exists company_invitation_permissions_select on public.company_invitation_permissions;
 create policy company_invitation_permissions_select
 on public.company_invitation_permissions
@@ -644,7 +606,6 @@ using (
       )
   )
 );
-
 drop policy if exists company_invitation_permissions_insert on public.company_invitation_permissions;
 create policy company_invitation_permissions_insert
 on public.company_invitation_permissions
@@ -662,7 +623,6 @@ with check (
       )
   )
 );
-
 drop policy if exists company_member_module_permissions_select on public.company_member_module_permissions;
 create policy company_member_module_permissions_select
 on public.company_member_module_permissions
@@ -679,7 +639,6 @@ using (
       )
   )
 );
-
 drop policy if exists company_member_module_permissions_insert on public.company_member_module_permissions;
 create policy company_member_module_permissions_insert
 on public.company_member_module_permissions
@@ -688,7 +647,6 @@ to authenticated
 with check (
   public.can_manage_company_invitations(company_identity_id)
 );
-
 drop policy if exists company_member_module_permissions_update on public.company_member_module_permissions;
 create policy company_member_module_permissions_update
 on public.company_member_module_permissions
@@ -700,7 +658,6 @@ using (
 with check (
   public.can_manage_company_invitations(company_identity_id)
 );
-
 drop policy if exists company_member_module_permissions_delete on public.company_member_module_permissions;
 create policy company_member_module_permissions_delete
 on public.company_member_module_permissions
@@ -709,7 +666,6 @@ to authenticated
 using (
   public.can_manage_company_invitations(company_identity_id)
 );
-
 grant execute on function public.normalize_email(text) to authenticated;
 grant execute on function public.can_manage_company_invitations(uuid) to authenticated;
 grant execute on function public.link_pending_invitations_to_user(uuid, text) to authenticated;

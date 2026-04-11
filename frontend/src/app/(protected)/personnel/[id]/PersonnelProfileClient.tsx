@@ -288,7 +288,7 @@ export function PersonnelProfileClient() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--page-bg,#f8f9fa)]">
-        <div className="mx-auto max-w-5xl px-4 py-8 space-y-4">
+        <div className="w-full px-4 py-8 space-y-4">
           {[1, 2, 3].map(i => <div key={i} className="h-24 animate-pulse rounded-xl bg-[var(--card)] border border-[var(--border)]" />)}
         </div>
       </div>
@@ -310,7 +310,7 @@ export function PersonnelProfileClient() {
 
   return (
     <div className="min-h-screen bg-[var(--page-bg,#f8f9fa)]">
-      <div className="mx-auto max-w-5xl px-4 py-8">
+      <div className="w-full px-4 py-8">
         <button onClick={() => router.back()} className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           Geri

@@ -10,10 +10,8 @@
 -- 1. Add metadata JSONB column to company_workspaces
 alter table public.company_workspaces
   add column if not exists metadata jsonb not null default '{}'::jsonb;
-
 comment on column public.company_workspaces.metadata is
   'Operational data: employeeCount, locations, departments, risk scores, training counts, shift model, contact info, etc.';
-
 -- 2. Add a restore function for archived companies
 create or replace function public.restore_archived_company_identity(
   p_company_identity_id uuid
@@ -48,9 +46,7 @@ begin
      and is_archived = true;
 end;
 $$;
-
 grant execute on function public.restore_archived_company_identity(uuid) to authenticated;
-
 -- 3. Create company_personnel table
 create table if not exists public.company_personnel (
   id uuid primary key default gen_random_uuid(),
@@ -100,45 +96,34 @@ create table if not exists public.company_personnel (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 comment on table public.company_personnel is
   'Personnel records for companies. Each row represents one employee linked to a company identity.';
-
 -- Indexes
 create index if not exists idx_company_personnel_company_identity_id
   on public.company_personnel (company_identity_id);
-
 create index if not exists idx_company_personnel_company_workspace_id
   on public.company_personnel (company_workspace_id);
-
 create index if not exists idx_company_personnel_department
   on public.company_personnel (department);
-
 create index if not exists idx_company_personnel_location
   on public.company_personnel (location);
-
 create index if not exists idx_company_personnel_special_monitoring
   on public.company_personnel (special_monitoring)
   where special_monitoring is not null and special_monitoring <> '';
-
 create index if not exists idx_company_personnel_high_risk
   on public.company_personnel (high_risk_duty)
   where high_risk_duty = true;
-
 create index if not exists idx_company_personnel_active
   on public.company_personnel (company_identity_id, is_active)
   where is_active = true;
-
 -- Updated_at trigger
 drop trigger if exists trg_company_personnel_updated_at on public.company_personnel;
 create trigger trg_company_personnel_updated_at
 before update on public.company_personnel
 for each row
 execute function public.touch_updated_at();
-
 -- 4. RLS for company_personnel
 alter table public.company_personnel enable row level security;
-
 -- SELECT: company members can read their company's personnel
 drop policy if exists company_personnel_select on public.company_personnel;
 create policy company_personnel_select
@@ -148,7 +133,6 @@ to authenticated
 using (
   public.is_company_member(company_identity_id)
 );
-
 -- INSERT: company members can add personnel
 drop policy if exists company_personnel_insert on public.company_personnel;
 create policy company_personnel_insert
@@ -158,7 +142,6 @@ to authenticated
 with check (
   public.is_company_member(company_identity_id)
 );
-
 -- UPDATE: company members can update personnel
 drop policy if exists company_personnel_update on public.company_personnel;
 create policy company_personnel_update
@@ -171,7 +154,6 @@ using (
 with check (
   public.is_company_member(company_identity_id)
 );
-
 -- DELETE: company approvers can delete personnel
 drop policy if exists company_personnel_delete on public.company_personnel;
 create policy company_personnel_delete
@@ -181,6 +163,5 @@ to authenticated
 using (
   public.is_company_approver(company_identity_id)
 );
-
 -- 5. Grant table permissions
 grant select, insert, update, delete on public.company_personnel to authenticated;

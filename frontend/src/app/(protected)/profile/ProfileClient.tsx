@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toDataURL } from "qrcode";
 import { createClient } from "@/lib/supabase/client";
+import { quickSignOut } from "@/lib/auth/quick-sign-out";
 import type { User } from "@supabase/supabase-js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -35,6 +37,26 @@ type Prefs = {
 
 type Tab = "profile" | "security" | "preferences" | "activity";
 
+type MfaFactor = {
+  id: string;
+  friendly_name?: string;
+  factor_type: string;
+  status: "verified" | "unverified" | string;
+  created_at: string;
+  updated_at: string;
+  last_challenged_at?: string;
+};
+
+type MfaEnrollment = {
+  factorId: string;
+  friendlyName: string;
+  qrImageSrc: string;
+  secret: string;
+  uri: string;
+};
+
+type AssuranceLevel = "aal1" | "aal2" | null;
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const ROLE_LABELS: Record<string, string> = {
@@ -54,6 +76,12 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "preferences", label: "Tercihler" },
   { id: "activity", label: "Aktivite" },
 ];
+
+const primaryButtonClass =
+  "inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-black/5 bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-[0_12px_28px_rgba(15,23,42,0.14)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-[0_16px_32px_rgba(15,23,42,0.18)] dark:border-white/10 dark:shadow-[0_14px_30px_rgba(0,0,0,0.34)] dark:hover:shadow-[0_18px_34px_rgba(0,0,0,0.4)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60";
+
+const secondaryButtonClass =
+  "inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border/80 bg-background/90 px-5 text-sm font-medium text-foreground shadow-[0_8px_20px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:bg-secondary/70 hover:text-primary dark:bg-card/90 dark:shadow-[0_12px_24px_rgba(0,0,0,0.28)] disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60";
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
@@ -98,6 +126,7 @@ export default function ProfileClient() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -120,6 +149,16 @@ export default function ProfileClient() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [emailUpdating, setEmailUpdating] = useState(false);
+  const [mfaFactors, setMfaFactors] = useState<MfaFactor[]>([]);
+  const [mfaCurrentLevel, setMfaCurrentLevel] = useState<AssuranceLevel>(null);
+  const [mfaNextLevel, setMfaNextLevel] = useState<AssuranceLevel>(null);
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaFriendlyName, setMfaFriendlyName] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaEnrollment, setMfaEnrollment] = useState<MfaEnrollment | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -146,7 +185,6 @@ export default function ProfileClient() {
     // Apply saved theme on mount
     const saved = localStorage.getItem("risknova-theme") as "light" | "dark" | "system" | null;
     if (saved) applyTheme(saved);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -180,6 +218,7 @@ export default function ProfileClient() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setLoading(false); return; }
       setAuthUser(user);
+      setPendingEmail(user.email ?? "");
 
       const [profileRes, prefsRes] = await Promise.all([
         supabase
@@ -218,6 +257,8 @@ export default function ProfileClient() {
           setRoles(codes);
         }
       }
+
+      await loadMfaState(supabase);
 
       if (prefsRes.data) {
         setPrefs({
@@ -328,7 +369,229 @@ export default function ProfileClient() {
     }
   }
 
+  function isValidEmail(value: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
+  async function handleEmailChange() {
+    const supabase = createClient();
+    if (!supabase) {
+      setFeedback({ type: "error", msg: "E-posta guncelleme servisine baglanilamadi." });
+      return;
+    }
+
+    const nextEmail = pendingEmail.trim().toLowerCase();
+    const currentEmail = (authUser?.email ?? profile?.email ?? "").trim().toLowerCase();
+
+    if (!nextEmail) {
+      setFeedback({ type: "error", msg: "Yeni e-posta adresi bos birakilamaz." });
+      return;
+    }
+
+    if (!isValidEmail(nextEmail)) {
+      setFeedback({ type: "error", msg: "Gecerli bir e-posta adresi girin." });
+      return;
+    }
+
+    if (nextEmail === currentEmail) {
+      setFeedback({ type: "error", msg: "Yeni e-posta mevcut adresle ayni olamaz." });
+      return;
+    }
+
+    setEmailUpdating(true);
+    setFeedback(null);
+
+    try {
+      const origin = window.location.origin || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const { data, error } = await supabase.auth.updateUser(
+        { email: nextEmail },
+        { emailRedirectTo: `${origin}/auth/confirm?next=/profile` }
+      );
+
+      if (error) throw error;
+      if (data.user) setAuthUser(data.user);
+
+      setFeedback({
+        type: "success",
+        msg: `${nextEmail} adresine onay baglantisi gonderildi. Maili acip degisikligi tamamlayin.`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "E-posta degisikligi baslatilamadi.";
+      setFeedback({ type: "error", msg });
+    } finally {
+      setEmailUpdating(false);
+    }
+  }
+
   // ─── Save preferences ────────────────────────────────────────────────────
+
+  async function loadMfaState(existingClient?: ReturnType<typeof createClient>) {
+    const supabase = existingClient ?? createClient();
+    if (!supabase) return;
+
+    setMfaLoading(true);
+
+    try {
+      const [{ data: factorData, error: factorError }, { data: assuranceData, error: assuranceError }] = await Promise.all([
+        supabase.auth.mfa.listFactors(),
+        supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+      ]);
+
+      if (factorError) throw factorError;
+      if (assuranceError) throw assuranceError;
+
+      setMfaFactors((factorData?.all as MfaFactor[] | undefined) ?? []);
+      setMfaCurrentLevel(assuranceData?.currentLevel ?? null);
+      setMfaNextLevel(assuranceData?.nextLevel ?? null);
+    } catch (err) {
+      console.error("[ProfileClient] loadMfaState error:", err);
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function buildMfaQrImageSrc(uri: string, qrCodeSvg: string) {
+    try {
+      return await toDataURL(uri, {
+        width: 220,
+        margin: 1,
+      });
+    } catch (err) {
+      console.warn("[ProfileClient] buildMfaQrImageSrc fallback:", err);
+      const normalizedSvg = qrCodeSvg.trim();
+      if (normalizedSvg.startsWith("data:image/")) {
+        return normalizedSvg;
+      }
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(normalizedSvg)}`;
+    }
+  }
+
+  async function handleMfaEnroll() {
+    const supabase = createClient();
+    if (!supabase) {
+      setFeedback({ type: "error", msg: "Iki adimli dogrulama servisine baglanilamadi." });
+      return;
+    }
+
+    setMfaBusy(true);
+    setFeedback(null);
+
+    try {
+      const friendlyName = mfaFriendlyName.trim() || "Google Authenticator";
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName,
+      });
+
+      if (error) throw error;
+      if (!data?.totp) throw new Error("TOTP kurulum verisi alinamadi.");
+
+      const qrImageSrc = await buildMfaQrImageSrc(data.totp.uri, data.totp.qr_code);
+
+      setMfaEnrollment({
+        factorId: data.id,
+        friendlyName: data.friendly_name ?? friendlyName,
+        qrImageSrc,
+        secret: data.totp.secret,
+        uri: data.totp.uri,
+      });
+      setMfaCode("");
+      await loadMfaState(supabase);
+      setFeedback({ type: "success", msg: "Kurulum olusturuldu. Simdi kodu dogrulayarak 2FA'yi etkinlestirin." });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Iki adimli dogrulama baslatilamadi.";
+      setFeedback({ type: "error", msg });
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function handleMfaVerify() {
+    if (!mfaEnrollment) return;
+
+    const code = mfaCode.replace(/\s+/g, "");
+    if (!/^\d{6}$/.test(code)) {
+      setFeedback({ type: "error", msg: "Dogrulama kodu 6 haneli olmali." });
+      return;
+    }
+
+    const supabase = createClient();
+    if (!supabase) {
+      setFeedback({ type: "error", msg: "Iki adimli dogrulama servisine baglanilamadi." });
+      return;
+    }
+
+    setMfaBusy(true);
+    setFeedback(null);
+
+    try {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: mfaEnrollment.factorId,
+        code,
+      });
+
+      if (error) throw error;
+
+      setMfaEnrollment(null);
+      setMfaCode("");
+      setMfaFriendlyName("");
+      await loadMfaState(supabase);
+      setFeedback({ type: "success", msg: "Iki adimli dogrulama etkinlestirildi." });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Dogrulama basarisiz.";
+      setFeedback({ type: "error", msg });
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function handleMfaCancel() {
+    if (!mfaEnrollment) return;
+
+    const supabase = createClient();
+    if (!supabase) {
+      setMfaEnrollment(null);
+      return;
+    }
+
+    setMfaBusy(true);
+    setFeedback(null);
+
+    try {
+      await supabase.auth.mfa.unenroll({ factorId: mfaEnrollment.factorId });
+    } catch (err) {
+      console.error("[ProfileClient] handleMfaCancel warning:", err);
+    } finally {
+      setMfaEnrollment(null);
+      setMfaCode("");
+      setMfaBusy(false);
+      await loadMfaState(supabase);
+    }
+  }
+
+  async function handleMfaUnenroll(factorId: string) {
+    const supabase = createClient();
+    if (!supabase) {
+      setFeedback({ type: "error", msg: "Iki adimli dogrulama servisine baglanilamadi." });
+      return;
+    }
+
+    setMfaBusy(true);
+    setFeedback(null);
+
+    try {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId });
+      if (error) throw error;
+
+      await loadMfaState(supabase);
+      setFeedback({ type: "success", msg: "MFA cihazi kaldirildi." });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "MFA cihazi kaldirilamadi.";
+      setFeedback({ type: "error", msg });
+    } finally {
+      setMfaBusy(false);
+    }
+  }
 
   async function handlePreferencesSave() {
     if (!authUser) return;
@@ -363,6 +626,19 @@ export default function ProfileClient() {
   }
 
   // ─── Load activity ───────────────────────────────────────────────────────
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    setFeedback(null);
+
+    try {
+      await quickSignOut("/login");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Oturum kapatilamadi.";
+      setFeedback({ type: "error", msg });
+      setSigningOut(false);
+    }
+  }
 
   async function loadActivity() {
     setActivityLoading(true);
@@ -451,6 +727,19 @@ export default function ProfileClient() {
 
   // ─── Loading state ───────────────────────────────────────────────────────
 
+  function getMfaStatusText() {
+    if (mfaCurrentLevel === "aal2") {
+      return "Bu oturum ikinci adım doğrulamasıyla korunuyor.";
+    }
+    if (mfaFactors.some((factor) => factor.status === "verified")) {
+      return "İki adımlı doğrulama açık. Bu oturumda henüz ikinci adım tamamlanmadı.";
+    }
+    if (mfaNextLevel === "aal2") {
+      return "Hesabınızda doğrulanmış bir güvenlik cihazı var. Yeni girişlerde ikinci adım istenecek.";
+    }
+    return "Hesabınız şu anda yalnızca şifre ile korunuyor.";
+  }
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -463,20 +752,22 @@ export default function ProfileClient() {
   }
 
   const displayName = profile?.full_name || authUser?.email || "Kullanıcı";
-  const email = profile?.email || authUser?.email || "";
+  const email = authUser?.email || profile?.email || "";
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="w-full space-y-6">
 
       {/* ── Hero card ── */}
-      <div className="relative overflow-hidden rounded-[1.75rem] shadow-[var(--shadow-card)]">
-        <div className="bg-[linear-gradient(135deg,#0b5fc1_0%,#2788ff_50%,#97c51f_100%)] px-6 py-8 sm:px-8">
+      <div className="relative overflow-hidden rounded-[1.75rem] border border-border bg-card shadow-[var(--shadow-card)]">
+        <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.98)_0%,rgba(248,250,252,0.94)_52%,rgba(239,246,255,0.9)_100%)] dark:bg-[linear-gradient(135deg,rgba(11,17,32,0.98)_0%,rgba(15,23,42,0.95)_55%,rgba(17,24,39,0.92)_100%)]" />
+        <div className="absolute inset-y-0 right-0 w-40 bg-[radial-gradient(circle_at_top_right,rgba(212,175,55,0.14),transparent_68%)] dark:bg-[radial-gradient(circle_at_top_right,rgba(245,158,11,0.14),transparent_68%)]" />
+        <div className="relative px-6 py-8 sm:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
             {/* Avatar */}
             <div className="relative shrink-0">
-              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-white text-2xl font-bold text-[#0b5fc1] shadow-xl">
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-card text-2xl font-bold text-primary shadow-xl dark:border-white/10">
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -494,7 +785,7 @@ export default function ProfileClient() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={avatarUploading}
-                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#0b5fc1] text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white/80 bg-primary text-primary-foreground shadow-md transition hover:bg-primary-hover disabled:opacity-60"
                 title="Fotoğraf değiştir"
               >
                 {avatarUploading ? (
@@ -520,24 +811,24 @@ export default function ProfileClient() {
 
             {/* Name / meta */}
             <div className="flex-1 pb-1">
-              <h1 className="text-2xl font-bold text-white drop-shadow-md">{displayName}</h1>
-              <p className="mt-0.5 text-sm text-white/90">{email}</p>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">{displayName}</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">{email}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {profile?.title && (
-                  <span className="inline-flex items-center rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+                  <span className="inline-flex items-center rounded-lg border border-border/80 bg-background/80 px-3 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10">
                     {profile.title}
                   </span>
                 )}
                 {roles.map((r) => (
                   <span
                     key={r}
-                    className="inline-flex items-center rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm"
+                    className="inline-flex items-center rounded-lg border border-border/80 bg-background/80 px-3 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/10"
                   >
                     {ROLE_LABELS[r] ?? r}
                   </span>
                 ))}
                 {org && (
-                  <span className="inline-flex items-center gap-1 text-xs text-white/80">
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
                     </svg>
@@ -548,7 +839,7 @@ export default function ProfileClient() {
             </div>
 
             {/* Dates */}
-            <div className="hidden shrink-0 text-right text-xs text-white/80 sm:block">
+            <div className="hidden shrink-0 text-right text-sm text-muted-foreground sm:flex sm:flex-col sm:items-end sm:gap-3">
               <div>Üyelik: {formatDate(profile?.created_at)}</div>
               <div>Güncelleme: {formatDate(profile?.updated_at)}</div>
             </div>
@@ -641,7 +932,7 @@ export default function ProfileClient() {
                 type="button"
                 onClick={handleProfileSave}
                 disabled={saving}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#0b5fc1] px-5 text-sm font-medium text-white shadow-lg hover:bg-[#0a4fa8] disabled:opacity-60 transition-colors"
+                className={primaryButtonClass}
               >
                 {saving ? (
                   <>
@@ -692,6 +983,47 @@ export default function ProfileClient() {
       ══════════════════════════════════════════════ */}
       {tab === "security" && (
         <div className="space-y-4">
+          <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)] sm:p-7">
+            <h2 className="mb-5 text-lg font-semibold text-foreground">E-posta Degistir</h2>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Mevcut E-posta</label>
+                  <input
+                    value={email}
+                    disabled
+                    className="h-11 w-full rounded-xl border border-border bg-secondary px-3 text-sm text-muted-foreground opacity-70 cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">Yeni E-posta</label>
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={pendingEmail}
+                    onChange={(e) => setPendingEmail(e.target.value)}
+                    placeholder="ornek@firma.com"
+                    className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleEmailChange}
+                  disabled={emailUpdating || !pendingEmail.trim()}
+                  className={primaryButtonClass}
+                >
+                  {emailUpdating ? "Baglanti Gonderiliyor..." : "Degisikligi Baslat"}
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground">
+                E-posta degisikligi guvenlik nedeniyle onay gerektirir. Yeni adrese giden baglantiyi acmadan hesap
+                e-postasi degismez.
+              </div>
+            </div>
+          </div>
+
           {/* Password change */}
           <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)] sm:p-7">
             <h2 className="mb-5 text-lg font-semibold text-foreground">Şifre Değiştir</h2>
@@ -730,7 +1062,7 @@ export default function ProfileClient() {
                 type="button"
                 onClick={handlePasswordChange}
                 disabled={saving || !newPassword || !confirmPassword}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#0b5fc1] px-5 text-sm font-medium text-white shadow-lg hover:bg-[#0a4fa8] disabled:opacity-60 transition-colors"
+                className={primaryButtonClass}
               >
                 {saving ? "Güncelleniyor..." : "Şifreyi Güncelle"}
               </button>
@@ -739,16 +1071,195 @@ export default function ProfileClient() {
 
           {/* 2FA */}
           <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)] sm:p-7">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">İki Faktörlü Kimlik Doğrulama</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Hesabınıza ekstra bir güvenlik katmanı ekleyin.
-                </p>
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">İki Adımlı Kimlik Doğrulama</h2>
+                  <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                    Google Authenticator, Authy ve benzeri TOTP uygulamalarıyla çalışır. Kurulum tamamlanınca bu hesap
+                    için ikinci adım korunur.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={[
+                      "inline-flex items-center rounded-xl px-3 py-1 text-xs font-semibold",
+                      mfaFactors.some((factor) => factor.status === "verified")
+                        ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                        : "bg-secondary text-muted-foreground",
+                    ].join(" ")}
+                  >
+                    {mfaFactors.some((factor) => factor.status === "verified") ? "2FA Açık" : "2FA Kapalı"}
+                  </span>
+                </div>
               </div>
-              <span className="shrink-0 inline-flex items-center rounded-xl bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                Yakında
-              </span>
+
+              <div className="rounded-2xl border border-border bg-background/70 px-4 py-3 text-sm text-muted-foreground">
+                {getMfaStatusText()}
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                <div className="rounded-2xl border border-border bg-background/60 p-4">
+                  <div className="mb-4 space-y-3">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">Yeni Cihaz Ekle</div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        QR kodunu Google Authenticator ile okutun. İsterseniz cihaza özel bir ad verebilirsiniz.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleMfaEnroll}
+                      disabled={mfaBusy || !!mfaEnrollment}
+                      className={`${primaryButtonClass} w-full sm:w-auto sm:self-start`}
+                    >
+                      {mfaBusy && !mfaEnrollment ? "Hazırlanıyor..." : "Google Authenticator'ı Bağla"}
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-foreground">Cihaz Adı</label>
+                      <input
+                        value={mfaFriendlyName}
+                        onChange={(e) => setMfaFriendlyName(e.target.value)}
+                        placeholder="Örn. Mehmet iPhone"
+                        disabled={mfaBusy || !!mfaEnrollment}
+                        className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                    </div>
+                    <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-3 text-xs text-muted-foreground">
+                      Yedekleme kodu desteği yok. Kritik hesaplarda en az iki farklı TOTP cihazı ekleyin.
+                    </div>
+                  </div>
+
+                  {mfaEnrollment && (
+                    <div className="mt-5 space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                      <div className="flex flex-col gap-4 md:flex-row">
+                        <div className="flex w-full max-w-[220px] items-center justify-center rounded-2xl border border-border bg-white p-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={mfaEnrollment.qrImageSrc}
+                            alt="MFA QR kodu"
+                            className="h-44 w-44"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">1. QR kodunu okutun</div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Google Authenticator uygulamasında yeni hesap ekleyin ve bu kodu taratın.
+                            </p>
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Kurulum Anahtarı</label>
+                            <input
+                              readOnly
+                              value={mfaEnrollment.secret}
+                              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground"
+                            />
+                          </div>
+                          <details className="rounded-xl border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                            <summary className="cursor-pointer font-medium text-foreground">Elle kurulum URI&apos;sini göster</summary>
+                            <div className="mt-2 break-all">{mfaEnrollment.uri}</div>
+                          </details>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-foreground">2. Uygulamadan 6 haneli kodu girin</label>
+                          <input
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={mfaCode}
+                            onChange={(e) => setMfaCode(e.target.value.replace(/[^\d]/g, "").slice(0, 6))}
+                            placeholder="123456"
+                            className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm tracking-[0.25em] text-foreground placeholder:tracking-normal placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleMfaVerify}
+                          disabled={mfaBusy || mfaCode.length !== 6}
+                          className={primaryButtonClass}
+                        >
+                          {mfaBusy ? "Doğrulanıyor..." : "Doğrula"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleMfaCancel}
+                          disabled={mfaBusy}
+                          className={secondaryButtonClass}
+                        >
+                          İptal
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-border bg-background/60 p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">Kayıtlı MFA Cihazları</div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Bu hesaba bağlı doğrulanmış veya doğrulanmamış tüm TOTP cihazları burada listelenir.
+                      </p>
+                    </div>
+                    {mfaLoading && <span className="text-xs text-muted-foreground">Yükleniyor...</span>}
+                  </div>
+
+                  <div className="space-y-3">
+                    {mfaFactors.length === 0 && !mfaLoading && (
+                      <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-5 text-sm text-muted-foreground">
+                        Henüz bağlı bir MFA cihazı yok.
+                      </div>
+                    )}
+
+                    {mfaFactors.map((factor) => (
+                      <div
+                        key={factor.id}
+                        className="flex flex-col gap-3 rounded-2xl border border-border bg-card px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">
+                              {factor.friendly_name || "Authenticator"}
+                            </span>
+                            <span className="inline-flex items-center rounded-lg bg-secondary px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                              {factor.factor_type}
+                            </span>
+                            <span
+                              className={[
+                                "inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-semibold",
+                                factor.status === "verified"
+                                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                  : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+                              ].join(" ")}
+                            >
+                              {factor.status === "verified" ? "Doğrulandı" : "Bekliyor"}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Oluşturma: {formatDate(factor.created_at)}
+                            {factor.last_challenged_at ? ` | Son kullanım: ${formatDate(factor.last_challenged_at)}` : ""}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleMfaUnenroll(factor.id)}
+                          disabled={mfaBusy}
+                          className={secondaryButtonClass}
+                        >
+                          Kaldır
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -756,7 +1267,7 @@ export default function ProfileClient() {
           <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)] sm:p-7">
             <h2 className="mb-4 text-lg font-semibold text-foreground">Aktif Oturumlar</h2>
             <div className="rounded-2xl border border-border bg-secondary/30 px-4 py-3">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30">
                   <svg className="h-4 w-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
@@ -766,7 +1277,17 @@ export default function ProfileClient() {
                   <div className="text-sm font-medium text-foreground">Mevcut Oturum</div>
                   <div className="text-xs text-muted-foreground">Bu cihaz · Şu an aktif</div>
                 </div>
-                <span className="text-xs font-medium text-green-600 dark:text-green-400">Aktif</span>
+                <div className="flex items-center gap-3 sm:ml-auto">
+                  <span className="text-xs font-medium text-green-600 dark:text-green-400">Aktif</span>
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={signingOut}
+                    className={secondaryButtonClass}
+                  >
+                    {signingOut ? "Kapatiliyor..." : "Oturumu Kapat"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -894,7 +1415,7 @@ export default function ProfileClient() {
               type="button"
               onClick={handlePreferencesSave}
               disabled={saving}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#0b5fc1] px-5 text-sm font-medium text-white shadow-lg hover:bg-[#0a4fa8] disabled:opacity-60 transition-colors"
+              className={primaryButtonClass}
             >
               {saving ? (
                 <>

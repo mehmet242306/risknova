@@ -1,10 +1,14 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
 import { MevzuatSyncTab } from "./MevzuatSyncTab";
 import { AdminAITab } from "./AdminAITab";
+import { AuditLogsTab } from "./AuditLogsTab";
+import { DeletedRecordsTab } from "./DeletedRecordsTab";
 import { useIsAdmin } from "@/lib/hooks/use-is-admin";
 
 /* ------------------------------------------------------------------ */
@@ -28,13 +32,15 @@ import { useIsAdmin } from "@/lib/hooks/use-is-admin";
 /* Tabs                                                                */
 /* ------------------------------------------------------------------ */
 
-type TabKey = "general" | "mevzuat" | "admin_ai";
+type TabKey = "general" | "mevzuat" | "audit_logs" | "deleted_records" | "admin_ai";
 
 type TabDef = { key: TabKey; label: string; adminOnly?: boolean };
 
 const allTabs: TabDef[] = [
   { key: "general", label: "Genel" },
   { key: "mevzuat", label: "Mevzuat Senkronizasyonu" },
+  { key: "audit_logs", label: "Audit Loglari", adminOnly: true },
+  { key: "deleted_records", label: "Silinmis Kayitlar", adminOnly: true },
   { key: "admin_ai", label: "Nova AI", adminOnly: true },
 ];
 
@@ -76,12 +82,27 @@ function GeneralTab() {
 /* ------------------------------------------------------------------ */
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = usePersistedState<TabKey>("settings:tab", "mevzuat");
   const isAdmin = useIsAdmin(); // boolean | null (null = loading)
 
   // Tab görünürlüğü: admin tabları SADECE isAdmin === true ise görünür
   // (null/loading veya false durumlarda admin tablar gizli — fail-CLOSED)
   const visibleTabs = allTabs.filter((t) => !t.adminOnly || isAdmin === true);
+
+  useEffect(() => {
+    if (visibleTabs.some((tab) => tab.key === activeTab)) {
+      return;
+    }
+    setActiveTab("general");
+  }, [activeTab, setActiveTab, visibleTabs]);
+
+  useEffect(() => {
+    const requestedTab = searchParams.get("tab");
+    if (requestedTab === "general" || requestedTab === "mevzuat" || requestedTab === "audit_logs" || requestedTab === "deleted_records" || requestedTab === "admin_ai") {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams, setActiveTab]);
 
   return (
     <>
@@ -115,6 +136,8 @@ export default function SettingsPage() {
       <div className="mt-4">
         {activeTab === "general" && <GeneralTab />}
         {activeTab === "mevzuat" && <MevzuatSyncTab />}
+        {activeTab === "audit_logs" && isAdmin === true && <AuditLogsTab />}
+        {activeTab === "deleted_records" && isAdmin === true && <DeletedRecordsTab />}
         {activeTab === "admin_ai" && isAdmin === true && <AdminAITab />}
       </div>
     </>

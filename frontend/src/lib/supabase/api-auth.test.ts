@@ -28,7 +28,12 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(),
 }));
 
+vi.mock("@supabase/ssr", () => ({
+  createServerClient: vi.fn(),
+}));
+
 // Mock'tan sonra import et ki mock devreye girsin
+import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import {
   requireAuth,
@@ -96,16 +101,23 @@ function createReq(authHeader?: string): NextRequest {
 
 let mockAnonClient: MockClient;
 let mockServiceClient: MockClient;
+let mockCookieClient: MockClient;
 
 beforeEach(() => {
   // Env var stub'ları
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://test.supabase.co");
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon_test_key");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "");
   vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "service_test_key");
 
   // Fresh mock client'lar
   mockAnonClient = createEmptyMockClient();
   mockServiceClient = createEmptyMockClient();
+  mockCookieClient = createEmptyMockClient();
+  mockCookieClient.auth.getUser.mockResolvedValue({
+    data: { user: null },
+    error: null,
+  });
 
   // createClient argümanına göre doğru client'ı dön
   vi.mocked(createClient).mockImplementation((_url: string, key: string) => {
@@ -114,6 +126,7 @@ beforeEach(() => {
     }
     return mockAnonClient as never;
   });
+  vi.mocked(createServerClient).mockReturnValue(mockCookieClient as never);
 });
 
 afterEach(() => {
@@ -206,6 +219,25 @@ describe("requireAuth", () => {
     expect(result.isSuperAdmin).toBe(false);
   });
 
+  it("accepts same-origin session cookie when authorization header is missing", async () => {
+    mockCookieClient.auth.getUser.mockResolvedValue({
+      data: { user: { id: VALID_USER_ID } },
+      error: null,
+    });
+    mockServiceClient.from.mockReturnValue(
+      buildQueryChain({
+        data: { id: VALID_PROFILE_ID, organization_id: VALID_ORG_ID },
+        error: null,
+      })
+    );
+
+    const req = createReq();
+    const result = await requireAuth(req);
+
+    expect(result.ok).toBe(true);
+    expect(createServerClient).toHaveBeenCalled();
+  });
+
   it("returns 403 ERR_AUTH_003 when user_profiles row does not exist (orphan user)", async () => {
     mockAnonClient.auth.getUser.mockResolvedValue({
       data: { user: { id: VALID_USER_ID } },
@@ -260,6 +292,26 @@ describe("requireAuth", () => {
 
     const body = await result.response.json();
     expect(body.errCode).toBe("ERR_AUTH_500");
+  });
+
+  it("uses NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY when NEXT_PUBLIC_SUPABASE_ANON_KEY is missing", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "publishable_test_key");
+    mockHappyPath();
+
+    const req = createReq("Bearer valid_token");
+    const result = await requireAuth(req);
+
+    expect(result.ok).toBe(true);
+    expect(createClient).toHaveBeenCalledWith(
+      "https://test.supabase.co",
+      "publishable_test_key",
+      expect.objectContaining({
+        global: {
+          headers: { Authorization: "Bearer valid_token" },
+        },
+      })
+    );
   });
 
   it("returns 500 ERR_AUTH_500 when SUPABASE_SERVICE_ROLE_KEY is missing", async () => {

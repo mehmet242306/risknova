@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useI18n } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/client";
 import { fetchSurveys, type SurveyRecord } from "@/lib/supabase/survey-api";
@@ -11,28 +12,36 @@ type StatusFilter = "all" | "draft" | "active" | "closed";
 
 export function TrainingClient() {
   const { t } = useI18n();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialCompanyId = searchParams.get("companyId") ?? undefined;
+  const fromLibrary = searchParams.get("library") === "1";
+  const librarySection = searchParams.get("librarySection") ?? "education";
   const [surveys, setSurveys] = useState<SurveyRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabType>("all");
+  const [tab, setTab] = useState<TabType>(() => {
+    const requested = searchParams.get("tab");
+    return requested === "survey" || requested === "exam" ? requested : "all";
+  });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
 
   useEffect(() => {
-    loadSurveys();
-  }, []);
+    async function loadSurveys() {
+      setLoading(true);
+      const supabase = createClient();
+      if (!supabase) { setLoading(false); return; }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
+      const { data: profile } = await supabase.from("user_profiles").select("organization_id").eq("auth_user_id", user.id).single();
+      if (!profile?.organization_id) { setLoading(false); return; }
+      const data = await fetchSurveys(profile.organization_id, initialCompanyId);
+      setSurveys(data);
+      setLoading(false);
+    }
 
-  async function loadSurveys() {
-    setLoading(true);
-    const supabase = createClient();
-    if (!supabase) { setLoading(false); return; }
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLoading(false); return; }
-    const { data: profile } = await supabase.from("user_profiles").select("organization_id").eq("auth_user_id", user.id).single();
-    if (!profile?.organization_id) { setLoading(false); return; }
-    const data = await fetchSurveys(profile.organization_id);
-    setSurveys(data);
-    setLoading(false);
-  }
+    void loadSurveys();
+  }, [initialCompanyId]);
 
   const filtered = surveys.filter(s => {
     if (tab !== "all" && s.type !== tab) return false;
@@ -61,12 +70,36 @@ export function TrainingClient() {
     archived: "Arşiv",
   };
 
+  const buildTrainingHref = (pathname: string, extra?: Record<string, string>) => {
+    const params = new URLSearchParams(extra);
+    if (initialCompanyId) {
+      params.set("companyId", initialCompanyId);
+    }
+    if (fromLibrary) {
+      params.set("library", "1");
+      params.set("librarySection", librarySection);
+    }
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  };
+
+  const libraryBackHref = buildTrainingHref("/isg-library", { view: "browse", section: librarySection });
+
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="w-full px-4 py-8">
         {/* Header */}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
+            {fromLibrary ? (
+              <button
+                onClick={() => router.push(libraryBackHref)}
+                className="mb-4 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)] px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--accent)]"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                ISG Kutuphanesi
+              </button>
+            ) : null}
             <h1 className="text-2xl font-bold text-[var(--foreground)]">
               {t("nav.training")}
             </h1>
@@ -76,28 +109,28 @@ export function TrainingClient() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/training/slides"
+              href={buildTrainingHref("/training/slides")}
               className="inline-flex items-center gap-2 rounded-xl border border-[var(--gold)]/40 bg-[var(--gold)]/5 px-4 py-2.5 text-sm font-semibold text-[var(--gold)] shadow-sm transition-colors hover:bg-[var(--gold)]/10"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
               Slayt Kütüphanem
             </Link>
             <Link
-              href="/training/question-bank"
+              href={buildTrainingHref("/training/question-bank")}
               className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--accent)]"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
               Soru Bankası
             </Link>
             <Link
-              href="/training/certificates"
+              href={buildTrainingHref("/training/certificates")}
               className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] shadow-sm transition-colors hover:bg-[var(--accent)]"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Sertifikalar
             </Link>
             <Link
-              href="/training/new"
+              href={buildTrainingHref("/training/new")}
               className="inline-flex items-center gap-2 rounded-xl bg-[var(--gold)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:brightness-110"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>

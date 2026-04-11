@@ -185,7 +185,7 @@ export function TrainingDetailClient() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[var(--page-bg,#f8f9fa)]">
-        <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="w-full px-4 py-8">
           <div className="space-y-4">
             {[1, 2, 3].map(i => (
               <div key={i} className="h-24 animate-pulse rounded-xl bg-[var(--card)] border border-[var(--border)]" />
@@ -206,7 +206,7 @@ export function TrainingDetailClient() {
 
   return (
     <div className="min-h-screen bg-[var(--page-bg,#f8f9fa)]">
-      <div className="mx-auto max-w-5xl px-4 py-8">
+      <div className="w-full px-4 py-8">
         {/* Back + Header */}
         <button
           onClick={() => router.push("/training")}

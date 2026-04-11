@@ -1,14 +1,11 @@
 create extension if not exists pgcrypto;
 create extension if not exists citext;
-
 create sequence if not exists public.company_code_seq
   start with 1000
   increment by 1;
-
 create sequence if not exists public.company_join_request_seq
   start with 1000
   increment by 1;
-
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
@@ -18,7 +15,6 @@ begin
   return new;
 end;
 $$;
-
 create or replace function public.current_user_organization_id()
 returns uuid
 language sql
@@ -32,7 +28,6 @@ as $$
   order by up.created_at desc nulls last
   limit 1
 $$;
-
 create or replace function public.generate_company_code()
 returns text
 language plpgsql
@@ -44,7 +39,6 @@ begin
   return 'RN-CMP-' || lpad(v_next::text, 6, '0');
 end;
 $$;
-
 create or replace function public.generate_company_join_request_code()
 returns text
 language plpgsql
@@ -56,7 +50,6 @@ begin
   return 'RN-JR-' || lpad(v_next::text, 6, '0');
 end;
 $$;
-
 create table if not exists public.company_identities (
   id uuid primary key default gen_random_uuid(),
   company_code text not null unique default public.generate_company_code(),
@@ -78,7 +71,6 @@ create table if not exists public.company_identities (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.company_workspaces (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -92,7 +84,6 @@ create table if not exists public.company_workspaces (
   updated_at timestamptz not null default now(),
   unique (organization_id, company_identity_id)
 );
-
 create table if not exists public.company_memberships (
   id uuid primary key default gen_random_uuid(),
   company_identity_id uuid not null references public.company_identities(id) on delete cascade,
@@ -131,7 +122,6 @@ create table if not exists public.company_memberships (
   updated_at timestamptz not null default now(),
   unique (company_identity_id, organization_id, user_id, membership_role)
 );
-
 create table if not exists public.company_join_requests (
   id uuid primary key default gen_random_uuid(),
   request_code text not null unique default public.generate_company_join_request_code(),
@@ -163,31 +153,22 @@ create table if not exists public.company_join_requests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists idx_company_identities_company_code
   on public.company_identities (company_code);
-
 create index if not exists idx_company_workspaces_company_identity_id
   on public.company_workspaces (company_identity_id);
-
 create index if not exists idx_company_workspaces_organization_id
   on public.company_workspaces (organization_id);
-
 create index if not exists idx_company_memberships_company_identity_id
   on public.company_memberships (company_identity_id);
-
 create index if not exists idx_company_memberships_user_id
   on public.company_memberships (user_id);
-
 create index if not exists idx_company_memberships_workspace_id
   on public.company_memberships (company_workspace_id);
-
 create index if not exists idx_company_join_requests_company_identity_id
   on public.company_join_requests (company_identity_id);
-
 create index if not exists idx_company_join_requests_requesting_user_id
   on public.company_join_requests (requesting_user_id);
-
 create unique index if not exists uq_company_join_requests_pending
   on public.company_join_requests (
     company_identity_id,
@@ -195,31 +176,26 @@ create unique index if not exists uq_company_join_requests_pending
     requesting_user_id
   )
   where status = 'pending';
-
 drop trigger if exists trg_company_identities_updated_at on public.company_identities;
 create trigger trg_company_identities_updated_at
 before update on public.company_identities
 for each row
 execute function public.touch_updated_at();
-
 drop trigger if exists trg_company_workspaces_updated_at on public.company_workspaces;
 create trigger trg_company_workspaces_updated_at
 before update on public.company_workspaces
 for each row
 execute function public.touch_updated_at();
-
 drop trigger if exists trg_company_memberships_updated_at on public.company_memberships;
 create trigger trg_company_memberships_updated_at
 before update on public.company_memberships
 for each row
 execute function public.touch_updated_at();
-
 drop trigger if exists trg_company_join_requests_updated_at on public.company_join_requests;
 create trigger trg_company_join_requests_updated_at
 before update on public.company_join_requests
 for each row
 execute function public.touch_updated_at();
-
 create or replace function public.is_company_member(p_company_identity_id uuid)
 returns boolean
 language sql
@@ -235,7 +211,6 @@ as $$
       and cm.status = 'active'
   )
 $$;
-
 create or replace function public.is_company_approver(p_company_identity_id uuid)
 returns boolean
 language sql
@@ -252,7 +227,6 @@ as $$
       and cm.can_approve_join_requests = true
   )
 $$;
-
 create or replace function public.find_company_by_code(p_company_code text)
 returns table (
   company_identity_id uuid,
@@ -312,7 +286,6 @@ begin
     and ci.is_active = true;
 end;
 $$;
-
 create or replace function public.create_company_identity_with_workspace(
   p_official_name text,
   p_sector text default null,
@@ -448,7 +421,6 @@ begin
   return v_workspace_id;
 end;
 $$;
-
 create or replace function public.request_company_join_by_code(
   p_company_code text,
   p_requested_role text,
@@ -546,7 +518,6 @@ begin
   return v_join_request_id;
 end;
 $$;
-
 create or replace function public.approve_company_join_request(
   p_join_request_id uuid,
   p_decision_note text default null
@@ -668,7 +639,6 @@ begin
   return v_workspace_id;
 end;
 $$;
-
 create or replace function public.reject_company_join_request(
   p_join_request_id uuid,
   p_decision_note text default null
@@ -712,12 +682,10 @@ begin
   return p_join_request_id;
 end;
 $$;
-
 alter table public.company_identities enable row level security;
 alter table public.company_workspaces enable row level security;
 alter table public.company_memberships enable row level security;
 alter table public.company_join_requests enable row level security;
-
 drop policy if exists company_identities_select on public.company_identities;
 create policy company_identities_select
 on public.company_identities
@@ -732,7 +700,6 @@ using (
       and jr.requesting_user_id = auth.uid()
   )
 );
-
 drop policy if exists company_identities_update on public.company_identities;
 create policy company_identities_update
 on public.company_identities
@@ -740,7 +707,6 @@ for update
 to authenticated
 using (public.is_company_approver(id))
 with check (public.is_company_approver(id));
-
 drop policy if exists company_workspaces_select on public.company_workspaces;
 create policy company_workspaces_select
 on public.company_workspaces
@@ -750,7 +716,6 @@ using (
   organization_id = public.current_user_organization_id()
   or public.is_company_member(company_identity_id)
 );
-
 drop policy if exists company_workspaces_update on public.company_workspaces;
 create policy company_workspaces_update
 on public.company_workspaces
@@ -758,7 +723,6 @@ for update
 to authenticated
 using (organization_id = public.current_user_organization_id())
 with check (organization_id = public.current_user_organization_id());
-
 drop policy if exists company_memberships_select on public.company_memberships;
 create policy company_memberships_select
 on public.company_memberships
@@ -768,7 +732,6 @@ using (
   user_id = auth.uid()
   or public.is_company_member(company_identity_id)
 );
-
 drop policy if exists company_memberships_update on public.company_memberships;
 create policy company_memberships_update
 on public.company_memberships
@@ -776,7 +739,6 @@ for update
 to authenticated
 using (public.is_company_approver(company_identity_id))
 with check (public.is_company_approver(company_identity_id));
-
 drop policy if exists company_join_requests_select on public.company_join_requests;
 create policy company_join_requests_select
 on public.company_join_requests
@@ -786,7 +748,6 @@ using (
   requesting_user_id = auth.uid()
   or public.is_company_approver(company_identity_id)
 );
-
 drop policy if exists company_join_requests_insert on public.company_join_requests;
 create policy company_join_requests_insert
 on public.company_join_requests
@@ -797,7 +758,6 @@ with check (
   and requesting_organization_id = public.current_user_organization_id()
   and status = 'pending'
 );
-
 drop policy if exists company_join_requests_update on public.company_join_requests;
 create policy company_join_requests_update
 on public.company_join_requests
@@ -811,7 +771,6 @@ with check (
   requesting_user_id = auth.uid()
   or public.is_company_approver(company_identity_id)
 );
-
 grant execute on function public.find_company_by_code(text) to authenticated;
 grant execute on function public.create_company_identity_with_workspace(
   text, text, text, text, text, text, text, text, text, text
@@ -821,5 +780,3 @@ grant execute on function public.request_company_join_by_code(
 ) to authenticated;
 grant execute on function public.approve_company_join_request(uuid, text) to authenticated;
 grant execute on function public.reject_company_join_request(uuid, text) to authenticated;
-
-

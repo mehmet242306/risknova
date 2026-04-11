@@ -7,6 +7,9 @@ import { createClient } from "@/lib/supabase/server";
 export async function login(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const requestedNext =
+    String(formData.get("next") ?? "/dashboard").trim() || "/dashboard";
+  const next = requestedNext.startsWith("/") ? requestedNext : "/dashboard";
 
   if (!email || !password) {
     redirect("/login?error=E-posta ve sifre zorunludur.");
@@ -50,6 +53,18 @@ export async function login(formData: FormData) {
     }
   }
 
+  const { data: assuranceData, error: assuranceError } =
+    await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+
+  if (
+    !assuranceError &&
+    assuranceData?.nextLevel === "aal2" &&
+    assuranceData.currentLevel !== "aal2"
+  ) {
+    redirect(`/auth/mfa-challenge?next=${encodeURIComponent(next)}`);
+  }
+
+  redirect(next);
 }

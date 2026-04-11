@@ -12,12 +12,14 @@ export interface DocumentRecord {
   group_key: string;
   title: string;
   content_json: Record<string, unknown>;
-  variables_data: Record<string, string>;
+  variables_data: Record<string, unknown>;
   status: 'taslak' | 'hazir' | 'onay_bekliyor' | 'revizyon' | 'arsiv';
   version: number;
   prepared_by: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
   share_token: string | null;
   is_shared: boolean;
   shared_at: string | null;
@@ -117,7 +119,7 @@ export async function createDocument(
 
 export async function updateDocument(
   id: string,
-  updates: Partial<Pick<DocumentRecord, 'title' | 'content_json' | 'variables_data' | 'status'>>
+  updates: Partial<Pick<DocumentRecord, 'title' | 'content_json' | 'variables_data' | 'status' | 'version'>>
 ): Promise<DocumentRecord | null> {
   const supabase = createClient();
   if (!supabase) return null;

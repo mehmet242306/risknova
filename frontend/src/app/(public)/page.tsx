@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PublicHeader } from "@/components/layout/public-header";
 import { Brand } from "@/components/layout/brand";
 import { PublicChatWidget } from "@/components/chat/PublicChatWidget";
+import { PremiumIconBadge, type PremiumIconTone } from "@/components/ui/premium-icon-badge";
 import {
   BrainCircuit,
   Search,
@@ -31,6 +32,9 @@ const workflowIcons: Record<string, LucideIcon> = {
   cpu: Cpu,
   "clipboard-check": ClipboardCheck,
 };
+
+const featureTones: PremiumIconTone[] = ["gold", "cobalt", "violet", "emerald", "teal", "indigo"];
+const workflowTones: PremiumIconTone[] = ["gold", "amber", "violet", "emerald"];
 
 /* ------------------------------------------------------------------ */
 /*  Data                                                               */
@@ -261,16 +265,14 @@ export default function LandingPage() {
           </div>
 
           <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {features.map((item) => {
+            {features.map((item, index) => {
               const Icon = featureIcons[item.iconKey];
               return (
               <div
                 key={item.title}
                 className="reveal group rounded-2xl border border-border bg-card p-7 shadow-[var(--shadow-card)] hover-lift"
               >
-                <span className="mb-4 inline-flex size-12 items-center justify-center rounded-xl bg-[var(--gold-glow)]">
-                  <Icon className="size-6 text-[var(--gold)]" strokeWidth={1.5} />
-                </span>
+                <PremiumIconBadge icon={Icon} tone={featureTones[index % featureTones.length]} size="md" className="mb-4" />
                 <h3 className="text-lg font-semibold tracking-tight text-foreground">
                   {item.title}
                 </h3>
@@ -301,7 +303,7 @@ export default function LandingPage() {
           </div>
 
           <div className="mt-14 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {workflow.map((item) => {
+            {workflow.map((item, index) => {
               const Icon = workflowIcons[item.iconKey];
               return (
               <div
@@ -309,9 +311,7 @@ export default function LandingPage() {
                 className="reveal hover-lift relative overflow-hidden rounded-2xl glass-card p-7"
               >
                 <div className="flex items-center gap-3">
-                  <span className="inline-flex size-10 items-center justify-center rounded-lg bg-[var(--gold)]/10">
-                    <Icon className="size-5 text-[var(--gold)]" strokeWidth={1.5} />
-                  </span>
+                  <PremiumIconBadge icon={Icon} tone={workflowTones[index % workflowTones.length]} size="sm" />
                   <div className="h-1 w-8 rounded-full bg-[linear-gradient(90deg,var(--gold),var(--gold-light))]" />
                 </div>
                 <span className="pointer-events-none absolute right-4 top-2 select-none text-6xl font-bold text-white/[0.04]">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   fetchMyDecks,
   fetchOrgDecks,
@@ -29,6 +29,10 @@ const CATEGORIES: Record<string, { label: string; color: string; emoji: string }
 
 export function SlideLibraryClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const companyIdParam = searchParams.get("companyId") ?? "";
+  const fromLibrary = searchParams.get("library") === "1";
+  const librarySection = searchParams.get("librarySection") ?? "education";
   const [tab, setTab] = useState<TabKey>("my");
   const [myDecks, setMyDecks] = useState<SlideDeck[]>([]);
   const [orgDecks, setOrgDecks] = useState<SlideDeck[]>([]);
@@ -170,6 +174,10 @@ export function SlideLibraryClient() {
     return true;
   });
 
+  const backHref = fromLibrary
+    ? `/isg-library?view=browse&section=${librarySection}${companyIdParam ? `&companyId=${companyIdParam}` : ""}`
+    : `/training${companyIdParam ? `?companyId=${companyIdParam}` : ""}`;
+
   return (
     <div className="min-h-screen bg-[var(--background)]">
       {importError && (
@@ -178,13 +186,13 @@ export function SlideLibraryClient() {
           <button onClick={() => setImportError(null)} className="ml-3 text-xs opacity-70 hover:opacity-100">×</button>
         </div>
       )}
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      <div className="w-full px-4 py-8">
         {/* Header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-3">
               <Link
-                href="/training"
+                href={backHref}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>

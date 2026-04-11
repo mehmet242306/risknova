@@ -8,11 +8,12 @@ import { login } from "./actions";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; reset?: string }>;
+  searchParams: Promise<{ error?: string; reset?: string; next?: string }>;
 }) {
   const params = await searchParams;
   const error = params?.error;
   const reset = params?.reset === "1";
+  const next = params?.next || "/dashboard";
 
   return (
     <AuthShell
@@ -46,6 +47,8 @@ export default async function LoginPage({
       <SocialLoginButtons mode="login" />
 
       <form className="space-y-5">
+        <input type="hidden" name="next" value={next} />
+
         <Input
           id="email"
           name="email"

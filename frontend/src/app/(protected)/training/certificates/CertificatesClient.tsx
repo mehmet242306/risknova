@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -24,6 +24,10 @@ interface PersonnelItem {
 
 export function CertificatesClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const companyIdParam = searchParams.get("companyId") ?? "";
+  const fromLibrary = searchParams.get("library") === "1";
+  const librarySection = searchParams.get("librarySection") ?? "education";
   const [tab, setTab] = useState<Tab>("templates");
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,9 +45,7 @@ export function CertificatesClient() {
   const [issuing, setIssuing] = useState(false);
   const [personnelSearch, setPersonnelSearch] = useState("");
 
-  useEffect(() => { loadData(); }, []);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
     if (!supabase) { setLoading(false); return; }
@@ -100,7 +102,14 @@ export function CertificatesClient() {
     }
 
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadData]);
 
   async function handleBulkIssue() {
     const oid = orgIdRef.current;
@@ -181,12 +190,16 @@ export function CertificatesClient() {
   }
 
   const builtInTemplates = DEFAULT_CERTIFICATE_TEMPLATES;
+  const backHref = fromLibrary
+    ? `/isg-library?view=browse&section=${librarySection}${companyIdParam ? `&companyId=${companyIdParam}` : ""}`
+    : `/training${companyIdParam ? `?companyId=${companyIdParam}` : ""}`;
+  const documentCenterHref = `/documents${companyIdParam ? `?companyId=${companyIdParam}` : ""}${fromLibrary ? `${companyIdParam ? "&" : "?"}library=1&librarySection=${librarySection}` : ""}`;
 
   return (
-    <div className="min-h-screen bg-[var(--page-bg,#f8f9fa)]">
-      <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="min-h-screen bg-[var(--background)]">
+      <div className="w-full px-4 py-8">
         <button
-          onClick={() => router.push("/training")}
+          onClick={() => router.push(backHref)}
           className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
@@ -290,7 +303,7 @@ export function CertificatesClient() {
 
                   {/* Custom template card — links to document center */}
                   <Link
-                    href="/documents"
+                    href={documentCenterHref}
                     className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[var(--border)] bg-[var(--card)] p-8 text-center transition-colors hover:border-[var(--gold)]/40 hover:bg-[var(--gold)]/5"
                   >
                     <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--accent)] text-[var(--muted-foreground)]">
@@ -472,7 +485,11 @@ export function CertificatesClient() {
                             checked={selectedPersonnel.has(p.id)}
                             onChange={e => {
                               const next = new Set(selectedPersonnel);
-                              e.target.checked ? next.add(p.id) : next.delete(p.id);
+                              if (e.target.checked) {
+                                next.add(p.id);
+                              } else {
+                                next.delete(p.id);
+                              }
                               setSelectedPersonnel(next);
                             }}
                             className="rounded border-[var(--border)]"

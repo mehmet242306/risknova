@@ -3,14 +3,21 @@
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Brand } from "./brand";
 import { LanguageSelector } from "./language-selector";
 import { ChatWidget } from "@/components/chat/ChatWidget";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { useIsAdmin } from "@/lib/hooks/use-is-admin";
+import { createClient } from "@/lib/supabase/client";
+import { quickSignOut } from "@/lib/auth/quick-sign-out";
+import {
+  listMyNotifications,
+  markAllMyNotificationsAsRead,
+  markNotificationAsRead,
+  type NotificationRow,
+} from "@/lib/supabase/notification-api";
 
 type ProtectedShellProps = { children: ReactNode };
 
@@ -20,7 +27,7 @@ const primaryNav = [
   { href: "/companies", key: "nav.companies" },
   { href: "/risk-analysis", key: "nav.riskAnalysis" },
   { href: "/incidents", key: "nav.incidents" },
-  { href: "/documents", key: "nav.documents" },
+  { href: "/isg-library", key: "nav.library" },
 ];
 
 /* Second bar: other modules */
@@ -30,7 +37,6 @@ const secondaryNav: NavItem[] = [
   { href: "/planner", key: "nav.planner" },
   { href: "/timesheet", key: "nav.timesheet" },
   { href: "/solution-center", key: "nav.solutionCenter" },
-  { href: "/training", key: "nav.training" },
   { href: "/digital-twin", key: "nav.digitalTwin", adminOnly: true },
   { href: "/reports", key: "nav.reports" },
   { href: "/settings", key: "nav.settings" },
@@ -89,36 +95,16 @@ function ThemeToggle() {
 /* Notification Bell                                                   */
 /* ------------------------------------------------------------------ */
 
-type NotificationItem = {
-  id: string;
-  title: string;
-  message: string;
-  type: string;
-  level: string;
-  link: string | null;
-  actor_name: string | null;
-  is_read: boolean;
-  created_at: string;
-};
-
 function NotificationBell() {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
   const loadNotifications = useCallback(async () => {
-    const supabase = createClient();
-    if (!supabase) return;
-    const { data } = await supabase
-      .from("notifications")
-      .select("id, title, message, type, level, link, actor_name, is_read, created_at")
-      .order("created_at", { ascending: false })
-      .limit(10);
-    if (data) {
-      setNotifications(data as NotificationItem[]);
-      setUnreadCount(data.filter((n: { is_read: boolean }) => !n.is_read).length);
-    }
+    const data = await listMyNotifications(10);
+    setNotifications(data);
+    setUnreadCount(data.filter((n) => !n.is_read).length);
   }, []);
 
   useEffect(() => { void loadNotifications(); }, [loadNotifications]);
@@ -136,19 +122,17 @@ function NotificationBell() {
   }, []);
 
   async function markAsRead(id: string) {
-    const supabase = createClient();
-    if (!supabase) return;
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
+    const ok = await markNotificationAsRead(id);
+    if (!ok) return;
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount((prev) => Math.max(0, prev - 1));
   }
 
   async function markAllRead() {
-    const supabase = createClient();
-    if (!supabase) return;
     const unreadIds = notifications.filter((n) => !n.is_read).map((n) => n.id);
     if (unreadIds.length === 0) return;
-    await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+    const ok = await markAllMyNotificationsAsRead(unreadIds);
+    if (!ok) return;
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     setUnreadCount(0);
   }
@@ -261,16 +245,141 @@ function NotificationBell() {
   );
 }
 
+function HeaderSignOutButton() {
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleClick() {
+    if (signingOut) return;
+    setSigningOut(true);
+    await quickSignOut("/login");
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleClick()}
+      disabled={signingOut}
+      className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/12 px-3 text-[14px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      aria-label="Oturumu kapat"
+      title="Oturumu kapat"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+        <polyline points="16 17 21 12 16 7" />
+        <line x1="21" y1="12" x2="9" y2="12" />
+      </svg>
+      <span className="hidden lg:inline">{signingOut ? "Cikiliyor..." : "Cikis"}</span>
+    </button>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Shell                                                               */
 /* ------------------------------------------------------------------ */
 export function ProtectedShell({ children }: ProtectedShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { t } = useI18n();
   const isAdmin = useIsAdmin();
+  const [authReady, setAuthReady] = useState(false);
 
   const visibleSecondaryNav = secondaryNav.filter((i) => !i.adminOnly || isAdmin === true);
   const visibleAllNav = [...primaryNav, ...visibleSecondaryNav];
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+
+    if (!supabase) {
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      return;
+    }
+
+    const authClient = supabase;
+
+    setAuthReady(false);
+
+    async function ensureAuthenticated() {
+      const {
+        data: { user },
+      } = await authClient.auth.getUser();
+
+      if (cancelled) return;
+
+      if (!user) {
+        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+        return;
+      }
+
+      const { data: assuranceData, error: assuranceError } =
+        await authClient.auth.mfa.getAuthenticatorAssuranceLevel();
+
+      if (cancelled) return;
+
+      if (
+        !assuranceError &&
+        assuranceData?.nextLevel === "aal2" &&
+        assuranceData.currentLevel !== "aal2"
+      ) {
+        router.replace(
+          `/auth/mfa-challenge?next=${encodeURIComponent(pathname)}`
+        );
+        return;
+      }
+
+      setAuthReady(true);
+    }
+
+    void ensureAuthenticated();
+
+    const {
+      data: { subscription },
+    } = authClient.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+        return;
+      }
+
+      if (
+        event === "INITIAL_SESSION" ||
+        event === "SIGNED_IN" ||
+        event === "TOKEN_REFRESHED" ||
+        event === "MFA_CHALLENGE_VERIFIED"
+      ) {
+        void ensureAuthenticated();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [pathname, router]);
+
+  if (!authReady) {
+    return (
+      <div className="app-shell">
+        <main className="mx-auto flex min-h-[60vh] w-full max-w-[1480px] items-center justify-center px-4 py-6 sm:px-6 xl:px-8 2xl:px-10">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-primary" />
+            <p className="text-sm text-muted-foreground">
+              Guvenli oturum dogrulaniyor...
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -281,15 +390,14 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
           className="relative z-10"
           style={{ background: "var(--header-bg-solid)", borderBottom: "1px solid var(--header-border)" }}
         >
-          <div className="h-[2px] w-full bg-[linear-gradient(90deg,transparent_5%,var(--gold)_50%,transparent_95%)]" />
-          <div className="relative mx-auto h-[96px] w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto grid h-[92px] w-full max-w-[1480px] grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-4 px-4 sm:px-6 xl:px-8 2xl:px-10">
             {/* Left: Brand — absolute so it doesn't affect nav centering */}
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 sm:left-6 lg:left-8">
+            <div className="min-w-0">
               <Brand href="/dashboard" inverted />
             </div>
 
             {/* Center: Primary navigation — truly centered in max-w-7xl */}
-            <nav className="hidden h-full items-center justify-center gap-1.5 md:flex">
+            <nav className="hidden min-w-0 items-center justify-center gap-1 lg:flex">
               {primaryNav.map((item) => {
                 const act = isActive(pathname, item.href);
                 return (
@@ -297,9 +405,9 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "relative inline-flex h-12 items-center rounded-xl px-5 text-[17px] font-semibold tracking-[-0.01em] transition-all duration-200",
+                      "relative inline-flex h-11 min-w-0 items-center rounded-2xl px-3 xl:px-4 text-[14px] xl:text-[15px] font-semibold tracking-[-0.01em] transition-all duration-200",
                       act
-                        ? "bg-white/12 text-white shadow-[0_0_12px_rgba(251,191,36,0.15)]"
+                        ? "bg-white/8 text-white shadow-[0_10px_30px_rgba(0,0,0,0.18)] ring-1 ring-white/10"
                         : "text-[var(--header-muted)] hover:bg-[var(--header-hover-bg)] hover:text-white",
                     )}
                   >
@@ -313,25 +421,31 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
             </nav>
 
             {/* Right: Actions — absolute so it doesn't affect nav centering */}
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 sm:right-6 lg:right-8">
+            <div className="flex items-center justify-end gap-1 sm:gap-1.5">
               <LanguageSelector variant="dark" />
               <NotificationBell />
               <ThemeToggle />
               <Link
                 href="/profile"
-                className="inline-flex h-11 items-center rounded-xl px-4 text-[15px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:bg-white/10 hover:text-white"
+                className="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-[14px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:bg-white/10 hover:text-white"
+                aria-label="Profil"
+                title="Profil"
               >
-                {t("common.profile")}
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21a8 8 0 0 0-16 0" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <span className="hidden xl:inline">{t("common.profile")}</span>
               </Link>
+              <HeaderSignOutButton />
             </div>
           </div>
         </header>
 
         {/* ── Secondary navigation bar (centered, sticky with header) ── */}
         {/* Gold ayraç — 1 ile 2 arası (üst üste, boşluksuz) */}
-        <div className="hidden h-[2px] md:block" style={{ background: "linear-gradient(90deg, transparent 5%, #10B981 50%, transparent 95%)", marginBottom: "-1px", position: "relative", zIndex: 1 }} />
         <div className="hidden md:block relative z-0" style={{ background: "var(--secondary-nav-bg-solid)", borderBottom: "1px solid var(--secondary-nav-border)" }}>
-          <div className="mx-auto flex h-12 w-full max-w-7xl items-center justify-center gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex h-12 w-full max-w-[1480px] items-center justify-center gap-1 overflow-x-auto px-4 sm:px-6 xl:px-8 2xl:px-10">
             {visibleSecondaryNav.map((item) => {
               const act = isActive(pathname, item.href);
               return (
@@ -339,7 +453,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "relative inline-flex shrink-0 items-center rounded-lg px-4 py-2 text-[14px] font-semibold transition-all duration-200",
+                    "relative inline-flex shrink-0 items-center rounded-xl px-3 xl:px-4 py-2 text-[13px] xl:text-[14px] font-semibold transition-all duration-200",
                     act
                       ? "text-[var(--secondary-nav-active)] bg-[var(--secondary-nav-hover-bg)]"
                       : "text-[var(--secondary-nav-text)] hover:text-[var(--secondary-nav-hover-text)] hover:bg-[var(--secondary-nav-hover-bg)]",
@@ -358,7 +472,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
 
       {/* ── Mobile navigation (all items, single scrollable row) ── */}
       <div className="border-b md:hidden" style={{ borderColor: "var(--border)", background: "var(--card)" }}>
-        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
+        <div className="mx-auto w-full max-w-[1480px] px-4 sm:px-6">
           <div className="flex gap-0.5 overflow-x-auto py-0">
             {visibleAllNav.map((item) => {
               const act = isActive(pathname, item.href);
@@ -385,7 +499,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
       </div>
 
       {/* ── Main content ── */}
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 xl:px-8 2xl:px-10">
         <div className="page-stack">{children}</div>
       </main>
 

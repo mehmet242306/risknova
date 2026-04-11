@@ -1,15 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  ShieldAlert, FileText, AlertTriangle, GraduationCap,
-  Siren, ClipboardCheck, TrendingUp, Calendar, Building2,
-  ChevronRight, BarChart3,
-  FileEdit, PenTool, Download, Sparkles,
+  AlertTriangle,
+  BarChart3,
+  Building2,
+  Calendar,
+  ChevronRight,
+  ClipboardCheck,
+  Download,
+  FileEdit,
+  FileText,
+  GraduationCap,
+  PenTool,
+  ShieldAlert,
+  Siren,
+  Sparkles,
+  TrendingUp,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { PageHeader } from '@/components/ui/page-header';
+import { PremiumIconBadge, type PremiumIconTone } from '@/components/ui/premium-icon-badge';
 
 interface DashboardStats {
   riskCount: number;
@@ -22,7 +34,6 @@ interface DashboardStats {
   taskCount: number;
   userName: string;
   recentDocs: Array<{ id: string; title: string; status: string; updated_at: string }>;
-  recentRisks: Array<{ id: string; title: string; risk_level: number; created_at: string }>;
 }
 
 export function DashboardClient() {
@@ -33,10 +44,18 @@ export function DashboardClient() {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
-      if (!supabase) { setLoading(false); return; }
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       const { data: profile } = await supabase
         .from('user_profiles')
@@ -44,10 +63,13 @@ export function DashboardClient() {
         .eq('auth_user_id', user.id)
         .single();
 
-      if (!profile?.organization_id) { setLoading(false); return; }
+      if (!profile?.organization_id) {
+        setLoading(false);
+        return;
+      }
+
       const orgId = profile.organization_id;
 
-      // Parallel data fetches
       const [
         { count: riskCount },
         { data: highRisks },
@@ -58,7 +80,13 @@ export function DashboardClient() {
       ] = await Promise.all([
         supabase.from('risk_assessments').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
         supabase.from('risk_assessments').select('id').eq('organization_id', orgId).gte('risk_level', 15),
-        supabase.from('editor_documents').select('id, title, status, updated_at').eq('organization_id', orgId).neq('status', 'arsiv').order('updated_at', { ascending: false }).limit(5),
+        supabase
+          .from('editor_documents')
+          .select('id, title, status, updated_at')
+          .eq('organization_id', orgId)
+          .neq('status', 'arsiv')
+          .order('updated_at', { ascending: false })
+          .limit(5),
         supabase.from('incidents').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
         supabase.from('company_workspaces').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
         supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('organization_id', orgId).eq('status', 'open'),
@@ -76,20 +104,26 @@ export function DashboardClient() {
         taskCount: taskCount || 0,
         userName: profile.full_name || user.email || '',
         recentDocs: docs.slice(0, 5),
-        recentRisks: [],
       });
       setLoading(false);
     }
-    load();
+
+    void load();
   }, []);
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto">
+      <div className="space-y-5">
         <div className="animate-pulse space-y-4">
-          <div className="h-24 bg-gray-200 dark:bg-gray-700 rounded-xl" />
-          <div className="grid grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 bg-gray-200 dark:bg-gray-700 rounded-xl" />)}
+          <div className="h-36 rounded-[2rem] bg-black/5 dark:bg-white/5" />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-32 rounded-[1.75rem] bg-black/5 dark:bg-white/5" />
+            ))}
+          </div>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)]">
+            <div className="h-96 rounded-[2rem] bg-black/5 dark:bg-white/5" />
+            <div className="h-96 rounded-[2rem] bg-black/5 dark:bg-white/5" />
           </div>
         </div>
       </div>
@@ -97,105 +131,157 @@ export function DashboardClient() {
   }
 
   const s = stats!;
-  const greeting = new Date().getHours() < 12 ? 'Günaydın' : new Date().getHours() < 18 ? 'İyi günler' : 'İyi akşamlar';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Gunaydin' : hour < 18 ? 'Iyi gunler' : 'Iyi aksamlar';
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="space-y-6">
       <PageHeader
         eyebrow="Kontrol Merkezi"
-        title={`${greeting}, ${s.userName.split(' ')[0] || 'Kullanıcı'}`}
-        description="Tüm İSG süreçlerinizi tek ekrandan takip edin. Risk analizleri, dokümanlar, olaylar ve görevler burada."
+        title={`${greeting}, ${s.userName.split(' ')[0] || 'Kullanici'}`}
+        description="Tum ISG sureclerinizi tek ekrandan takip edin. Risk analizleri, dokumanlar, olaylar ve gorevler burada."
+        className="overflow-hidden border-white/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(255,249,240,0.94))] shadow-[var(--shadow-elevated)] dark:border-white/8 dark:bg-[linear-gradient(135deg,rgba(17,26,43,0.96),rgba(11,17,31,0.98))]"
+        meta={
+          <>
+            <span className="inline-flex items-center rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-3 py-1 text-xs font-semibold text-[var(--primary)]">
+              Canli operasyon gorunumu
+            </span>
+            <span className="inline-flex items-center rounded-full border border-border/80 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
+              Remote Supabase senkron
+            </span>
+          </>
+        }
       />
 
-      {/* ── Stat Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 mb-6">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          icon={ShieldAlert} label="Risk Analizi" value={s.riskCount}
-          sub={s.highRiskCount > 0 ? `${s.highRiskCount} yüksek risk` : 'Yüksek risk yok'}
-          subColor={s.highRiskCount > 0 ? 'text-red-500' : 'text-green-500'}
-          color="text-red-500 bg-red-50 dark:bg-red-900/20"
+          icon={ShieldAlert}
+          label="Risk Analizi"
+          value={s.riskCount}
+          sub={s.highRiskCount > 0 ? `${s.highRiskCount} yuksek risk` : 'Yuksek risk yok'}
+          subColor={s.highRiskCount > 0 ? 'text-red-500' : 'text-emerald-600'}
+          tone="risk"
           onClick={() => router.push('/risk-analysis')}
         />
         <StatCard
-          icon={FileText} label="Doküman" value={s.documentCount}
-          sub={`${s.readyDocCount} hazır, ${s.draftDocCount} taslak`}
-          color="text-blue-500 bg-blue-50 dark:bg-blue-900/20"
-          onClick={() => router.push('/documents')}
+          icon={FileText}
+          label="Dokuman"
+          value={s.documentCount}
+          sub={`${s.readyDocCount} hazir, ${s.draftDocCount} taslak`}
+          tone="cobalt"
+          onClick={() => router.push('/isg-library?section=documentation')}
         />
         <StatCard
-          icon={AlertTriangle} label="Olay/Kaza" value={s.incidentCount}
-          sub="Toplam kayıt"
-          color="text-amber-500 bg-amber-50 dark:bg-amber-900/20"
+          icon={AlertTriangle}
+          label="Olay ve Kaza"
+          value={s.incidentCount}
+          sub="Toplam kayit"
+          tone="amber"
           onClick={() => router.push('/incidents')}
         />
         <StatCard
-          icon={ClipboardCheck} label="Açık Görev" value={s.taskCount}
-          sub="Tamamlanmayı bekliyor"
-          color="text-purple-500 bg-purple-50 dark:bg-purple-900/20"
+          icon={ClipboardCheck}
+          label="Acik Gorev"
+          value={s.taskCount}
+          sub="Takip bekleyen isler"
+          tone="violet"
           onClick={() => router.push('/tasks')}
         />
       </div>
 
-      {/* ── Main Grid ── */}
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        {/* Left: Quick Actions + Recent Docs */}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)]">
         <div className="space-y-4">
-          {/* Quick Actions */}
-          <div className="bg-white dark:bg-[#1a2234] border border-[var(--gold)]/20 rounded-xl p-5">
-            <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--gold)]" />
-              Hızlı İşlemler
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <QuickAction icon={ShieldAlert} label="Risk Analizi" href="/risk-analysis" color="text-red-500" />
-              <QuickAction icon={FileText} label="Doküman Oluştur" href="/documents" color="text-blue-500" />
-              <QuickAction icon={AlertTriangle} label="Olay Bildir" href="/incidents" color="text-amber-500" />
-              <QuickAction icon={Calendar} label="Planlayıcı" href="/planner" color="text-green-500" />
-              <QuickAction icon={GraduationCap} label="Eğitimler" href="/documents" color="text-teal-500" />
-              <QuickAction icon={BarChart3} label="Raporlar" href="/reports" color="text-indigo-500" />
-              <QuickAction icon={Building2} label="Firmalar" href="/companies" color="text-orange-500" />
-              <QuickAction icon={TrendingUp} label="Skor Geçmişi" href="/score-history" color="text-purple-500" />
+          <div className="surface-card">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <Sparkles size={16} className="text-[var(--gold)]" />
+                  Hizli Is Akislari
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  En sik kullanilan modullere tek tikla gecis yapin.
+                </p>
+              </div>
+              <div className="hidden rounded-full border border-[var(--gold)]/20 bg-[var(--gold)]/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--primary)] lg:inline-flex">
+                platform
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <QuickAction icon={ShieldAlert} label="Risk Analizi" href="/risk-analysis" tone="risk" />
+              <QuickAction icon={FileText} label="Dokumanlar" href="/isg-library?section=documentation" tone="cobalt" />
+              <QuickAction icon={AlertTriangle} label="Olay Bildir" href="/incidents" tone="amber" />
+              <QuickAction icon={Calendar} label="Planlayici" href="/planner" tone="emerald" />
+              <QuickAction icon={GraduationCap} label="Egitimler" href="/isg-library?section=education" tone="teal" />
+              <QuickAction icon={BarChart3} label="Raporlar" href="/reports" tone="indigo" />
+              <QuickAction icon={Building2} label="Firmalar" href="/companies" tone="orange" />
+              <QuickAction icon={TrendingUp} label="Skor Gecmisi" href="/score-history" tone="plum" />
             </div>
           </div>
 
-          {/* Recent Documents */}
-          <div className="bg-white dark:bg-[#1a2234] border border-[var(--gold)]/20 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <FileText size={16} className="text-[var(--gold)]" />
-                Son Dokümanlar
-              </h2>
+          <div className="surface-card">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+                  <FileText size={16} className="text-[var(--gold)]" />
+                  Son Dokumanlar
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Yakinda degistirilen icerikler burada listelenir.
+                </p>
+              </div>
               <button
                 onClick={() => router.push('/documents/personal')}
-                className="text-[11px] text-[var(--gold)] hover:underline flex items-center gap-1"
+                className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background/80 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--primary)] transition-colors hover:bg-[var(--gold)]/8"
               >
-                Tümünü Gör <ChevronRight size={12} />
+                Tumunu Gor <ChevronRight size={12} />
               </button>
             </div>
+
             {s.recentDocs.length === 0 ? (
-              <p className="text-xs text-[var(--text-secondary)] py-4 text-center">Henüz doküman oluşturulmadı.</p>
+              <div className="rounded-[1.5rem] border border-dashed border-border bg-background/55 px-4 py-12 text-center text-sm text-muted-foreground">
+                Henuz dokuman olusturulmadi.
+              </div>
             ) : (
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {s.recentDocs.map((doc) => {
                   const stCfg: Record<string, { label: string; color: string }> = {
-                    taslak: { label: 'Taslak', color: 'text-yellow-600 bg-yellow-100 dark:bg-yellow-900/30' },
-                    hazir: { label: 'Hazır', color: 'text-green-600 bg-green-100 dark:bg-green-900/30' },
-                    onay_bekliyor: { label: 'Onay', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/30' },
-                    revizyon: { label: 'Revizyon', color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30' },
+                    taslak: {
+                      label: 'Taslak',
+                      color: 'text-yellow-700 bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-300',
+                    },
+                    hazir: {
+                      label: 'Hazir',
+                      color: 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300',
+                    },
+                    onay_bekliyor: {
+                      label: 'Onay',
+                      color: 'text-blue-700 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300',
+                    },
+                    revizyon: {
+                      label: 'Revizyon',
+                      color: 'text-orange-700 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-300',
+                    },
                   };
                   const st = stCfg[doc.status] || stCfg.taslak;
+
                   return (
                     <div
                       key={doc.id}
                       onClick={() => router.push(`/documents/${doc.id}`)}
-                      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--gold)]/5 cursor-pointer transition-colors"
+                      className="group flex items-center gap-3 rounded-[1.25rem] border border-border/80 bg-background/62 px-4 py-3 transition-all duration-200 hover:border-[var(--gold)]/30 hover:bg-[var(--gold)]/6 hover:shadow-[var(--shadow-soft)]"
                     >
-                      <FileEdit size={14} className="text-[var(--text-secondary)] shrink-0" />
-                      <span className="flex-1 text-xs text-[var(--text-primary)] truncate">{doc.title}</span>
-                      <span className="text-[10px] text-[var(--text-secondary)]">
-                        {new Date(doc.updated_at).toLocaleDateString('tr-TR')}
+                      <PremiumIconBadge icon={FileEdit} tone="gold" size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-foreground group-hover:text-[var(--primary)]">
+                          {doc.title}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {new Date(doc.updated_at).toLocaleDateString('tr-TR')}
+                        </div>
+                      </div>
+                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${st.color}`}>
+                        {st.label}
                       </span>
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${st.color}`}>{st.label}</span>
                     </div>
                   );
                 })}
@@ -204,50 +290,54 @@ export function DashboardClient() {
           </div>
         </div>
 
-        {/* Right: Module Summary */}
         <div className="space-y-4">
-          {/* Company Info */}
-          <div className="bg-white dark:bg-[#1a2234] border border-[var(--gold)]/20 rounded-xl p-5">
-            <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+          <div className="surface-card">
+            <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-foreground">
               <Building2 size={16} className="text-[var(--gold)]" />
-              Firma Bilgisi
+              Firma Ozeti
             </h2>
-            <div className="text-center py-2">
-              <p className="text-3xl font-bold text-[var(--gold)]">{s.companyCount}</p>
-              <p className="text-xs text-[var(--text-secondary)] mt-1">Kayıtlı Firma</p>
+            <div className="rounded-[1.5rem] border border-[var(--gold)]/20 bg-[linear-gradient(135deg,rgba(200,155,91,0.12),rgba(255,255,255,0.55))] px-5 py-6 text-center dark:bg-[linear-gradient(135deg,rgba(213,177,122,0.12),rgba(17,26,43,0.45))]">
+              <p className="text-4xl font-semibold tracking-tight text-[var(--primary)]">{s.companyCount}</p>
+              <p className="mt-2 text-sm text-muted-foreground">Kayitli firma</p>
             </div>
             <button
               onClick={() => router.push('/companies')}
-              className="w-full mt-3 px-3 py-2 text-xs font-medium border border-[var(--gold)]/20 rounded-lg text-[var(--text-primary)] hover:bg-[var(--gold)]/10 transition-colors flex items-center justify-center gap-1"
+              className="mt-4 inline-flex w-full items-center justify-center gap-1 rounded-2xl border border-border/80 bg-background/85 px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:border-[var(--gold)]/30 hover:bg-[var(--gold)]/8"
             >
-              Firmaları Yönet <ChevronRight size={12} />
+              Firmalari Yonet <ChevronRight size={14} />
             </button>
           </div>
 
-          {/* İSG Modülleri */}
-          <div className="bg-white dark:bg-[#1a2234] border border-[var(--gold)]/20 rounded-xl p-5">
-            <h2 className="text-sm font-bold text-[var(--text-primary)] mb-3">İSG Modülleri</h2>
-            <div className="space-y-1.5">
-              <ModuleLink icon={ShieldAlert} label="Risk Analizi" desc={`${s.riskCount} değerlendirme`} href="/risk-analysis" />
-              <ModuleLink icon={FileText} label="Dokümanlar" desc="101 şablon hazır" href="/documents" />
-              <ModuleLink icon={Siren} label="Acil Durum" desc="Plan ve tatbikatlar" href="/documents" />
-              <ModuleLink icon={GraduationCap} label="Eğitimler" desc="Takip ve kayıt" href="/documents" />
-              <ModuleLink icon={PenTool} label="E-İmza" desc="Dijital imzalama" href="/documents" />
-              <ModuleLink icon={Download} label="Export" desc="Word, PDF çıktı" href="/documents" />
+          <div className="surface-card">
+            <div className="mb-4">
+              <h2 className="text-base font-semibold text-foreground">ISG Modulleri</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Platformun aktif operasyon alanlari.</p>
+            </div>
+            <div className="space-y-2">
+              <ModuleLink icon={ShieldAlert} label="Risk Analizi" desc={`${s.riskCount} degerlendirme`} href="/risk-analysis" tone="risk" />
+              <ModuleLink icon={FileText} label="Dokumanlar" desc="Hazir kutuphane ve editor" href="/isg-library?section=documentation" tone="cobalt" />
+              <ModuleLink icon={Siren} label="Acil Durum" desc="Plan ve tatbikatlar" href="/isg-library?section=emergency" tone="amber" />
+              <ModuleLink icon={GraduationCap} label="Egitimler" desc="Takip ve kayit" href="/isg-library?section=education" tone="teal" />
+              <ModuleLink icon={PenTool} label="Sinav ve Anket" desc="AI destekli olcum akislari" href="/isg-library?section=assessment" tone="indigo" />
+              <ModuleLink icon={Download} label="Mevzuat" desc="Mevzuat ve rehber kutuphanesi" href="/isg-library?section=legal" tone="gold" />
             </div>
           </div>
 
-          {/* Takvim özeti */}
-          <div className="bg-[var(--gold)]/5 border border-[var(--gold)]/20 rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="surface-card bg-[linear-gradient(135deg,rgba(200,155,91,0.14),rgba(255,252,247,0.92))] dark:bg-[linear-gradient(135deg,rgba(213,177,122,0.12),rgba(17,26,43,0.95))]">
+            <div className="mb-2 flex items-center gap-2">
               <Calendar size={16} className="text-[var(--gold)]" />
-              <h2 className="text-sm font-bold text-[var(--text-primary)]">Bugün</h2>
+              <h2 className="text-base font-semibold text-foreground">Bugun</h2>
             </div>
-            <p className="text-lg font-bold text-[var(--gold)]">
-              {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            <p className="text-2xl font-semibold tracking-tight text-foreground">
+              {new Date().toLocaleDateString('tr-TR', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
             </p>
-            <p className="text-xs text-[var(--text-secondary)] mt-1">
-              {s.taskCount > 0 ? `${s.taskCount} açık görev bekliyor` : 'Tüm görevler tamamlandı'}
+            <p className="mt-2 text-sm text-muted-foreground">
+              {s.taskCount > 0 ? `${s.taskCount} acik gorev bekliyor` : 'Tum gorevler tamamlandi'}
             </p>
           </div>
         </div>
@@ -256,54 +346,91 @@ export function DashboardClient() {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, subColor, color, onClick }: {
-  icon: React.ElementType; label: string; value: number; sub: string; subColor?: string; color: string; onClick: () => void;
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  subColor,
+  tone,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: number;
+  sub: string;
+  subColor?: string;
+  tone: PremiumIconTone;
+  onClick: () => void;
 }) {
   return (
     <div
       onClick={onClick}
-      className="border border-[var(--gold)]/20 rounded-xl p-4 bg-white dark:bg-[#1a2234] shadow-sm cursor-pointer hover:border-[var(--gold)]/40 hover:shadow-md transition-all"
+      className="group cursor-pointer rounded-[1.75rem] border border-border/85 bg-card px-5 py-4 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--gold)]/28 hover:shadow-[var(--shadow-elevated)]"
     >
-      <div className="flex items-center gap-2 mb-2">
-        <div className={`p-1.5 rounded-lg ${color}`}><Icon size={14} /></div>
-        <span className="text-xs font-medium text-[var(--text-secondary)]">{label}</span>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <PremiumIconBadge icon={Icon} tone={tone} />
+        <span className="rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          canli
+        </span>
       </div>
-      <p className="text-2xl font-bold text-[var(--text-primary)]">{value}</p>
-      <p className={`text-[10px] mt-0.5 ${subColor || 'text-[var(--text-secondary)]'}`}>{sub}</p>
+      <div className="text-sm font-semibold text-foreground">{label}</div>
+      <p className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
+      <p className={`mt-1 text-xs ${subColor || 'text-muted-foreground'}`}>{sub}</p>
     </div>
   );
 }
 
-function QuickAction({ icon: Icon, label, href, color }: {
-  icon: React.ElementType; label: string; href: string; color: string;
+function QuickAction({
+  icon: Icon,
+  label,
+  href,
+  tone,
+}: {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+  tone: PremiumIconTone;
 }) {
   const router = useRouter();
+
   return (
     <button
       onClick={() => router.push(href)}
-      className="flex flex-col items-center gap-1.5 p-3 rounded-lg border border-[var(--gold)]/15 hover:border-[var(--gold)]/30 hover:bg-[var(--gold)]/5 transition-colors"
+      className="group flex min-h-28 flex-col items-start justify-between rounded-[1.4rem] border border-border/85 bg-background/68 p-4 text-left shadow-[var(--shadow-soft)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--gold)]/28 hover:bg-[var(--gold)]/6 hover:shadow-[var(--shadow-card)]"
     >
-      <Icon size={18} className={color} />
-      <span className="text-[10px] font-medium text-[var(--text-primary)]">{label}</span>
+      <PremiumIconBadge icon={Icon} tone={tone} size="sm" />
+      <span className="text-sm font-semibold text-foreground group-hover:text-[var(--primary)]">{label}</span>
     </button>
   );
 }
 
-function ModuleLink({ icon: Icon, label, desc, href }: {
-  icon: React.ElementType; label: string; desc: string; href: string;
+function ModuleLink({
+  icon: Icon,
+  label,
+  desc,
+  href,
+  tone,
+}: {
+  icon: React.ElementType;
+  label: string;
+  desc: string;
+  href: string;
+  tone: PremiumIconTone;
 }) {
   const router = useRouter();
+
   return (
     <div
       onClick={() => router.push(href)}
-      className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--gold)]/5 cursor-pointer transition-colors"
+      className="flex cursor-pointer items-center gap-3 rounded-[1.2rem] border border-border/75 bg-background/55 px-4 py-3 transition-all duration-200 hover:border-[var(--gold)]/28 hover:bg-[var(--gold)]/6"
     >
-      <Icon size={14} className="text-[var(--gold)] shrink-0" />
-      <div className="flex-1 min-w-0">
-        <span className="text-xs font-medium text-[var(--text-primary)]">{label}</span>
-        <span className="text-[10px] text-[var(--text-secondary)] ml-2">{desc}</span>
+      <PremiumIconBadge icon={Icon} tone={tone} size="sm" />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-foreground">{label}</div>
+        <div className="text-xs text-muted-foreground">{desc}</div>
       </div>
-      <ChevronRight size={12} className="text-[var(--text-secondary)]" />
+      <ChevronRight size={14} className="text-muted-foreground" />
     </div>
   );
 }

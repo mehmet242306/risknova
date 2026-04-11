@@ -39,6 +39,7 @@
  * Referans: docs/database-hardening-plan.md §13.2 Parça B, §19.3, §20
  */
 
+import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
@@ -192,16 +193,45 @@ function authErrorResponse(code: AuthErrorCode): NextResponse {
 }
 
 /**
+ * Browser/server Supabase util'leriyle tutarli olarak publishable key'i cozer.
+ * Eski anon key env'i desteklenir, yeni publishable key once gelir.
+ */
+function getSupabasePublishableKey(): string | null {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+    null
+  );
+}
+
+/**
  * Anon key Supabase client oluşturur, kullanıcının JWT'sini Authorization header olarak geçirir.
  */
 function createAnonClient(token: string): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const anonKey = getSupabasePublishableKey();
   if (!url || !anonKey) return null;
 
   return createClient(url, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+}
+
+function createCookieClient(req: NextRequest): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey = getSupabasePublishableKey();
+  if (!url || !publishableKey) return null;
+
+  return createServerClient(url, publishableKey, {
+    cookies: {
+      getAll() {
+        return req.cookies.getAll();
+      },
+      setAll() {
+        // Route handler auth check'inde cookie yazimi gerekmiyor.
+      },
+    },
   });
 }
 
@@ -238,12 +268,8 @@ async function getAuthenticatedUser(
   const authHeader = req.headers.get("authorization") ?? "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
-  if (!token) {
-    return { ok: false, code: "unauthorized_no_token" };
-  }
-
-  const anonClient = createAnonClient(token);
-  if (!anonClient) {
+  const authClient = token ? createAnonClient(token) : createCookieClient(req);
+  if (!authClient) {
     logAuth("createAnonClient failed — env vars missing?");
     return { ok: false, code: "server_error_supabase_unavailable" };
   }
@@ -253,13 +279,16 @@ async function getAuthenticatedUser(
       data: { user },
       error,
     } = await withTimeout(
-      anonClient.auth.getUser(),
+      authClient.auth.getUser(),
       AUTH_TIMEOUT_MS,
       "auth_getuser"
     );
 
     if (error || !user) {
-      return { ok: false, code: "unauthorized_invalid_token" };
+      return {
+        ok: false,
+        code: token ? "unauthorized_invalid_token" : "unauthorized_no_token",
+      };
     }
 
     return { ok: true, userId: user.id };
@@ -270,7 +299,10 @@ async function getAuthenticatedUser(
       return { ok: false, code: "server_error_supabase_unavailable" };
     }
     logAuth("auth.getUser() unexpected error", { error: err });
-    return { ok: false, code: "unauthorized_invalid_token" };
+    return {
+      ok: false,
+      code: token ? "unauthorized_invalid_token" : "unauthorized_no_token",
+    };
   }
 }
 

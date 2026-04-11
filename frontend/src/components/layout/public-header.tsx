@@ -19,7 +19,6 @@ export function PublicHeader() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/[0.08] bg-[var(--navy-deep)]/95 backdrop-blur-xl">
-      <div className="h-0.5 w-full bg-[linear-gradient(90deg,transparent,var(--gold),transparent)]" />
       <div className="page-shell py-4">
         <div className="flex items-center justify-between gap-4">
           <Brand href="/" inverted />

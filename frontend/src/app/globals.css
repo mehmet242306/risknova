@@ -9,56 +9,56 @@
 /* LIGHT MODE (default)                                                */
 /* ================================================================== */
 :root {
-  --background: #F8F9FC;
-  --foreground: #0F172A;
+  --background: #F5F2EC;
+  --foreground: #101828;
 
-  --card: #FFFFFF;
-  --card-foreground: #0F172A;
+  --card: #FFFCF7;
+  --card-foreground: #101828;
 
-  --primary: #B8860B;
-  --primary-hover: #996F09;
+  --primary: #A8752A;
+  --primary-hover: #8E6321;
   --primary-foreground: #FFFFFF;
 
-  --accent: #D4A017;
-  --accent-hover: #C49315;
-  --accent-foreground: #422006;
+  --accent: #D5B17A;
+  --accent-hover: #C29C62;
+  --accent-foreground: #523512;
 
-  --secondary: #EEF2F7;
-  --secondary-foreground: #0F172A;
+  --secondary: #EFE7DB;
+  --secondary-foreground: #101828;
 
-  --muted: #F1F5F9;
-  --muted-foreground: #64748B;
+  --muted: #F7F3EC;
+  --muted-foreground: #667085;
 
-  --border: #E2E8F0;
-  --input: #ffffff;
+  --border: #E3DBCF;
+  --input: #FFFCF7;
 
   --success: #10B981;
   --warning: #F59E0B;
   --danger: #DC2626;
   --info: #0EA5E9;
 
-  --ring: rgba(184, 134, 11, 0.24);
+  --ring: rgba(168, 117, 42, 0.22);
 
   --radius: 0.75rem;
-  --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.08);
-  --shadow-card: 0 8px 20px rgba(15, 23, 42, 0.08);
-  --shadow-elevated: 0 14px 32px rgba(15, 23, 42, 0.12);
+  --shadow-soft: 0 4px 12px rgba(16, 24, 40, 0.05);
+  --shadow-card: 0 18px 44px rgba(16, 24, 40, 0.08);
+  --shadow-elevated: 0 28px 70px rgba(16, 24, 40, 0.12);
 
   /* ── Satır 1: Primary nav — koyu navy ── */
-  --header-bg-solid: #0B1120;
-  --header-muted: #94A3B8;
+  --header-bg-solid: #0D1424;
+  --header-muted: #AAB6CB;
   --header-active: #ffffff;
-  --header-border: rgba(255, 255, 255, 0.06);
-  --header-hover-bg: rgba(255, 255, 255, 0.08);
-  --nav-icon-color: #CBD5E1;
+  --header-border: rgba(255, 255, 255, 0.08);
+  --header-hover-bg: rgba(255, 255, 255, 0.06);
+  --nav-icon-color: #D7DEEA;
 
-  /* ── Satır 2: Secondary nav — koyu yeşil (opak) ── */
-  --secondary-nav-bg-solid: #0a3d2f;
-  --secondary-nav-text: #6ee7b7;
+  /* ── Satır 2: Secondary nav — derin slate ── */
+  --secondary-nav-bg-solid: #131D30;
+  --secondary-nav-text: #B7C3D8;
   --secondary-nav-hover-text: #ffffff;
-  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --secondary-nav-hover-bg: rgba(213, 177, 122, 0.12);
   --secondary-nav-active: #ffffff;
-  --secondary-nav-border: rgba(110, 231, 183, 0.12);
+  --secondary-nav-border: rgba(213, 177, 122, 0.14);
 
   /* ── Satır 3: Firma tabları — beyaz + gold çerçeve ── */
   --tab-bar-bg-solid: #ffffff;
@@ -69,9 +69,9 @@
   --tab-bar-border-top: #B8860B;
   --tab-bar-border-bottom: #B8860B;
 
-  --gold: #D4A017;
-  --gold-light: #FBBF24;
-  --gold-glow: rgba(212, 160, 23, 0.15);
+  --gold: #C89B5B;
+  --gold-light: #E7CDA3;
+  --gold-glow: rgba(200, 155, 91, 0.18);
   --navy-deep: #020617;
   --navy-dark: #0F172A;
   --navy-mid: #1E293B;
@@ -86,55 +86,55 @@
 /* ================================================================== */
 :root.dark,
 [data-theme="dark"] {
-  --background: #0C0F1A;
+  --background: #09111F;
   --foreground: #F1F5F9;
 
-  --card: #161A28;
+  --card: #111A2B;
   --card-foreground: #F1F5F9;
 
-  --primary: #FBBF24;
-  --primary-hover: #FCD34D;
-  --primary-foreground: #422006;
+  --primary: #D5B17A;
+  --primary-hover: #E0C093;
+  --primary-foreground: #36240B;
 
-  --accent: #F59E0B;
-  --accent-hover: #FBBF24;
-  --accent-foreground: #422006;
+  --accent: #C89B5B;
+  --accent-hover: #D5B17A;
+  --accent-foreground: #36240B;
 
-  --secondary: #161A28;
+  --secondary: #152035;
   --secondary-foreground: #F1F5F9;
 
-  --muted: #161A28;
-  --muted-foreground: #94A3B8;
+  --muted: #121C2E;
+  --muted-foreground: #93A3BE;
 
-  --border: #232838;
-  --input: #161A28;
+  --border: #223047;
+  --input: #111A2B;
 
   --success: #34D399;
   --warning: #FB923C;
   --danger: #F87171;
   --info: #38BDF8;
 
-  --ring: rgba(251, 191, 36, 0.3);
+  --ring: rgba(213, 177, 122, 0.28);
 
-  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 6px 16px rgba(0, 0, 0, 0.28);
+  --shadow-card: 0 20px 44px rgba(0, 0, 0, 0.32);
+  --shadow-elevated: 0 30px 80px rgba(0, 0, 0, 0.42);
 
   /* ── Satır 1: Primary nav — koyu navy ── */
-  --header-bg-solid: #060810;
-  --header-muted: #8B9DC3;
+  --header-bg-solid: #07101E;
+  --header-muted: #A5B2C8;
   --header-active: #ffffff;
-  --header-border: rgba(255, 255, 255, 0.06);
-  --header-hover-bg: rgba(255, 255, 255, 0.08);
-  --nav-icon-color: #B0BDD4;
+  --header-border: rgba(255, 255, 255, 0.07);
+  --header-hover-bg: rgba(255, 255, 255, 0.06);
+  --nav-icon-color: #CCD5E4;
 
-  /* ── Satır 2: Secondary nav — koyu yeşil (dark, opak) ── */
-  --secondary-nav-bg-solid: #0a3d2f;
-  --secondary-nav-text: #6ee7b7;
-  --secondary-nav-hover-text: #ecfdf5;
-  --secondary-nav-hover-bg: rgba(255, 255, 255, 0.08);
-  --secondary-nav-active: #ecfdf5;
-  --secondary-nav-border: rgba(110, 231, 183, 0.10);
+  /* ── Satır 2: Secondary nav — dark slate ── */
+  --secondary-nav-bg-solid: #10192B;
+  --secondary-nav-text: #B2BED3;
+  --secondary-nav-hover-text: #FFF8EE;
+  --secondary-nav-hover-bg: rgba(213, 177, 122, 0.12);
+  --secondary-nav-active: #FFF8EE;
+  --secondary-nav-border: rgba(213, 177, 122, 0.12);
 
   /* ── Satır 3: Firma tabları — gold çerçeveli (dark) ── */
   --tab-bar-bg-solid: #0A0E18;
@@ -146,12 +146,12 @@
   --tab-bar-border-top: #8B6914;
   --tab-bar-border-bottom: #8B6914;
 
-  --gold: #FBBF24;
-  --gold-light: #FDE68A;
-  --gold-glow: rgba(251, 191, 36, 0.15);
-  --navy-deep: #080A12;
-  --navy-dark: #0C0F1A;
-  --navy-mid: #161A28;
+  --gold: #D5B17A;
+  --gold-light: #E8D0A6;
+  --gold-glow: rgba(213, 177, 122, 0.16);
+  --navy-deep: #07101E;
+  --navy-dark: #09111F;
+  --navy-mid: #111A2B;
 
   --hz-safe: #4ADE80;
   --hz-warn: #FB923C;
@@ -256,10 +256,14 @@ html {
 @layer components {
   .app-shell {
     @apply min-h-screen;
+    background:
+      radial-gradient(circle at top center, rgba(213, 177, 122, 0.12), transparent 28rem),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.48), transparent 20rem),
+      var(--background);
   }
 
   .page-shell {
-    @apply mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8;
+    @apply mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 xl:px-8 2xl:px-10;
   }
 
   .page-stack {
@@ -270,7 +274,7 @@ html {
   .surface-card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 20px;
     box-shadow: var(--shadow-card);
     padding: 20px;
   }
@@ -278,7 +282,7 @@ html {
   .subtle-card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 18px;
     box-shadow: var(--shadow-soft);
   }
 
@@ -339,6 +343,13 @@ body,
 .surface-card,
 .subtle-card {
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+[data-theme="dark"] .app-shell {
+  background:
+    radial-gradient(circle at top center, rgba(213, 177, 122, 0.08), transparent 30rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 18rem),
+    var(--background);
 }
 
 /* ================================================================== */

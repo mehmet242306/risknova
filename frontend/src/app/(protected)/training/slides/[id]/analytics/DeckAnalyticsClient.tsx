@@ -116,7 +116,7 @@ export function DeckAnalyticsClient({ deckId }: { deckId: string }) {
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
-      <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="w-full px-4 py-8">
         {/* Header */}
         <div className="mb-6 flex items-center gap-3">
           <Link

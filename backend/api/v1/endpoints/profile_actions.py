@@ -1,9 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.audit import write_audit_log
 from api.authz import CurrentAppUser, require_roles, supabase_admin
 from api.responses import success_response
 
@@ -18,7 +17,6 @@ class ProfileUpdateRequest(BaseModel):
 
 @router.patch("/me")
 async def update_my_profile(
-    request: Request,
     payload: ProfileUpdateRequest,
     current_user: Annotated[
         CurrentAppUser,
@@ -40,18 +38,6 @@ async def update_my_profile(
     rows = response.data or []
     if not rows:
         raise HTTPException(status_code=404, detail="Profile could not be updated")
-
-    await write_audit_log(
-        current_user=current_user,
-        action_type="profile_update",
-        entity_type="user_profile",
-        entity_id=current_user.profile_id,
-        severity="info",
-        metadata_json={
-            "updated_fields": list(update_data.keys()),
-        },
-        request=request,
-    )
 
     return success_response(
         data={

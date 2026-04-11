@@ -3,10 +3,9 @@
 from datetime import date
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from api.audit import write_audit_log
 from api.authz import CurrentAppUser, require_roles, supabase_admin
 from api.responses import success_response
 from api.risk_ai import build_assessment_ai_summary, build_item_ai_output
@@ -123,7 +122,6 @@ def _required_roles() -> list[str]:
 
 @router.post("")
 async def create_risk_assessment(
-    request: Request,
     payload: RiskAssessmentCreateRequest,
     current_user: Annotated[
         CurrentAppUser,
@@ -219,21 +217,6 @@ async def create_risk_assessment(
         assessment=created_assessment,
         items=created_items,
         prepared_by_email=current_user.email,
-    )
-
-    await write_audit_log(
-        current_user=current_user,
-        action_type="risk_assessment.created",
-        entity_type="risk_assessment",
-        entity_id=assessment_id,
-        severity="info",
-        metadata_json={
-            "title": created_assessment.get("title"),
-            "overall_score": created_assessment.get("overall_score"),
-            "overall_risk_level": created_assessment.get("overall_risk_level"),
-            "item_count": created_assessment.get("item_count"),
-        },
-        request=request,
     )
 
     return success_response(

@@ -9,13 +9,27 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const requestedNext = searchParams.get("next") ?? "/dashboard";
+  const next = requestedNext.startsWith("/") ? requestedNext : "/dashboard";
 
   if (code) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
+      const { data: assuranceData, error: assuranceError } =
+        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+      if (
+        !assuranceError &&
+        assuranceData?.nextLevel === "aal2" &&
+        assuranceData.currentLevel !== "aal2"
+      ) {
+        return NextResponse.redirect(
+          `${origin}/auth/mfa-challenge?next=${encodeURIComponent(next)}`
+        );
+      }
+
       return NextResponse.redirect(`${origin}${next}`);
     }
 

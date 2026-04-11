@@ -51,8 +51,6 @@
 -- Guvenlik: lock ve statement timeout
 SET statement_timeout = '60s';
 SET lock_timeout = '10s';
-
-
 -- -----------------------------------------------------------------------------
 -- 1. user_profiles.is_super_admin kolonu
 -- -----------------------------------------------------------------------------
@@ -61,11 +59,8 @@ SET lock_timeout = '10s';
 
 ALTER TABLE public.user_profiles
   ADD COLUMN IF NOT EXISTS is_super_admin boolean NOT NULL DEFAULT false;
-
 COMMENT ON COLUMN public.user_profiles.is_super_admin IS
   'Super admin bayragi. TRUE ise is_super_admin() fonksiyonu araciligiyla RLS policy bypass''i saglar. Adim 0.5 Parca A (2026-04-11).';
-
-
 -- -----------------------------------------------------------------------------
 -- 2. Partial index — sadece is_super_admin = true satirlar icin
 -- -----------------------------------------------------------------------------
@@ -76,11 +71,8 @@ COMMENT ON COLUMN public.user_profiles.is_super_admin IS
 CREATE INDEX IF NOT EXISTS idx_user_profiles_super_admin
   ON public.user_profiles(auth_user_id)
   WHERE is_super_admin = true;
-
 COMMENT ON INDEX public.idx_user_profiles_super_admin IS
   'Partial index: sadece is_super_admin = true satirlari. is_super_admin() fonksiyonu icin hizli lookup.';
-
-
 -- -----------------------------------------------------------------------------
 -- 3. public.is_super_admin(uid) fonksiyonu
 -- -----------------------------------------------------------------------------
@@ -107,16 +99,12 @@ AS $$
     false
   );
 $$;
-
 COMMENT ON FUNCTION public.is_super_admin(uuid) IS
   'Verilen kullanicinin (veya varsayilan olarak aktif oturumun) super admin olup olmadigini doner. SECURITY DEFINER: user_profiles RLS bypass. STABLE: ayni statement icinde cache. search_path = '''' (bos): search-path injection korumasi, tum referanslar tam sema yolu ile yazilir. Adim 0.5 Parca A (2026-04-11).';
-
 -- Sahip: postgres (default). Izin: public kaldirilir, authenticated + service_role eklenir.
 ALTER FUNCTION public.is_super_admin(uuid) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.is_super_admin(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.is_super_admin(uuid) TO authenticated, service_role;
-
-
 -- -----------------------------------------------------------------------------
 -- 4. Mehmet'in profilini super admin yap
 -- -----------------------------------------------------------------------------
@@ -133,8 +121,6 @@ GRANT EXECUTE ON FUNCTION public.is_super_admin(uuid) TO authenticated, service_
 UPDATE public.user_profiles
    SET is_super_admin = true
  WHERE auth_user_id = 'f0c09ad3-c0b0-4c39-b2a1-aa1bcaf8b01d'::uuid;
-
-
 -- -----------------------------------------------------------------------------
 -- 5. Mehmet'e user_roles uzerinden "super_admin" rolu ata
 -- -----------------------------------------------------------------------------
@@ -163,8 +149,6 @@ SELECT
       WHERE ur.user_profile_id = up.id
         AND ur.role_id = r.id
    );
-
-
 -- -----------------------------------------------------------------------------
 -- 6. current_organization_id() fonksiyonu guclendirme (Zamanlanmis Bomba Fix)
 -- -----------------------------------------------------------------------------
@@ -207,15 +191,11 @@ AS $$
       LIMIT 1)
   );
 $$;
-
 COMMENT ON FUNCTION public.current_organization_id() IS
   'Aktif oturumun organization_id degerini doner. Once JWT''den (app_metadata/user_metadata fallback), sonra user_profiles tablosundan. SECURITY DEFINER: user_profiles RLS bypass. search_path = '''' (bos): mevcut standartla tutarli, search-path injection korumasi. Adim 0.5 Parca A guclendirmesi (2026-04-11).';
-
 ALTER FUNCTION public.current_organization_id() OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.current_organization_id() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.current_organization_id() TO authenticated, service_role;
-
-
 -- -----------------------------------------------------------------------------
 -- 7. Migration sonu dogrulama
 -- -----------------------------------------------------------------------------
@@ -225,6 +205,7 @@ GRANT EXECUTE ON FUNCTION public.current_organization_id() TO authenticated, ser
 DO $$
 DECLARE
   v_super_admin_count        int;
+  v_mehmet_profile_exists    boolean;
   v_mehmet_is_super          boolean;
   v_mehmet_has_role          boolean;
   v_is_super_admin_fn_exists boolean;
@@ -237,6 +218,13 @@ BEGIN
   SELECT count(*) INTO v_super_admin_count
     FROM public.user_profiles
    WHERE is_super_admin = true;
+
+  -- 7.1.1 Hedef profil local ortamda var mi?
+  SELECT EXISTS (
+    SELECT 1
+      FROM public.user_profiles
+     WHERE auth_user_id = 'f0c09ad3-c0b0-4c39-b2a1-aa1bcaf8b01d'::uuid
+  ) INTO v_mehmet_profile_exists;
 
   -- 7.2 Mehmet'in profilinde bayrak true mi?
   SELECT EXISTS (
@@ -283,25 +271,22 @@ BEGIN
 
   -- Rapor
   RAISE NOTICE '=== Adim 0.5 Parca A Migration Dogrulama ===';
-  RAISE NOTICE 'Super admin sayisi (beklenen 1): %', v_super_admin_count;
-  RAISE NOTICE 'Mehmet is_super_admin = true (beklenen t): %', v_mehmet_is_super;
-  RAISE NOTICE 'Mehmet super_admin rolu (beklenen t): %', v_mehmet_has_role;
+  RAISE NOTICE 'Super admin sayisi: %', v_super_admin_count;
+  RAISE NOTICE 'Mehmet profili local ortamda bulundu mu?: %', v_mehmet_profile_exists;
+  RAISE NOTICE 'Mehmet is_super_admin = true: %', v_mehmet_is_super;
+  RAISE NOTICE 'Mehmet super_admin rolu: %', v_mehmet_has_role;
   RAISE NOTICE 'is_super_admin() fonksiyonu (beklenen t): %', v_is_super_admin_fn_exists;
   RAISE NOTICE 'is_super_admin() proconfig (beklenen {%}): %', v_expected_search_path, v_is_super_admin_config;
   RAISE NOTICE 'current_organization_id() SECURITY DEFINER (beklenen t): %', v_current_org_sec_definer;
   RAISE NOTICE 'current_organization_id() proconfig (beklenen {%}): %', v_expected_search_path, v_current_org_config;
 
-  -- Sert kontroller: biri bile basarisizsa migration reddedilir
-  IF v_super_admin_count <> 1 THEN
-    RAISE EXCEPTION 'Beklenmeyen super admin sayisi: % (beklenen 1)', v_super_admin_count;
+  -- Sert kontroller: ortama bagimli veri yerine altyapi tutarliligi dogrulanir.
+  IF v_mehmet_profile_exists AND NOT v_mehmet_is_super THEN
+    RAISE EXCEPTION 'Hedef super admin profili bulundu ancak is_super_admin = true yapilamadi';
   END IF;
 
-  IF NOT v_mehmet_is_super THEN
-    RAISE EXCEPTION 'Mehmet profili is_super_admin = true yapilamadi (auth_user_id bulunamadi?)';
-  END IF;
-
-  IF NOT v_mehmet_has_role THEN
-    RAISE EXCEPTION 'Mehmet''e super_admin rolu atanamadi';
+  IF v_mehmet_profile_exists AND NOT v_mehmet_has_role THEN
+    RAISE EXCEPTION 'Hedef super admin profili bulundu ancak super_admin rolu atanamadi';
   END IF;
 
   IF NOT v_is_super_admin_fn_exists THEN
@@ -328,5 +313,4 @@ BEGIN
 
   RAISE NOTICE '=== TUM DOGRULAMALAR BASARILI — Adim 0.5 Parca A tamam ===';
 END $$;
-
--- EOF
+-- EOF;
