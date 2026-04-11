@@ -4,62 +4,80 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * useIsAdmin — Email allow-list based admin gate.
+ * useIsAdmin — Super admin kontrolü (DB-based, fail-CLOSED).
  *
- * Admin emails come from NEXT_PUBLIC_ADMIN_EMAILS (comma separated).
- * Fallback: hardcoded ADMIN_EMAILS below.
+ * Bu hook, kullanıcının `is_super_admin()` RPC fonksiyonunu çağırarak
+ * super admin olup olmadığını kontrol eder. RPC, Adım 0.5 Parça A
+ * migration'ında oluşturuldu (docs/database-hardening-plan.md §13.2).
  *
- * Returns:
- *   null  → loading
- *   true  → admin
- *   false → not admin
+ * Güvenlik ilkeleri:
+ * - Tüm fail path'ler `false` döner (fail-CLOSED)
+ * - Eski email allow-list kaldırıldı
+ * - Eski `profile_roles` tablo sorgusu kaldırıldı (tablo zaten yoktu)
+ *
+ * Dönüş değerleri:
+ *   - `null`  → yükleniyor (henüz RPC cevap vermedi)
+ *   - `true`  → is_super_admin = true
+ *   - `false` → değil, veya hata, veya oturum yok
+ *
+ * Kullanım:
+ * ```tsx
+ * const isAdmin = useIsAdmin();
+ * if (isAdmin === null) return <Loading />;
+ * if (isAdmin === false) return <AccessDenied />;
+ * return <AdminPanel />;
+ * ```
+ *
+ * Not: Bu hook sadece UI gating içindir. Güvenlik kritik tüm işlemler
+ * backend'de `requireSuperAdmin` ile doğrulanır (Parça B).
  */
-
-const FALLBACK_ADMIN_EMAILS: string[] = [
-  "mehmet242306@gmail.com",
-];
-
-function getAdminEmails(): string[] {
-  const envVal = process.env.NEXT_PUBLIC_ADMIN_EMAILS || "";
-  const fromEnv = envVal
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-  if (fromEnv.length > 0) return fromEnv;
-  return FALLBACK_ADMIN_EMAILS.map((e) => e.toLowerCase());
-}
-
 export function useIsAdmin(): boolean | null {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       const supabase = createClient();
       if (!supabase) {
         if (!cancelled) setIsAdmin(false);
         return;
       }
+
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        // 1. Auth kullanıcısı var mı?
+        const { data: { user } } = await supabase.auth.getUser();
         if (cancelled) return;
-        if (!user?.email) {
+        if (!user) {
           setIsAdmin(false);
           return;
         }
-        const adminEmails = getAdminEmails();
-        if (adminEmails.length === 0) {
-          // Hiç admin tanımlanmamış → kimse admin değil (güvenli default)
+
+        // 2. is_super_admin() RPC çağrısı — default parametresi auth.uid() kullanır
+        const { data, error } = await supabase.rpc("is_super_admin");
+        if (cancelled) return;
+
+        if (error) {
+          console.error(
+            `[useIsAdmin] [${new Date().toISOString()}] [user=${user.id}] RPC error:`,
+            error,
+          );
           setIsAdmin(false);
           return;
         }
-        setIsAdmin(adminEmails.includes(user.email.toLowerCase()));
-      } catch {
-        if (!cancelled) setIsAdmin(false);
+
+        // RPC `boolean` döner. `true` dışındaki her şey false sayılır.
+        setIsAdmin(data === true);
+      } catch (err) {
+        if (cancelled) return;
+        console.error(
+          `[useIsAdmin] [${new Date().toISOString()}] unexpected error:`,
+          err,
+        );
+        setIsAdmin(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };

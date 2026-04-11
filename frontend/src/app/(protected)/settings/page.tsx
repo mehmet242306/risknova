@@ -1,52 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { cn } from "@/lib/utils";
 import { MevzuatSyncTab } from "./MevzuatSyncTab";
 import { AdminAITab } from "./AdminAITab";
-import { createClient } from "@/lib/supabase/client";
+import { useIsAdmin } from "@/lib/hooks/use-is-admin";
 
 /* ------------------------------------------------------------------ */
 /* Admin role check                                                    */
 /* ------------------------------------------------------------------ */
-
-const ADMIN_ROLES = ["super_admin", "platform_admin"];
-
-function useIsAdmin(): boolean {
-  const [isAdmin, setIsAdmin] = useState(true); // Default: true (development / early stage)
-
-  useEffect(() => {
-    (async () => {
-      const supabase = createClient();
-      if (!supabase) { setIsAdmin(true); return; }
-
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) { setIsAdmin(true); return; } // Giris yapilmissa zaten protected route
-
-        // profile_roles tablosu varsa kontrol et
-        const { data: roles, error } = await supabase
-          .from("profile_roles")
-          .select("role")
-          .eq("profile_id", user.id);
-
-        if (error || !roles || roles.length === 0) {
-          // Tablo yok veya rol atanmamis = admin kabul et (early stage)
-          setIsAdmin(true);
-          return;
-        }
-
-        setIsAdmin(roles.some((r: { role: string }) => ADMIN_ROLES.includes(r.role)));
-      } catch {
-        setIsAdmin(true);
-      }
-    })();
-  }, []);
-
-  return isAdmin;
-}
+//
+// GÜVENLİK (Parça C, 2026-04-11):
+// Eski lokal useIsAdmin hook'u 5 katlı fail-OPEN idi (default true, client yok
+// true, user yok true, profile_roles tablosu yok true, catch true). Bu yüzden
+// her authenticated kullanıcı admin sanılıyordu. Ayrıca `profile_roles` tablosu
+// DB'de hiç yoktu, her sorgu hata dönüyordu ve hata fallback'i "true" idi.
+//
+// Yeni yaklaşım:
+// - Global `useIsAdmin` hook'u (frontend/src/lib/hooks/use-is-admin.ts) kullanılır
+// - O hook is_super_admin() RPC'sini çağırır (Adım 0.5 Parça A'da oluşturuldu)
+// - Dönüş: boolean | null (null = loading, true = super admin, false = değil)
+// - Tüm fail path'ler false döner (fail-CLOSED)
+// Referans: docs/database-hardening-plan.md §13 (Adım 0.5)
 
 /* ------------------------------------------------------------------ */
 /* Tabs                                                                */
@@ -101,9 +77,11 @@ function GeneralTab() {
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = usePersistedState<TabKey>("settings:tab", "mevzuat");
-  const isAdmin = useIsAdmin();
+  const isAdmin = useIsAdmin(); // boolean | null (null = loading)
 
-  const visibleTabs = allTabs.filter((t) => !t.adminOnly || isAdmin);
+  // Tab görünürlüğü: admin tabları SADECE isAdmin === true ise görünür
+  // (null/loading veya false durumlarda admin tablar gizli — fail-CLOSED)
+  const visibleTabs = allTabs.filter((t) => !t.adminOnly || isAdmin === true);
 
   return (
     <>
@@ -137,7 +115,7 @@ export default function SettingsPage() {
       <div className="mt-4">
         {activeTab === "general" && <GeneralTab />}
         {activeTab === "mevzuat" && <MevzuatSyncTab />}
-        {activeTab === "admin_ai" && isAdmin && <AdminAITab />}
+        {activeTab === "admin_ai" && isAdmin === true && <AdminAITab />}
       </div>
     </>
   );
