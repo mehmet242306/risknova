@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireAuth } from "@/lib/supabase/api-auth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -43,6 +44,12 @@ DİL: Türkçe
 FORMAT: Düz metin (markdown)`;
 
 export async function POST(request: NextRequest) {
+  // GÜVENLİK KATMANI (Parça B Adım 4):
+  // Bu route dosya upload + AI özetleme yapar. Authenticated kullanıcılara sınırlı —
+  // anonim dosya yükleme ve API maliyeti sızıntısı engellenmeli.
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({ error: "ANTHROPIC_API_KEY tanımlı değil" }, { status: 500 });

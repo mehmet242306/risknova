@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireAuth } from "@/lib/supabase/api-auth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -731,6 +732,13 @@ JSON format\u0131:
 /* ================================================================== */
 
 export async function POST(request: NextRequest) {
+  // GÜVENLİK KATMANI (Parça B Adım 4):
+  // Bu route AI görüntü risk analizi yapar (Claude Vision). Anthropic API maliyeti
+  // olduğu için anonim erişim engellenmeli. requireAuth: authenticated kullanıcılara
+  // izin verir, aksi 401/403 döner.
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { imageBase64, mimeType } = body;

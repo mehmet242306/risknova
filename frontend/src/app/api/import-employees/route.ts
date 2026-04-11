@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
+import { requireAuth } from "@/lib/supabase/api-auth";
 
 export const runtime = "nodejs";
 
@@ -102,6 +103,14 @@ function parseCsv(text: string) {
 }
 
 export async function POST(req: NextRequest) {
+  // GÜVENLİK KATMANI (Parça B Adım 4):
+  // Bu route SADECE Excel/CSV parse-only yapar — JSON dönüyor, DB insert yok.
+  // Gerçek personnel insert frontend'de (personnel-api.ts) yapılıyor. Bu yüzden
+  // requireAuth yeterli. Tenant guard (client body organization_id inject koruması)
+  // Adım 0.7'de frontend insert düzeltmelerinde uygulanacak — bkz. §14 (Adım 0.7 P0).
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
+
   try {
     const formData = await req.formData();
     const file = formData.get("file");
@@ -135,7 +144,7 @@ export async function POST(req: NextRequest) {
       rows: parsed.rows,
     });
   } catch (error) {
-    console.error(error);
+    console.error(`[import-employees] [${new Date().toISOString()}] [user=${auth.userId}] parse error:`, error);
     return NextResponse.json(
       { error: "Dosya işlenirken hata oluştu." },
       { status: 500 }

@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireAuth } from "@/lib/supabase/api-auth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
+  // GÜVENLİK KATMANI (Parça B Adım 4):
+  // Bu route AI sınav/anket sorusu üretimi yapar. Authenticated kullanıcılara
+  // sınırlı — anonim Anthropic API çağrısı engellenmeli.
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const { topic, questionCount, optionCount, type, description } = await request.json();
 
@@ -73,7 +80,7 @@ SADECE JSON dizisi döndür, başka açıklama ekleme.`;
     const questions = JSON.parse(jsonMatch[0]);
     return NextResponse.json({ questions });
   } catch (error) {
-    console.error("Training AI error:", error);
+    console.error(`[training-ai] [${new Date().toISOString()}] [user=${auth.userId}] error:`, error);
     return NextResponse.json({ error: "AI soru oluşturma hatası" }, { status: 500 });
   }
 }

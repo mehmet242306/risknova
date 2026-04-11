@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireAuth } from "@/lib/supabase/api-auth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -32,6 +33,12 @@ FORMAT: Düz metin (markdown)
 UZUNLUK: Profesyonel standartlarda, eksik kalmamalı`;
 
 export async function POST(request: NextRequest) {
+  // GÜVENLİK KATMANI (Parça B Adım 4):
+  // Bu route AI ISG dokümanı üretimi yapar (Anthropic API). Authenticated
+  // kullanıcılara sınırlıdır — anonim erişimde API maliyeti sızıntı riski.
+  const auth = await requireAuth(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const { prompt, companyName, companyData, documentTitle, groupKey } = await request.json();
 
