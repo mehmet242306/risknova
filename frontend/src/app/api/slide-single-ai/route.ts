@@ -1,44 +1,87 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  parseJsonBody,
+  resolveAiDailyLimit,
+} from "@/lib/security/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 45;
 
 const CATEGORY_LABELS: Record<string, string> = {
-  yangin: "Yangın Güvenliği",
-  kkd: "Kişisel Koruyucu Donanım",
-  yuksekte_calisma: "Yüksekte Çalışma",
-  elektrik: "Elektrik Güvenliği",
-  kimyasal: "Kimyasal Güvenlik",
-  ilkyardim: "İlk Yardım",
+  yangin: "Yangin Guvenligi",
+  kkd: "Kisisel Koruyucu Donanim",
+  yuksekte_calisma: "Yuksekte Calisma",
+  elektrik: "Elektrik Guvenligi",
+  kimyasal: "Kimyasal Guvenlik",
+  ilkyardim: "Ilk Yardim",
   ergonomi: "Ergonomi",
-  makine: "Makine Güvenliği",
-  genel: "Genel İSG",
+  makine: "Makine Guvenligi",
+  genel: "Genel ISG",
 };
 
-export async function POST(req: NextRequest) {
-  try {
-    const { deckId, prompt: userPrompt, layout, insertAfter } = await req.json();
+const slideSingleSchema = z.object({
+  deckId: z.string().uuid(),
+  prompt: z.string().min(5).max(4000),
+  layout: z
+    .enum([
+      "cover",
+      "section_header",
+      "title_content",
+      "bullet_list",
+      "two_column",
+      "quote",
+      "summary",
+      "image_text",
+      "video",
+    ])
+    .optional(),
+  insertAfter: z.number().int().min(0).optional(),
+});
 
-    if (!deckId || !userPrompt) {
-      return NextResponse.json({ error: "deckId ve prompt gerekli" }, { status: 400 });
-    }
+export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const plan = await resolveAiDailyLimit(auth.userId);
+    const rateLimitResponse = await enforceRateLimit(req, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/slide-single-ai",
+      scope: "ai",
+      limit: plan.dailyLimit,
+      windowSeconds: 24 * 60 * 60,
+      planKey: plan.planKey,
+      metadata: { feature: "slide_single_ai" },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
+
+    const parsedBody = await parseJsonBody(req, slideSingleSchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { deckId, prompt: userPrompt, layout, insertAfter } = parsedBody.data;
 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
 
-    // Deck bilgisi
     const { data: deck } = await supabase
       .from("slide_decks")
       .select("*")
       .eq("id", deckId)
       .maybeSingle();
-    if (!deck) return NextResponse.json({ error: "Deck bulunamadı" }, { status: 404 });
 
-    // Mevcut slaytların başlıkları (bağlam için)
+    if (!deck) {
+      return NextResponse.json({ error: "Deck bulunamadi" }, { status: 404 });
+    }
+
     const { data: existing } = await supabase
       .from("slides")
       .select("sort_order, layout, content")
@@ -46,68 +89,42 @@ export async function POST(req: NextRequest) {
       .order("sort_order", { ascending: true });
 
     const contextTitles = (existing || [])
-      .map((s: any, i: number) => `${i + 1}. [${s.layout}] ${s.content?.title || "—"}`)
+      .map((slide: any, index: number) => `${index + 1}. [${slide.layout}] ${slide.content?.title || "-"}`)
       .join("\n");
 
-    const categoryLabel = CATEGORY_LABELS[deck.category] || "Genel İSG";
+    const categoryLabel = CATEGORY_LABELS[deck.category] || "Genel ISG";
+    const systemPrompt = `Sen uzman bir ISG egitmeni ve slayt tasarimcisisin.
 
-    const systemPrompt = `Sen uzman bir İSG eğitmenisin ve profesyonel slayt tasarımcısısın. Bir eğitim deckine tek bir slayt eklemem için yardım edeceksin.
+DECK: ${deck.title}
+KATEGORI: ${categoryLabel}
+ACIKLAMA: ${deck.description || "yok"}
 
-DECK BİLGİSİ:
-- Başlık: ${deck.title}
-- Kategori: ${categoryLabel}
-- Açıklama: ${deck.description || "yok"}
+MEVCUT SLAYTLAR:
+${contextTitles || "(bos)"}
 
-MEVCUT SLAYTLAR (bağlam için):
-${contextTitles || "(henüz slayt yok)"}
-
-KULLANICI İSTEĞİ:
+KULLANICI ISTEGI:
 ${userPrompt}
 
-${layout ? `İSTENEN LAYOUT: ${layout}` : "Uygun layout'u sen seç."}
+${layout ? `ISTENEN LAYOUT: ${layout}` : "Uygun layoutu sen sec."}
 
 KURALLAR:
-1. Mevcut slaytlarla TEKRARA düşme — özgün içerik üret
-2. İSG mevzuatı ve gerçek uygulamalara uygun ol
-3. Metinler kısa, net, öğretici olmalı
-4. Madde listelerinde 3-6 öz madde
-5. Konuşmacı notu ekle (speaker_notes)
-6. Slayta uygun dekoratif şekiller ekle (decorations array)
+- Tekrar eden icerik uretme
+- Kisa, ogretici ve profesyonel ol
+- Speaker notes ekle
+- Decorations alanini doldur
 
-MEVCUT LAYOUTLAR:
-- "cover": { title, subtitle }
-- "section_header": { title }
-- "title_content": { title, body }
-- "bullet_list": { title, bullets: string[] }
-- "two_column": { title, left: { title, body }, right: { title, body } }
-- "quote": { body, caption }
-- "summary": { title, bullets: string[] }
-- "image_text": { title, body, image_url? }
-- "video": { title, video_url? }
-
-DEKORATİF ŞEKİLLER (decorations array, x/y/w/h yüzde 0-100):
-- { "type": "circle", "x": 75, "y": 10, "w": 20, "h": 20, "color": "accent-soft", "opacity": 0.3 }
-- { "type": "blob", "x": 60, "y": 55, "w": 50, "h": 50, "color": "accent-soft", "color2": "accent", "opacity": 0.3 }
-- { "type": "triangle", "x": 80, "y": 0, "w": 20, "h": 30, "color": "accent", "opacity": 0.15 }
-- { "type": "ring", "x": 5, "y": 15, "w": 15, "h": 15, "color": "accent", "stroke_width": 3, "opacity": 0.25 }
-- { "type": "accent_bar", "x": 8, "y": 85, "w": 20, "h": 0.8, "color": "accent" }
-- { "type": "dots_grid", "x": 70, "y": 75, "w": 30, "h": 25, "color": "accent", "opacity": 0.25 }
-- { "type": "wave", "x": 0, "y": 75, "w": 100, "h": 25, "color": "accent-soft", "opacity": 0.4 }
-- { "type": "icon", "x": 10, "y": 15, "w": 12, "h": 12, "icon": "🔥", "font_size": 4.5 }
-- { "type": "diagonal_stripe", "x": 0, "y": 0, "w": 100, "h": 100, "color": "accent", "opacity": 0.05 }
-
-Her slayta minimum 2, kapak slaytlarına minimum 4 dekorasyon ekle.
-
-ÇIKTI FORMATI — SADECE JSON, başka hiç bir şey yazma:
+CIKTI:
 {
-  "layout": "...",
+  "layout": "title_content",
   "content": {
     "title": "...",
-    ...diğer alanlar...,
-    "decorations": [...]
+    "body": "...",
+    "decorations": []
   },
-  "speaker_notes": "Bu slaytta anlatılacaklar..."
-}`;
+  "speaker_notes": "..."
+}
+
+Sadece JSON don.`;
 
     const message = await client.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -118,30 +135,23 @@ Her slayta minimum 2, kapak slaytlarına minimum 4 dekorasyon ekle.
     const text = message.content[0].type === "text" ? message.content[0].text : "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return NextResponse.json({ error: "AI yanıtı işlenemedi" }, { status: 500 });
+      return NextResponse.json({ error: "AI yaniti islenemedi" }, { status: 500 });
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Sıra hesapla
-    let sortOrder: number;
+    let sortOrder = existing?.length || 0;
     if (typeof insertAfter === "number") {
-      // insertAfter'dan sonraki tüm slaytları 1 kaydır
-      const targetOrder = insertAfter + 1;
-      if (existing && existing.length > 0) {
-        for (const s of existing as any[]) {
-          if (s.sort_order >= targetOrder) {
-            await supabase
-              .from("slides")
-              .update({ sort_order: s.sort_order + 1 })
-              .eq("deck_id", deckId)
-              .eq("sort_order", s.sort_order);
-          }
+      sortOrder = insertAfter + 1;
+      for (const slide of (existing as Array<{ sort_order: number }> | null) ?? []) {
+        if (slide.sort_order >= sortOrder) {
+          await supabase
+            .from("slides")
+            .update({ sort_order: slide.sort_order + 1 })
+            .eq("deck_id", deckId)
+            .eq("sort_order", slide.sort_order);
         }
       }
-      sortOrder = targetOrder;
-    } else {
-      sortOrder = (existing?.length || 0);
     }
 
     const { data: newSlide, error: insertErr } = await supabase
@@ -162,8 +172,16 @@ Her slayta minimum 2, kapak slaytlarına minimum 4 dekorasyon ekle.
     }
 
     return NextResponse.json({ slide: newSlide });
-  } catch (err: any) {
-    console.error("slide-single-ai error:", err);
-    return NextResponse.json({ error: err?.message || "Hata" }, { status: 500 });
+  } catch (error) {
+    console.error("slide-single-ai error:", error);
+    await logSecurityEvent(req, "ai.slide_single.failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: {
+        message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+      },
+    });
+    return NextResponse.json({ error: "Tek slayt olusturma hatasi" }, { status: 500 });
   }
 }

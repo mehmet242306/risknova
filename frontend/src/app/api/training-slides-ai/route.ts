@@ -1,106 +1,94 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  parseJsonBody,
+  resolveAiDailyLimit,
+} from "@/lib/security/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 90;
 
 const CATEGORY_LABELS: Record<string, string> = {
-  yangin: "Yangın Güvenliği",
-  kkd: "Kişisel Koruyucu Donanım",
-  yuksekte_calisma: "Yüksekte Çalışma",
-  elektrik: "Elektrik Güvenliği",
-  kimyasal: "Kimyasal Güvenlik",
-  ilkyardim: "İlk Yardım",
+  yangin: "Yangin Guvenligi",
+  kkd: "Kisisel Koruyucu Donanim",
+  yuksekte_calisma: "Yuksekte Calisma",
+  elektrik: "Elektrik Guvenligi",
+  kimyasal: "Kimyasal Guvenlik",
+  ilkyardim: "Ilk Yardim",
   ergonomi: "Ergonomi",
-  makine: "Makine Güvenliği",
-  genel: "Genel İSG",
+  makine: "Makine Guvenligi",
+  genel: "Genel ISG",
 };
 
+const trainingSlidesSchema = z.object({
+  topic: z.string().min(3).max(300),
+  slideCount: z.number().int().min(5).max(30).optional().default(10),
+  category: z.string().max(80).optional().default("genel"),
+  language: z.enum(["tr", "en"]).optional().default("tr"),
+});
+
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (!auth.ok) return auth.response;
+
   try {
-    const { topic, slideCount, category, language } = await req.json();
+    const plan = await resolveAiDailyLimit(auth.userId);
+    const rateLimitResponse = await enforceRateLimit(req, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/training-slides-ai",
+      scope: "ai",
+      limit: plan.dailyLimit,
+      windowSeconds: 24 * 60 * 60,
+      planKey: plan.planKey,
+      metadata: { feature: "training_slides_ai" },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
 
-    if (!topic) {
-      return NextResponse.json({ error: "Konu gereklidir" }, { status: 400 });
-    }
+    const parsedBody = await parseJsonBody(req, trainingSlidesSchema);
+    if (!parsedBody.ok) return parsedBody.response;
 
+    const { topic, slideCount, category, language } = parsedBody.data;
     const count = Math.min(Math.max(Number(slideCount) || 10, 5), 30);
-    const categoryLabel = CATEGORY_LABELS[category] || "Genel İSG";
+    const categoryLabel = CATEGORY_LABELS[category] || "Genel ISG";
 
-    const prompt = `Sen uzman bir İSG eğitmenisin ve profesyonel slayt tasarımcısısın. Aşağıdaki konu için ${count} slaytlık profesyonel, görsel açıdan zengin bir eğitim sunumu hazırla.
+    const prompt = `Sen uzman bir ISG egitmeni ve profesyonel sunum tasarimcisisin. ${topic} konusu icin ${count} slaytlik egitim sunumu hazirla.
 
-KONU: ${topic}
-KATEGORİ: ${categoryLabel}
-DİL: ${language === "en" ? "English" : "Türkçe"}
+KATEGORI: ${categoryLabel}
+DIL: ${language === "en" ? "English" : "Turkce"}
 
-SUNU KURALLARI:
-- İlk slayt "cover" layout ile kapak olsun
-- İkinci slayt "section_header" ile konuya giriş
-- Orta slaytlarda "title_content", "bullet_list", "two_column", "quote" çeşitleri kullan
-- Madde listelerinde 3-6 öz ve net madde
-- Her slaytın konuşmacı notu olmalı
-- Son slayt "summary" layout ile özet
-- İSG mevzuatına ve gerçek risk senaryolarına referans ver
+KURALLAR:
+- Ilk slayt kapak, son slayt ozet olsun
+- Orta slaytlarda title_content, bullet_list, two_column ve quote layout'lari kullan
+- Her slaytta speaker_notes olsun
+- Slaytlarda dekoratif sekiller ve vurgu renkleri olsun
+- ISG uygulamalarina ve mevzuat baglamina uygun icerik uret
 
-GÖRSEL TASARIM (ÖNEMLİ):
-- Her slayta DEKORATİF ŞEKİLLER ekle (decorations array)
-- Özellikle kapak (cover) slaytında en az 4 dekorasyon olmalı
-- Kategori rengi "accent" olarak kullanılır (sistemde tanımlı)
-- Kapaklarda emoji icon kullan (kategoriyle uyumlu)
-
-KULLANILABILIR DEKORATİF ŞEKİLLER (decorations array elemanları):
-- { "type": "circle", "x": 75, "y": 10, "w": 20, "h": 20, "color": "accent-soft", "opacity": 0.3 }
-- { "type": "blob", "x": 60, "y": 55, "w": 50, "h": 50, "color": "accent-soft", "color2": "accent", "opacity": 0.3 }
-- { "type": "triangle", "x": 80, "y": 0, "w": 20, "h": 30, "color": "accent", "opacity": 0.15 }
-- { "type": "ring", "x": 5, "y": 15, "w": 15, "h": 15, "color": "accent", "stroke_width": 3, "opacity": 0.25 }
-- { "type": "accent_bar", "x": 8, "y": 85, "w": 20, "h": 0.8, "color": "accent" }
-- { "type": "dots_grid", "x": 70, "y": 75, "w": 30, "h": 25, "color": "accent", "opacity": 0.25 }
-- { "type": "wave", "x": 0, "y": 75, "w": 100, "h": 25, "color": "accent-soft", "opacity": 0.4 }
-- { "type": "icon", "x": 10, "y": 15, "w": 12, "h": 12, "icon": "🔥", "font_size": 4.5 }
-- { "type": "gradient_bg", "color": "#FFF7ED", "color2": "#FFFFFF" }
-- { "type": "diagonal_stripe", "x": 0, "y": 0, "w": 100, "h": 100, "color": "accent", "opacity": 0.05 }
-
-RENK DEĞERLERİ:
-- "accent" = kategori ana rengi (otomatik)
-- "accent-soft" = yumuşak versiyonu
-- "accent-fade" = çok yumuşak
-- Veya doğrudan hex kodu: "#EF4444"
-
-KOORDİNATLAR: x, y, w, h değerleri YÜZDE cinsinden (0-100). x=0 sol, x=100 sağ.
-
-MEVCUT LAYOUT'LAR:
-- "cover": { title, subtitle, decorations }
-- "section_header": { title, decorations }
-- "title_content": { title, body, decorations }
-- "bullet_list": { title, bullets: string[], decorations }
-- "two_column": { title, left: { title, body }, right: { title, body }, decorations }
-- "quote": { body, caption, decorations }
-- "summary": { title, bullets: string[], decorations }
-
-ÇIKTI FORMATI — SADECE JSON, başka hiç bir şey yazma:
+CIKTI:
 {
-  "title": "Deck başlığı (40 karakter altı)",
-  "description": "Kısa açıklama",
-  "estimated_duration_minutes": sayı,
+  "title": "Deck basligi",
+  "description": "Kisa aciklama",
+  "estimated_duration_minutes": sayi,
   "slides": [
     {
       "layout": "cover",
       "content": {
         "title": "...",
         "subtitle": "...",
-        "decorations": [
-          {"type":"circle","x":-10,"y":-15,"w":50,"h":50,"color":"accent-soft","opacity":0.6},
-          {"type":"blob","x":65,"y":55,"w":55,"h":55,"color":"accent-soft","color2":"accent","opacity":0.3},
-          {"type":"icon","x":10,"y":15,"w":15,"h":15,"icon":"🔥","font_size":4.5},
-          {"type":"accent_bar","x":8,"y":85,"w":20,"h":0.8,"color":"accent"}
-        ]
+        "decorations": []
       },
-      "speaker_notes": "Açılış..."
+      "speaker_notes": "..."
     }
   ]
-}`;
+}
+
+Sadece JSON don.`;
 
     const message = await client.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -109,22 +97,18 @@ MEVCUT LAYOUT'LAR:
     });
 
     const text = message.content[0].type === "text" ? message.content[0].text : "";
-
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return NextResponse.json({ error: "AI yanıtı işlenemedi" }, { status: 500 });
+      return NextResponse.json({ error: "AI yaniti islenemedi" }, { status: 500 });
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
     const slides = Array.isArray(parsed.slides) ? parsed.slides : [];
     if (slides.length === 0) {
-      return NextResponse.json({ error: "Slaytlar oluşturulamadı" }, { status: 500 });
+      return NextResponse.json({ error: "Slaytlar olusturulamadi" }, { status: 500 });
     }
 
-    // Supabase bağlan ve deck + slides insert et
     const supabase = await createClient();
-    if (!supabase) return NextResponse.json({ error: "Supabase bağlantısı yok" }, { status: 500 });
-
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Oturum yok" }, { status: 401 });
 
@@ -135,7 +119,7 @@ MEVCUT LAYOUT'LAR:
       .maybeSingle();
 
     if (!profile?.organization_id) {
-      return NextResponse.json({ error: "Organizasyon bulunamadı" }, { status: 400 });
+      return NextResponse.json({ error: "Organizasyon bulunamadi" }, { status: 400 });
     }
 
     const { data: deck, error: deckErr } = await supabase
@@ -157,23 +141,28 @@ MEVCUT LAYOUT'LAR:
 
     if (deckErr || !deck) {
       console.error("Deck insert error:", deckErr);
-      return NextResponse.json({ error: "Deck oluşturulamadı: " + (deckErr?.message || "") }, { status: 500 });
+      return NextResponse.json(
+        { error: `Deck olusturulamadi: ${deckErr?.message || "unknown"}` },
+        { status: 500 },
+      );
     }
 
-    const slideRows = slides.map((s: any, idx: number) => ({
+    const slideRows = slides.map((slide: any, index: number) => ({
       deck_id: deck.id,
-      sort_order: idx,
-      layout: s.layout || "title_content",
-      content: s.content || {},
-      speaker_notes: s.speaker_notes || null,
+      sort_order: index,
+      layout: slide.layout || "title_content",
+      content: slide.content || {},
+      speaker_notes: slide.speaker_notes || null,
     }));
 
     const { error: slidesErr } = await supabase.from("slides").insert(slideRows);
     if (slidesErr) {
       console.error("Slides insert error:", slidesErr);
-      // Deck'i de sil (tutarlılık)
       await supabase.from("slide_decks").delete().eq("id", deck.id);
-      return NextResponse.json({ error: "Slaytlar kaydedilemedi: " + slidesErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: `Slaytlar kaydedilemedi: ${slidesErr.message}` },
+        { status: 500 },
+      );
     }
 
     return NextResponse.json({
@@ -181,8 +170,16 @@ MEVCUT LAYOUT'LAR:
       slideCount: slideRows.length,
       title: deck.title,
     });
-  } catch (err: any) {
-    console.error("training-slides-ai error:", err);
-    return NextResponse.json({ error: err?.message || "AI hatası" }, { status: 500 });
+  } catch (error) {
+    console.error("training-slides-ai error:", error);
+    await logSecurityEvent(req, "ai.training_slides.failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: {
+        message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+      },
+    });
+    return NextResponse.json({ error: "AI slayt olusturma hatasi" }, { status: 500 });
   }
 }

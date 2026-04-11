@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import Papa from "papaparse";
 import { requireAuth } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  validateUploadedFile,
+} from "@/lib/security/server";
 
 export const runtime = "nodejs";
 
@@ -60,7 +65,7 @@ async function parseXlsx(buffer: Buffer) {
 
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
-    throw new Error("Excel sayfası okunamadı.");
+    throw new Error("Excel sayfasi okunamadi.");
   }
 
   const headerRow = worksheet.getRow(1);
@@ -71,18 +76,13 @@ async function parseXlsx(buffer: Buffer) {
   });
 
   const rows: RawRow[] = [];
-
   worksheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
-
     const record: RawRow = {};
     row.eachCell((cell, colNumber) => {
       const header = headers[colNumber];
-      if (header) {
-        record[header] = cell.text ?? "";
-      }
+      if (header) record[header] = cell.text ?? "";
     });
-
     rows.push(record);
   });
 
@@ -96,44 +96,62 @@ function parseCsv(text: string) {
   });
 
   if (result.errors.length > 0) {
-    throw new Error("CSV dosyası okunamadı.");
+    throw new Error("CSV dosyasi okunamadi.");
   }
 
   return normalizeRows(result.data);
 }
 
 export async function POST(req: NextRequest) {
-  // GÜVENLİK KATMANI (Parça B Adım 4):
-  // Bu route SADECE Excel/CSV parse-only yapar — JSON dönüyor, DB insert yok.
-  // Gerçek personnel insert frontend'de (personnel-api.ts) yapılıyor. Bu yüzden
-  // requireAuth yeterli. Tenant guard (client body organization_id inject koruması)
-  // Adım 0.7'de frontend insert düzeltmelerinde uygulanacak — bkz. §14 (Adım 0.7 P0).
   const auth = await requireAuth(req);
   if (!auth.ok) return auth.response;
 
   try {
+    const rateLimitResponse = await enforceRateLimit(req, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/import-employees",
+      scope: "api",
+      limit: 60,
+      windowSeconds: 60,
+      metadata: { feature: "import_employees" },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
+
     const formData = await req.formData();
     const file = formData.get("file");
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "Dosya bulunamadı." }, { status: 400 });
+      return NextResponse.json({ error: "Dosya bulunamadi." }, { status: 400 });
+    }
+
+    const fileError = await validateUploadedFile(file, {
+      allowedMimeTypes: [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "text/csv",
+        "application/csv",
+      ],
+      maxBytes: 10 * 1024 * 1024,
+      allowedExtensions: [".xlsx", ".csv"],
+    });
+    if (fileError) {
+      return NextResponse.json({ error: fileError }, { status: 400 });
     }
 
     const fileName = file.name.toLowerCase();
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    let parsed;
+    const parsed = fileName.endsWith(".xlsx")
+      ? await parseXlsx(buffer)
+      : fileName.endsWith(".csv")
+        ? parseCsv(buffer.toString("utf-8"))
+        : null;
 
-    if (fileName.endsWith(".xlsx")) {
-      parsed = await parseXlsx(buffer);
-    } else if (fileName.endsWith(".csv")) {
-      const text = buffer.toString("utf-8");
-      parsed = parseCsv(text);
-    } else {
+    if (!parsed) {
       return NextResponse.json(
-        { error: "Sadece .xlsx ve .csv dosyaları desteklenir." },
-        { status: 400 }
+        { error: "Sadece .xlsx ve .csv dosyalari desteklenir." },
+        { status: 400 },
       );
     }
 
@@ -145,9 +163,17 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error(`[import-employees] [${new Date().toISOString()}] [user=${auth.userId}] parse error:`, error);
+    await logSecurityEvent(req, "api.import_employees.failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: {
+        message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+      },
+    });
     return NextResponse.json(
-      { error: "Dosya işlenirken hata oluştu." },
-      { status: 500 }
+      { error: "Dosya islenirken hata olustu." },
+      { status: 500 },
     );
   }
 }

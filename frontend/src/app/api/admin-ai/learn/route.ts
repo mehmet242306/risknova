@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import { requireSuperAdmin } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  resolveAiDailyLimit,
+  sanitizePlainText,
+  validateUploadedFile,
+} from "@/lib/security/server";
 
 const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -108,8 +115,21 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
+    const plan = await resolveAiDailyLimit(auth.userId);
+    const rateLimitResponse = await enforceRateLimit(request, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/admin-ai/learn",
+      scope: "ai",
+      limit: plan.dailyLimit,
+      windowSeconds: 24 * 60 * 60,
+      planKey: plan.planKey,
+      metadata: { feature: "admin_ai_learn", admin: true },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
+
     const formData = await request.formData();
-    const type = formData.get("type") as string; // "url" veya "pdf"
+    const type = String(formData.get("type") || "").trim(); // "url" veya "pdf"
     const sb = getSupabase();
 
     if (!sb) {
@@ -125,7 +145,7 @@ export async function POST(request: NextRequest) {
     let sourceRef = "";
 
     if (type === "url") {
-      const url = formData.get("url") as string;
+      const url = sanitizePlainText(String(formData.get("url") || ""), 1200);
       if (!url) return NextResponse.json({ error: "URL gerekli" }, { status: 400 });
 
       sourceType = "web";
@@ -139,6 +159,14 @@ export async function POST(request: NextRequest) {
     } else if (type === "pdf") {
       const file = formData.get("file") as File;
       if (!file) return NextResponse.json({ error: "PDF dosyasi gerekli" }, { status: 400 });
+      const fileError = await validateUploadedFile(file, {
+        allowedMimeTypes: ["application/pdf"],
+        maxBytes: 20 * 1024 * 1024,
+        allowedExtensions: [".pdf"],
+      });
+      if (fileError) {
+        return NextResponse.json({ error: fileError }, { status: 400 });
+      }
 
       sourceType = "pdf";
       sourceRef = file.name;
@@ -231,6 +259,12 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Bilinmeyen hata";
     console.error(`[admin-ai/learn] [${new Date().toISOString()}] [user=${auth.userId}] Learn API error:`, msg);
+    await logSecurityEvent(request, "ai.admin.learn_failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: { message: msg.slice(0, 300) },
+    });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

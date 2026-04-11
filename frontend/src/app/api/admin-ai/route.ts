@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
+import { z } from "zod";
 import { requireSuperAdmin } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  parseJsonBody,
+  resolveAiDailyLimit,
+} from "@/lib/security/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -210,6 +217,22 @@ const SYSTEM_PROMPT = `Sen "Nova AI" adında, RiskNova platformunun kendi yapay 
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
+const adminAiSchema = z.object({
+  message: z.string().min(3).max(8000),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(8000),
+      }),
+    )
+    .max(20)
+    .optional()
+    .default([]),
+  imageBase64: z.string().max(6_000_000).optional(),
+  imageMimeType: z.enum(["image/jpeg", "image/png", "image/gif", "image/webp"]).optional(),
+});
+
 export async function POST(request: NextRequest) {
   // GÜVENLİK KATMANI (Parça B Adım 2):
   // Bu route "Nova AI admin chat" — sadece super admin kullanıcılara açık.
@@ -224,12 +247,23 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
-    const { message, history, imageBase64, imageMimeType } = await request.json() as {
-      message: string;
-      history: ChatMessage[];
-      imageBase64?: string;
-      imageMimeType?: string;
-    };
+    const plan = await resolveAiDailyLimit(auth.userId);
+    const rateLimitResponse = await enforceRateLimit(request, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/admin-ai",
+      scope: "ai",
+      limit: plan.dailyLimit,
+      windowSeconds: 24 * 60 * 60,
+      planKey: plan.planKey,
+      metadata: { feature: "admin_ai", admin: true },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
+
+    const parsedBody = await parseJsonBody(request, adminAiSchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { message, history, imageBase64, imageMimeType } = parsedBody.data;
 
     // Güvenli userId: client body'sinden değil, doğrulanmış auth'tan gelir
     const userId = auth.userId;
@@ -302,6 +336,12 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Bilinmeyen hata";
     console.error(`[admin-ai] [${new Date().toISOString()}] [user=${auth.userId}] Nova AI error:`, msg);
+    await logSecurityEvent(request, "ai.admin.failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: { message: msg.slice(0, 300) },
+    });
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { validateStrongPassword } from "@/lib/security/server";
 
 export async function signup(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -13,8 +14,9 @@ export async function signup(formData: FormData) {
     redirect("/register?error=E-posta ve şifre zorunludur.");
   }
 
-  if (password.length < 8) {
-    redirect("/register?error=Şifre en az 8 karakter olmalıdır.");
+  const passwordError = validateStrongPassword(password);
+  if (passwordError) {
+    redirect(`/register?error=${encodeURIComponent(passwordError)}`);
   }
 
   const supabase = await createClient();

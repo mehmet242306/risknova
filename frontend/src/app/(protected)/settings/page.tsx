@@ -9,6 +9,7 @@ import { MevzuatSyncTab } from "./MevzuatSyncTab";
 import { AdminAITab } from "./AdminAITab";
 import { AuditLogsTab } from "./AuditLogsTab";
 import { DeletedRecordsTab } from "./DeletedRecordsTab";
+import { SecurityEventsTab } from "./SecurityEventsTab";
 import { useIsAdmin } from "@/lib/hooks/use-is-admin";
 
 /* ------------------------------------------------------------------ */
@@ -32,13 +33,14 @@ import { useIsAdmin } from "@/lib/hooks/use-is-admin";
 /* Tabs                                                                */
 /* ------------------------------------------------------------------ */
 
-type TabKey = "general" | "mevzuat" | "audit_logs" | "deleted_records" | "admin_ai";
+type TabKey = "general" | "mevzuat" | "security_events" | "audit_logs" | "deleted_records" | "admin_ai";
 
 type TabDef = { key: TabKey; label: string; adminOnly?: boolean };
 
 const allTabs: TabDef[] = [
   { key: "general", label: "Genel" },
   { key: "mevzuat", label: "Mevzuat Senkronizasyonu" },
+  { key: "security_events", label: "Guvenlik Olaylari", adminOnly: true },
   { key: "audit_logs", label: "Audit Loglari", adminOnly: true },
   { key: "deleted_records", label: "Silinmis Kayitlar", adminOnly: true },
   { key: "admin_ai", label: "Nova AI", adminOnly: true },
@@ -99,7 +101,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     const requestedTab = searchParams.get("tab");
-    if (requestedTab === "general" || requestedTab === "mevzuat" || requestedTab === "audit_logs" || requestedTab === "deleted_records" || requestedTab === "admin_ai") {
+    if (requestedTab === "general" || requestedTab === "mevzuat" || requestedTab === "security_events" || requestedTab === "audit_logs" || requestedTab === "deleted_records" || requestedTab === "admin_ai") {
       setActiveTab(requestedTab);
     }
   }, [searchParams, setActiveTab]);
@@ -136,6 +138,7 @@ export default function SettingsPage() {
       <div className="mt-4">
         {activeTab === "general" && <GeneralTab />}
         {activeTab === "mevzuat" && <MevzuatSyncTab />}
+        {activeTab === "security_events" && isAdmin === true && <SecurityEventsTab />}
         {activeTab === "audit_logs" && isAdmin === true && <AuditLogsTab />}
         {activeTab === "deleted_records" && isAdmin === true && <DeletedRecordsTab />}
         {activeTab === "admin_ai" && isAdmin === true && <AdminAITab />}

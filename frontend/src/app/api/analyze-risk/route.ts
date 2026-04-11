@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { requireAuth } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  parseJsonBody,
+  resolveAiDailyLimit,
+} from "@/lib/security/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -9,6 +16,15 @@ export const maxDuration = 60;
 const PROMPT_VERSION = "v1.8";
 
 type AnalysisMethod = "r_skor" | "fine_kinney" | "l_matrix" | "fmea" | "hazop" | "bow_tie" | "fta" | "checklist" | "jsa" | "lopa";
+
+const analyzeRiskSchema = z.object({
+  imageBase64: z.string().min(100).max(20_000_000),
+  mimeType: z.enum(["image/jpeg", "image/png", "image/gif", "image/webp"]),
+  method: z
+    .enum(["r_skor", "fine_kinney", "l_matrix", "fmea", "hazop", "bow_tie", "fta", "checklist", "jsa", "lopa"])
+    .optional()
+    .default("r_skor"),
+});
 
 /* ================================================================== */
 /* Base prompt — common to all methods                                 */
@@ -740,9 +756,23 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
-    const body = await request.json();
-    const { imageBase64, mimeType } = body;
-    const method: AnalysisMethod = body.method ?? "r_skor";
+    const plan = await resolveAiDailyLimit(auth.userId);
+    const rateLimitResponse = await enforceRateLimit(request, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/analyze-risk",
+      scope: "ai",
+      limit: plan.dailyLimit,
+      windowSeconds: 24 * 60 * 60,
+      planKey: plan.planKey,
+      metadata: { feature: "analyze_risk" },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
+
+    const parsedBody = await parseJsonBody(request, analyzeRiskSchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { imageBase64, mimeType, method } = parsedBody.data;
 
     if (!imageBase64 || !mimeType) {
       return NextResponse.json({ error: "imageBase64 ve mimeType gerekli" }, { status: 400 });
@@ -842,6 +872,14 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "Bilinmeyen hata";
     const stack = error instanceof Error ? error.stack : "";
     console.error("Risk analizi API hatas\u0131:", message, stack);
+    await logSecurityEvent(request, "ai.analyze_risk.failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: {
+        message: message.slice(0, 300),
+      },
+    });
     return NextResponse.json({ error: message, detail: stack?.slice(0, 500) }, { status: 500 });
   }
 }

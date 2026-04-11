@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { requireAuth } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  sanitizePlainText,
+  validateUploadedFile,
+} from "@/lib/security/server";
 
 export const maxDuration = 60;
 
@@ -16,7 +22,7 @@ function createServiceClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !serviceKey) {
-    throw new Error("Supabase service role yapılandırması eksik.");
+    throw new Error("Supabase service role yapilandirmasi eksik.");
   }
 
   return createSupabaseClient(url, serviceKey, {
@@ -26,7 +32,6 @@ function createServiceClient() {
 
 function extractText(buffer: ArrayBuffer, mimeType: string) {
   const decoder = new TextDecoder("utf-8", { fatal: false });
-
   if (mimeType === "text/plain") {
     return decoder.decode(buffer).trim();
   }
@@ -50,10 +55,21 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
+    const rateLimitResponse = await enforceRateLimit(request, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/legal-library-upload",
+      scope: "api",
+      limit: 60,
+      windowSeconds: 60,
+      metadata: { feature: "legal_library_upload" },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
+
     const formData = await request.formData();
-    const title = String(formData.get("title") || "").trim();
-    const docType = String(formData.get("docType") || "").trim();
-    const docNumber = String(formData.get("docNumber") || "").trim();
+    const title = sanitizePlainText(String(formData.get("title") || ""), 250);
+    const docType = sanitizePlainText(String(formData.get("docType") || ""), 40);
+    const docNumber = sanitizePlainText(String(formData.get("docNumber") || ""), 80);
     const file = formData.get("file") as File | null;
 
     if (!title) {
@@ -70,6 +86,15 @@ export async function POST(request: NextRequest) {
 
     if (!ALLOWED_TYPES.has(file.type)) {
       return NextResponse.json({ error: `Desteklenmeyen dosya tipi: ${file.type}` }, { status: 400 });
+    }
+
+    const fileError = await validateUploadedFile(file, {
+      allowedMimeTypes: [...ALLOWED_TYPES],
+      maxBytes: 20 * 1024 * 1024,
+      allowedExtensions: [".pdf", ".doc", ".docx", ".txt"],
+    });
+    if (fileError) {
+      return NextResponse.json({ error: fileError }, { status: 400 });
     }
 
     const supabase = createServiceClient();
@@ -147,6 +172,12 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bilinmeyen hata";
+    await logSecurityEvent(request, "api.legal_upload.failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: { message: message.slice(0, 300) },
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

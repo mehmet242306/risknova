@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toDataURL } from "qrcode";
+import { listSessions } from "@/lib/session-tracker";
+import { validateStrongPassword } from "@/lib/security/password";
 import { createClient } from "@/lib/supabase/client";
 import { quickSignOut } from "@/lib/auth/quick-sign-out";
 import type { User } from "@supabase/supabase-js";
@@ -56,6 +58,16 @@ type MfaEnrollment = {
 };
 
 type AssuranceLevel = "aal1" | "aal2" | null;
+
+type SessionRecord = {
+  id: string;
+  device_type: string;
+  device_info: string | null;
+  ip_address: string | null;
+  last_active_at: string;
+  created_at: string;
+  isCurrent: boolean;
+};
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -127,6 +139,7 @@ export default function ProfileClient() {
   const [saving, setSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [signingOutAll, setSigningOutAll] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
   const [authUser, setAuthUser] = useState<User | null>(null);
@@ -156,6 +169,7 @@ export default function ProfileClient() {
   const [mfaNextLevel, setMfaNextLevel] = useState<AssuranceLevel>(null);
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [mfaFriendlyName, setMfaFriendlyName] = useState("");
   const [mfaCode, setMfaCode] = useState("");
   const [mfaEnrollment, setMfaEnrollment] = useState<MfaEnrollment | null>(null);
@@ -219,6 +233,10 @@ export default function ProfileClient() {
       if (!user) { setLoading(false); return; }
       setAuthUser(user);
       setPendingEmail(user.email ?? "");
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const currentSessionToken = session?.access_token ?? null;
 
       const [profileRes, prefsRes] = await Promise.all([
         supabase
@@ -257,6 +275,19 @@ export default function ProfileClient() {
           setRoles(codes);
         }
       }
+
+      const sessionRows = await listSessions(supabase, user.id);
+      setSessions(
+        sessionRows.map((item) => ({
+          id: item.id,
+          device_type: item.device_type,
+          device_info: item.device_info ?? null,
+          ip_address: item.ip_address ?? null,
+          last_active_at: item.last_active_at,
+          created_at: item.created_at,
+          isCurrent: currentSessionToken === item.session_token,
+        })),
+      );
 
       await loadMfaState(supabase);
 
@@ -345,10 +376,13 @@ export default function ProfileClient() {
       setFeedback({ type: "error", msg: "Yeni şifreler eşleşmiyor." });
       return;
     }
-    if (newPassword.length < 8) {
-      setFeedback({ type: "error", msg: "Şifre en az 8 karakter olmalı." });
+
+    const passwordError = validateStrongPassword(newPassword);
+    if (passwordError) {
+      setFeedback({ type: "error", msg: passwordError });
       return;
     }
+
     setSaving(true);
     setFeedback(null);
     const supabase = createClient();
@@ -637,6 +671,42 @@ export default function ProfileClient() {
       const msg = err instanceof Error ? err.message : "Oturum kapatilamadi.";
       setFeedback({ type: "error", msg });
       setSigningOut(false);
+    }
+  }
+
+  async function handleSignOutAllDevices() {
+    setSigningOutAll(true);
+    setFeedback(null);
+
+    const supabase = createClient();
+    if (!supabase) {
+      setFeedback({ type: "error", msg: "Oturum servisine baglanilamadi." });
+      setSigningOutAll(false);
+      return;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user?.id) {
+        const { error: deleteError } = await supabase
+          .from("user_sessions")
+          .delete()
+          .eq("user_id", session.user.id);
+
+        if (deleteError) throw deleteError;
+      }
+
+      const { error } = await supabase.auth.signOut({ scope: "global" });
+      if (error) throw error;
+
+      window.location.replace("/login");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Tum cihazlardan cikis yapilamadi.";
+      setFeedback({ type: "error", msg });
+      setSigningOutAll(false);
     }
   }
 
@@ -1044,7 +1114,7 @@ export default function ProfileClient() {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="En az 8 karakter"
+                  placeholder="En az 12 karakter, buyuk-kucuk harf, rakam ve sembol"
                   className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
@@ -1265,30 +1335,80 @@ export default function ProfileClient() {
 
           {/* Active sessions */}
           <div className="rounded-[1.75rem] border border-border bg-card p-6 shadow-[var(--shadow-card)] sm:p-7">
-            <h2 className="mb-4 text-lg font-semibold text-foreground">Aktif Oturumlar</h2>
-            <div className="rounded-2xl border border-border bg-secondary/30 px-4 py-3">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30">
-                  <svg className="h-4 w-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-foreground">Mevcut Oturum</div>
-                  <div className="text-xs text-muted-foreground">Bu cihaz · Şu an aktif</div>
-                </div>
-                <div className="flex items-center gap-3 sm:ml-auto">
-                  <span className="text-xs font-medium text-green-600 dark:text-green-400">Aktif</span>
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    disabled={signingOut}
-                    className={secondaryButtonClass}
-                  >
-                    {signingOut ? "Kapatiliyor..." : "Oturumu Kapat"}
-                  </button>
-                </div>
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">Aktif Oturumlar</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Hesabinizda acik olan oturumlari burada gorebilir ve cikis islemlerini yonetebilirsiniz.
+                </p>
               </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  disabled={signingOut || signingOutAll}
+                  className={secondaryButtonClass}
+                >
+                  {signingOut ? "Kapatiliyor..." : "Bu cihazdan cik"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSignOutAllDevices}
+                  disabled={signingOutAll || signingOut}
+                  className={secondaryButtonClass}
+                >
+                  {signingOutAll ? "Kapatiliyor..." : "Tum cihazlardan cik"}
+                </button>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {sessions.length === 0 && (
+                <div className="rounded-2xl border border-border bg-secondary/30 px-4 py-4 text-sm text-muted-foreground">
+                  Kayitli oturum bulunamadi. Bu cihazdaki oturum aktif gorunuyor olabilir.
+                </div>
+              )}
+              {sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="flex flex-col gap-4 rounded-2xl border border-border bg-secondary/20 px-4 py-4 sm:flex-row sm:items-center"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-100 dark:bg-green-900/30">
+                    <svg className="h-4 w-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.955 11.955 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {session.device_info || "Bilinmeyen cihaz"}
+                      </span>
+                      <span
+                        className={[
+                          "inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-semibold",
+                          session.isCurrent
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-secondary text-muted-foreground",
+                        ].join(" ")}
+                      >
+                        {session.isCurrent ? "Bu cihaz" : "Diger cihaz"}
+                      </span>
+                      <span className="inline-flex items-center rounded-lg bg-secondary px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {session.device_type}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Son aktivite: {formatDate(session.last_active_at)}
+                      {session.ip_address ? ` | IP: ${session.ip_address}` : ""}
+                      {session.created_at ? ` | Acilis: ${formatDate(session.created_at)}` : ""}
+                    </div>
+                  </div>
+                  {session.isCurrent && (
+                    <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                      Aktif
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1526,3 +1646,5 @@ export default function ProfileClient() {
     </div>
   );
 }
+
+

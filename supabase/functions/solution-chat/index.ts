@@ -29,10 +29,23 @@ import OpenAI from 'https://esm.sh/openai@4.53.0'
 // CONFIG
 // ============================================================================
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+const ALLOWED_ORIGINS = (Deno.env.get('APP_ORIGIN') ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean)
+
+function buildCorsHeaders(req: Request) {
+  const requestOrigin = req.headers.get('origin') ?? ''
+  const allowedOrigin = ALLOWED_ORIGINS.includes(requestOrigin)
+    ? requestOrigin
+    : (ALLOWED_ORIGINS[0] ?? '')
+
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  }
 }
 
 const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
@@ -849,7 +862,7 @@ async function getOrCreateSession(
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS })
+    return new Response('ok', { headers: buildCorsHeaders(req) })
   }
 
   try {
@@ -860,7 +873,7 @@ serve(async (req) => {
     if (!userMessage || userMessage.trim().length === 0) {
       return new Response(
         JSON.stringify({ error: 'Mesaj boş olamaz' }),
-        { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -868,7 +881,7 @@ serve(async (req) => {
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Yetkilendirme gerekli' }),
-        { status: 401, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -894,7 +907,7 @@ serve(async (req) => {
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Kullanıcı doğrulanamadı' }),
-        { status: 401, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+        { status: 401, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -908,7 +921,49 @@ serve(async (req) => {
           message: subCheck.message || 'Aylık mesaj limitiniz doldu',
           plan_key: subCheck.plan_key
         }),
-        { status: 429, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+        { status: 429, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const { data: aiDailyLimitData, error: aiDailyLimitError } = await supabase.rpc('resolve_ai_daily_limit', {
+      p_user_id: user.id,
+    })
+
+    const aiDailyLimitRow = Array.isArray(aiDailyLimitData) ? aiDailyLimitData[0] : aiDailyLimitData
+    const aiDailyLimit = Number(aiDailyLimitRow?.daily_limit ?? 25)
+    const aiPlanKey = String(aiDailyLimitRow?.plan_key ?? subCheck.plan_key ?? 'free')
+
+    if (aiDailyLimitError) {
+      console.error('[solution-chat] resolve_ai_daily_limit failed:', aiDailyLimitError)
+    }
+
+    const { data: aiRateData, error: aiRateError } = await supabase.rpc('consume_rate_limit', {
+      p_user_id: user.id,
+      p_endpoint: '/functions/v1/solution-chat',
+      p_scope: 'ai',
+      p_limit_count: aiDailyLimit,
+      p_window_seconds: 86400,
+      p_plan_key: aiPlanKey,
+      p_organization_id: body.organization_id ?? null,
+      p_ip_address: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
+      p_user_agent: req.headers.get('user-agent') ?? null,
+      p_metadata: { source: 'solution-chat' },
+    })
+
+    if (aiRateError) {
+      console.error('[solution-chat] consume_rate_limit failed:', aiRateError)
+    }
+
+    const aiRateRow = Array.isArray(aiRateData) ? aiRateData[0] : aiRateData
+    if (aiRateRow && aiRateRow.allowed !== true) {
+      return new Response(
+        JSON.stringify({
+          error: 'rate_limit_exceeded',
+          message: 'Gunluk AI limitiniz doldu. Lutfen daha sonra tekrar deneyin.',
+          remaining: Number(aiRateRow.remaining ?? 0),
+          reset_at: aiRateRow.reset_at ?? null,
+        }),
+        { status: 429, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -956,7 +1011,7 @@ serve(async (req) => {
           session_id: sessionId,
           cached: true
         }),
-        { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+        { headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
       )
     }
 
@@ -1143,7 +1198,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
         cached: false,
         remaining_messages: (subCheck.remaining || 0) - 1
       }),
-      { headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+      { headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
     )
 
   } catch (error: any) {
@@ -1153,7 +1208,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
         error: 'Nova hatası',
         message: error.message
       }),
-      { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
     )
   }
 })
@@ -1171,3 +1226,4 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
 //
 // OpenAI key ekleme:
 // supabase secrets set OPENAI_API_KEY=sk-proj-...
+

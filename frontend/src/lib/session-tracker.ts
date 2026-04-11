@@ -1,13 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Detect device type from User-Agent */
-function detectDeviceType(ua: string): "web" | "mobile" {
+export function detectDeviceType(ua: string): "web" | "mobile" {
   const mobileRe = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
   return mobileRe.test(ua) ? "mobile" : "web";
 }
 
 /** Parse a human-readable device description from User-Agent */
-function parseDeviceInfo(ua: string): string {
+export function parseDeviceInfo(ua: string): string {
   if (!ua) return "Bilinmeyen Cihaz";
 
   let browser = "Tarayıcı";
@@ -28,7 +28,7 @@ function parseDeviceInfo(ua: string): string {
 
 /**
  * Register a session in user_sessions table.
- * Uses UPSERT on (user_id, device_type) so only 1 session per device type exists.
+ * Uses UPSERT on (user_id, session_token) so a user can have multiple active devices.
  */
 export async function registerSession(
   supabase: SupabaseClient,
@@ -50,7 +50,7 @@ export async function registerSession(
         ip_address: ipAddress,
         last_active_at: new Date().toISOString(),
       },
-      { onConflict: "user_id,device_type" },
+      { onConflict: "user_id,session_token" },
     );
   } catch (err) {
     console.error("[session-tracker] Failed to register session:", err);
@@ -70,4 +70,19 @@ export async function removeSession(supabase: SupabaseClient, userId: string, se
   } catch (err) {
     console.error("[session-tracker] Failed to remove session:", err);
   }
+}
+
+export async function listSessions(supabase: SupabaseClient, userId: string) {
+  const { data, error } = await supabase
+    .from("user_sessions")
+    .select("id, session_token, device_type, device_info, ip_address, last_active_at, created_at")
+    .eq("user_id", userId)
+    .order("last_active_at", { ascending: false });
+
+  if (error) {
+    console.error("[session-tracker] Failed to list sessions:", error);
+    return [];
+  }
+
+  return data ?? [];
 }

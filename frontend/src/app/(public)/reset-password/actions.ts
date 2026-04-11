@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { validateStrongPassword } from "@/lib/security/server";
 
 export async function updatePasswordAction(formData: FormData) {
   const password = String(formData.get("password") ?? "");
@@ -10,8 +11,9 @@ export async function updatePasswordAction(formData: FormData) {
     redirect("/reset-password?error=Yeni şifre zorunludur.");
   }
 
-  if (password.length < 8) {
-    redirect("/reset-password?error=Yeni şifre en az 8 karakter olmalıdır.");
+  const passwordError = validateStrongPassword(password);
+  if (passwordError) {
+    redirect(`/reset-password?error=${encodeURIComponent(passwordError)}`);
   }
 
   const supabase = await createClient();

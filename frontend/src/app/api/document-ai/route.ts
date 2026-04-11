@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
 import { requireAuth } from "@/lib/supabase/api-auth";
+import {
+  enforceRateLimit,
+  logSecurityEvent,
+  parseJsonBody,
+  resolveAiDailyLimit,
+} from "@/lib/security/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -32,6 +39,28 @@ DİL: Türkçe
 FORMAT: Düz metin (markdown)
 UZUNLUK: Profesyonel standartlarda, eksik kalmamalı`;
 
+const documentAiSchema = z.object({
+  prompt: z.string().min(10).max(8000),
+  companyName: z.string().trim().max(250).optional().default(""),
+  companyData: z
+    .object({
+      sector: z.string().max(250).optional(),
+      hazard_class: z.string().max(120).optional(),
+      nace_code: z.string().max(120).optional(),
+      address: z.string().max(500).optional(),
+      city: z.string().max(120).optional(),
+      district: z.string().max(120).optional(),
+      tax_number: z.string().max(80).optional(),
+      employee_count: z.union([z.number().int().nonnegative(), z.string().max(40)]).optional(),
+      specialist_name: z.string().max(200).optional(),
+    })
+    .partial()
+    .optional()
+    .default({}),
+  documentTitle: z.string().trim().max(250).optional().default(""),
+  groupKey: z.string().trim().max(120).optional().default(""),
+});
+
 export async function POST(request: NextRequest) {
   // GÜVENLİK KATMANI (Parça B Adım 4):
   // Bu route AI ISG dokümanı üretimi yapar (Anthropic API). Authenticated
@@ -40,7 +69,23 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   try {
-    const { prompt, companyName, companyData, documentTitle, groupKey } = await request.json();
+    const plan = await resolveAiDailyLimit(auth.userId);
+    const rateLimitResponse = await enforceRateLimit(request, {
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      endpoint: "/api/document-ai",
+      scope: "ai",
+      limit: plan.dailyLimit,
+      windowSeconds: 24 * 60 * 60,
+      planKey: plan.planKey,
+      metadata: { feature: "document_ai" },
+    });
+    if (rateLimitResponse) return rateLimitResponse;
+
+    const parsedBody = await parseJsonBody(request, documentAiSchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { prompt, companyName, companyData, documentTitle, groupKey } = parsedBody.data;
 
     if (!prompt) {
       return NextResponse.json({ error: "prompt gerekli" }, { status: 400 });
@@ -100,6 +145,12 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Bilinmeyen hata";
     console.error("Doküman AI hatası:", message);
+    await logSecurityEvent(request, "ai.document.failed", {
+      severity: "warning",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      details: { message: message.slice(0, 300) },
+    });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
