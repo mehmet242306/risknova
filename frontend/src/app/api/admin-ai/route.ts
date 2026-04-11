@@ -1,17 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
+import { requireSuperAdmin } from "@/lib/supabase/api-auth";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const maxDuration = 60;
 
-/* ── Supabase admin client (server-side) ── */
+/**
+ * Supabase admin client (server-side).
+ *
+ * GÜVENLİK NOTU (Parça B Adım 2, 2026-04-11):
+ * Bu fonksiyon SUPABASE_SERVICE_ROLE_KEY kullanır ve RLS'i bypass eder.
+ * Cross-tenant okuma gerektiren "super admin aracı" olduğu için service role
+ * kullanımı meşrudur (buildPlatformContext tüm firma/personel/olay sayılarını
+ * okuyor). ANCAK bu fonksiyon SADECE POST handler içinde, requireSuperAdmin
+ * guard'ı BAŞARILI olduktan sonra çağrılmalıdır. Anon/public erişim kesinlikle
+ * yok — bkz. POST handler başındaki requireSuperAdmin çağrısı.
+ */
 function getSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createSupabaseAdmin(url, key);
+  return createSupabaseAdmin(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 /* ── Build platform context from DB ── */
@@ -142,7 +155,7 @@ async function fetchKnowledge(question: string): Promise<string> {
 }
 
 /* ── Save conversation to DB ── */
-async function saveInteraction(userId: string | null, question: string, answer: string, tokens: { input: number; output: number }) {
+async function saveInteraction(userId: string, question: string, answer: string, tokens: { input: number; output: number }) {
   const sb = getSupabase();
   if (!sb) return null;
 
@@ -198,14 +211,28 @@ const SYSTEM_PROMPT = `Sen "Nova AI" adında, RiskNova platformunun kendi yapay 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export async function POST(request: NextRequest) {
+  // GÜVENLİK KATMANI (Parça B Adım 2):
+  // Bu route "Nova AI admin chat" — sadece super admin kullanıcılara açık.
+  // requireSuperAdmin guard'ı:
+  //   1. Authorization header'dan JWT doğrular (anon client)
+  //   2. user_profiles'tan profile çeker (service role)
+  //   3. is_super_admin(uid) RPC çağırır (service role)
+  //   4. Hata durumunda 401/403/500 döner
+  // Guard geçtikten sonra service role Supabase client kullanımı meşrudur
+  // (cross-tenant okuma super admin yetkisinin parçası).
+  const auth = await requireSuperAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
-    const { message, history, userId, imageBase64, imageMimeType } = await request.json() as {
+    const { message, history, imageBase64, imageMimeType } = await request.json() as {
       message: string;
       history: ChatMessage[];
-      userId?: string;
       imageBase64?: string;
       imageMimeType?: string;
     };
+
+    // Güvenli userId: client body'sinden değil, doğrulanmış auth'tan gelir
+    const userId = auth.userId;
 
     if (!message?.trim()) {
       return NextResponse.json({ error: "Mesaj gerekli" }, { status: 400 });
@@ -264,8 +291,8 @@ export async function POST(request: NextRequest) {
       outputTokens: response.usage.output_tokens,
     };
 
-    // Save to database for learning
-    const qaId = await saveInteraction(userId ?? null, message, textBlock.text, { input: tokens.inputTokens, output: tokens.outputTokens });
+    // Save to database for learning — güvenli userId (helper'dan geliyor)
+    const qaId = await saveInteraction(userId, message, textBlock.text, { input: tokens.inputTokens, output: tokens.outputTokens });
 
     return NextResponse.json({
       response: textBlock.text,
@@ -274,7 +301,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Bilinmeyen hata";
-    console.error("Nova AI hatası:", msg);
+    console.error(`[admin-ai] [${new Date().toISOString()}] [user=${auth.userId}] Nova AI error:`, msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
