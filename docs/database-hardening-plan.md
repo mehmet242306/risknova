@@ -2137,7 +2137,95 @@ Bu üç nokta §13.2 Parça B'deki helper tasarımını güncelledi.
 
 ---
 
-> **Not:** §20 (Test Altyapısı), §21 (Dependency Çakışmaları Backlog), §23 (rezerve) — bu numaralar belgede rezerv edildi; Parça B'nin devamı (Vitest kurulumu, api-auth.ts) tamamlandığında doldurulacak.
+> **Not:** §21 (Dependency Çakışmaları Backlog), §23 (rezerve) — bu numaralar ileride doldurulacak.
+
+---
+
+## 20. Test Altyapısı
+
+**Durum:** ✅ Kuruldu (2026-04-11)
+**Framework:** Vitest 2.1.x
+**Kapsam:** Başlangıçta sadece `frontend/src/lib/supabase/api-auth.ts`, ileride genişleyecek
+
+### Kurulum
+
+```bash
+cd frontend
+npm i -D vitest @vitest/ui @vitest/coverage-v8
+```
+
+### Komutlar
+
+| Komut | Amaç |
+|---|---|
+| `npm run test` | Tek seferlik çalıştırma (CI için) |
+| `npm run test:watch` | Watch mode (geliştirme sırasında) |
+| `npm run test:ui` | Görsel web UI ile çalıştırma |
+| `npm run test:coverage` | Coverage raporu (v8 provider) |
+
+### Dosya Yapısı
+
+```
+frontend/
+├── .npmrc                              # legacy-peer-deps=true (web-ifc-three çakışması)
+├── vitest.config.ts                    # Vitest konfigürasyonu
+├── package.json                        # test scriptleri ekli
+└── src/
+    └── lib/
+        └── supabase/
+            ├── api-auth.ts              # Helper (390 satır)
+            └── api-auth.test.ts         # 24 unit test
+```
+
+### Mock Stratejisi
+
+- `vi.mock("@supabase/supabase-js")` ile `createClient` mock'lanır
+- Her test kendi mock davranışını ayarlar (`mockResolvedValue`, `mockImplementation`)
+- Environment variables her test için fresh (`vi.stubEnv`, `vi.unstubAllEnvs`)
+- `clearMocks: true` ile her testten sonra mock state sıfırlanır
+- Query chain'ler için `buildQueryChain()` yardımcısı — `.select().eq()...maybeSingle()` desenini simüle eder
+
+### Coverage Hedefi
+
+| Kod | Hedef |
+|---|---|
+| `lib/supabase/api-auth.ts` (kritik güvenlik helper'ı) | **%100** |
+| Diğer `lib/supabase/*` helper'lar | Pilot sonrası belirlenecek |
+| Tüm kod tabanı | Uzun vadede %70+ |
+
+### Mevcut Test Sayıları (2026-04-11)
+
+| Dosya | Suite | Test Sayısı |
+|---|---|---|
+| `api-auth.test.ts` | requireAuth | 11 |
+| `api-auth.test.ts` | requireSuperAdmin | 5 |
+| `api-auth.test.ts` | requireOrgMember | 6 |
+| `api-auth.test.ts` | timeout protection | 2 |
+| **TOPLAM** | | **24** |
+
+### Gelecekte Eklenecek Test Türleri
+
+1. **RLS policy testleri** — Adım 3 batch rollout sırasında, cross-tenant izolasyonu doğrulamak için (pgTAP veya özel fonksiyonlar, Vitest değil)
+2. **R₂D hesaplama mantığı** — risk skorlama logic'i unit testleri
+3. **Mevzuat eşleşme algoritması** — Solution Center RAG sistemi için
+4. **PDF/PPTX/DOCX üretim pipeline'ları** — snapshot testler
+5. **API route entegrasyon testleri** — gerçek HTTP çağrıları ile (Parça B sonrası T1-T12 otomatikleştirilmesi)
+6. **React bileşen testleri** — Vitest + `@testing-library/react` + jsdom (ileride `environment: "jsdom"`)
+
+### Test Yazma Kuralları
+
+1. **Her testin tek bir amacı olsun** — bir assertion fail olursa test amacını anlatmalı
+2. **Mock'lar minimum olsun** — gerçek davranışı yansıtsın, "uydurma" değil
+3. **Test adları net açıklayıcı** — `it("returns 401 when token is missing")` gibi
+4. **Discriminated union type narrowing** — `if (!result.ok) return;` deseni ile TypeScript hataları engellenir
+5. **Flaky test YOK** — zamanlamaya bağlı test varsa `vi.useFakeTimers()` kullanılmalı
+6. **Her test izole** — `beforeEach`'te fresh state, `afterEach`'te temizlik
+
+### Karar Bekleyen Noktalar
+
+- **CI entegrasyonu:** Şu an testler lokalden çalıştırılıyor. İleride GitHub Actions workflow ile otomatik test (`.github/workflows/frontend-test.yml` gibi). Canlı öncesi.
+- **Coverage threshold:** `vitest.config.ts`'de `coverage.thresholds` ile minimum coverage zorunluluğu. Şu an yok, ileride %80 gibi bir eşik konulabilir.
+- **Test parallelization:** Vitest paralel çalıştırır ama bazı testler env stub yüzünden çakışabilir. Şimdi sorun yok, ölçek büyürse `poolOptions.threads.singleThread` gerekebilir.
 
 ---
 
