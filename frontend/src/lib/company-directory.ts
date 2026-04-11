@@ -3,6 +3,7 @@
   name: string;
   shortName: string;
   kind: string;
+  companyType: string;
   address: string;
   sector: string;
   naceCode: string;
@@ -52,6 +53,7 @@ export const defaultCompanyDirectory: CompanyRecord[] = [
     name: "Elazığ Engelsiz Yaşam, Bakım, Rehabilitasyon ve Aile Danışma Merkezi",
     shortName: "Engelsiz Yaşam Merkezi",
     kind: "Kamu Kurumu",
+    companyType: "bagimsiz",
     address: "Elazığ",
     sector: "Bakım ve Rehabilitasyon Hizmetleri",
     naceCode: "87.30",
@@ -104,6 +106,7 @@ export const defaultCompanyDirectory: CompanyRecord[] = [
     name: "RiskNova Demo Fabrika",
     shortName: "Demo Fabrika",
     kind: "Özel Sektör",
+    companyType: "asil_isveren",
     address: "Elazığ OSB",
     sector: "Metal İşleme ve İmalat",
     naceCode: "25.62",
@@ -143,6 +146,7 @@ export const defaultCompanyDirectory: CompanyRecord[] = [
     name: "RiskNova Demo İnşaat Sahası",
     shortName: "Demo Şantiye",
     kind: "Şantiye",
+    companyType: "asil_isveren",
     address: "Elazığ Merkez",
     sector: "Yapı İşleri",
     naceCode: "41.20",
@@ -228,6 +232,7 @@ export function normalizeCompanyDirectory(
       name: normalizeText(company.name),
       shortName: normalizeText(company.shortName),
       kind: normalizeText(company.kind),
+      companyType: normalizeText(company.companyType || "bagimsiz"),
       address: normalizeText(company.address),
       sector: normalizeText(company.sector),
       naceCode: normalizeText(company.naceCode),

@@ -13,6 +13,8 @@ import { type WTab, OverviewTab, StructureTab, RiskTab, TrackingTab, DocumentsTa
 import { CompanyPlannerTab } from "@/components/companies/CompanyPlannerTab";
 import { TeamManagementTab } from "@/components/companies/TeamManagementTab";
 import { OrganizationPanel } from "@/components/companies/OrganizationPanel";
+import CompanyRelationshipsTab from "@/components/companies/CompanyRelationshipsTab";
+import { COMPANY_TYPE_LABELS, type CompanyType } from "@/lib/company-types";
 
 const AK = "risknova_archived_companies";
 const DK = "risknova_deleted_companies";
@@ -25,6 +27,7 @@ const TABS: { k: WTab; l: string }[] = [
   { k: "overview", l: "Genel Durum" }, { k: "structure", l: "Yerle\u015Fke" }, { k: "risk", l: "Risk ve Saha" },
   { k: "people", l: "Ekip" }, { k: "personnel", l: "Personel" }, { k: "planner", l: "Planlama" }, { k: "tracking", l: "Takip" },
   { k: "documents", l: "D\u00F6k\u00FCmanlar" }, { k: "organization", l: "Organizasyon" },
+  { k: "relationships", l: "Firma \u0130li\u015Fkileri" },
   { k: "history", l: "Ge\u00E7mi\u015F" }, { k: "digital_twin", l: "Dijital \u0130kiz" },
 ];
 
@@ -171,6 +174,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
           <div className="flex flex-wrap items-center gap-2">
             {risk && <Badge variant={rbv(risk.label)}>{risk.label}{risk.score !== null ? ` ${risk.score}` : ""}</Badge>}
             {company.hazardClass && <Badge variant={hbv(company.hazardClass)}>{company.hazardClass}</Badge>}
+            {company.companyType && company.companyType !== "bagimsiz" && <Badge variant="accent">{COMPANY_TYPE_LABELS[company.companyType as CompanyType] || company.companyType}</Badge>}
             <Button size="sm" onClick={() => void save()} disabled={saving}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
             <Button variant="outline" size="sm" onClick={() => setTab("organization")}>Davet Et</Button>
           </div>
@@ -220,6 +224,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
           {tab === "tracking" && <TrackingTab company={company} />}
           {tab === "documents" && <DocumentsTab company={company} />}
           {tab === "organization" && <OrganizationPanel companyId={companyId} />}
+          {tab === "relationships" && company && <CompanyRelationshipsTab companyId={companyId} companyName={company.name} companyType={company.companyType || "bagimsiz"} />}
           {tab === "history" && <HistoryTab />}
           {tab === "digital_twin" && <DigitalTwinTab />}
         </main>

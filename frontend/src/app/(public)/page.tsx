@@ -196,7 +196,7 @@ export default function LandingPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-[linear-gradient(135deg,rgba(11,95,193,0.14)_0%,var(--card)_62%,rgba(151,197,31,0.20)_100%)]">
+          <Card className="bg-[linear-gradient(135deg,rgba(11,95,193,0.14)_0%,var(--card)_62%,rgba(96,165,250,0.12)_100%)]">
             <CardHeader className="p-7">
               <Badge className="w-fit">Hazır CTA Alanı</Badge>
               <CardTitle className="text-2xl">

@@ -37,7 +37,7 @@ export function AuthShell({
 
       <section className="page-shell py-8 lg:py-12">
         <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <Card className="overflow-hidden border-transparent bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_26%),linear-gradient(135deg,#0b5fc1_0%,#126fd9_42%,#0e52a8_68%,#97c51f_100%)] text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
+          <Card className="overflow-hidden border-transparent bg-[var(--header-bg)] text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
             <CardHeader className="gap-4 p-8 sm:p-10">
               <Badge className="w-fit border-white/20 bg-white/12 text-white">
                 {eyebrow}

@@ -1218,7 +1218,7 @@ export function RiskAnalysisClient() {
                     }
                   />
 
-                  <div className="mt-5 rounded-[1.25rem] border border-dashed border-primary/20 bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.95)_55%,rgba(151,197,31,0.12)_100%)] p-5">
+                  <div className="mt-5 rounded-[1.25rem] border border-dashed border-primary/20 bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.95)_55%,rgba(96,165,250,0.10)_100%)] p-5">
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <Button
                         type="button"
@@ -1580,7 +1580,7 @@ export function RiskAnalysisClient() {
                       </div>
 
                       {selectedImage ? (
-                        <div className="overflow-hidden rounded-[1.5rem] border border-red-300/25 bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.97)_55%,rgba(151,197,31,0.14)_100%)] shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
+                        <div className="overflow-hidden rounded-[1.5rem] border border-border bg-[linear-gradient(135deg,rgba(11,95,193,0.08)_0%,rgba(255,255,255,0.97)_55%,rgba(96,165,250,0.12)_100%)] shadow-[0_18px_40px_rgba(15,23,42,0.10)]">
                           <div className="relative aspect-[4/3]">
                             <img
                               src={selectedImage.previewUrl}
@@ -1635,7 +1635,7 @@ export function RiskAnalysisClient() {
                               }}
                               className={`w-full rounded-2xl border p-4 text-left transition-colors ${
                                 active
-                                  ? "border-red-400/35 bg-[linear-gradient(135deg,rgba(11,95,193,0.10)_0%,rgba(255,255,255,0.97)_58%,rgba(151,197,31,0.14)_100%)] shadow-[0_0_0_1px_rgba(239,68,68,0.12),0_18px_36px_rgba(11,95,193,0.16),0_0_20px_rgba(239,68,68,0.10)]"
+                                  ? "border-[#0b5fc1]/40 bg-[linear-gradient(135deg,rgba(11,95,193,0.10)_0%,rgba(255,255,255,0.97)_58%,rgba(96,165,250,0.12)_100%)] shadow-[0_18px_36px_rgba(11,95,193,0.16)]"
                                   : "border-border bg-muted/50 hover:border-primary/40 hover:bg-white hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
                               }`}
                             >

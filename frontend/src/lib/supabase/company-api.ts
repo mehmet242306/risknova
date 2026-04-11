@@ -7,6 +7,7 @@
  */
 import { createClient } from "@/lib/supabase/client";
 import type { CompanyRecord } from "@/lib/company-directory";
+import type { CompanyRelationship } from "@/lib/company-types";
 
 /* ------------------------------------------------------------------ */
 /* Types for DB rows                                                   */
@@ -18,6 +19,7 @@ type CompanyIdentityRow = {
   sector: string | null;
   nace_code: string | null;
   hazard_class: string | null;
+  company_type: string;
   address: string | null;
   city: string | null;
   district: string | null;
@@ -58,6 +60,7 @@ function dbToCompanyRecord(ws: JoinedRow): CompanyRecord {
     name: ci.official_name,
     shortName: ws.display_name || ci.official_name,
     kind: str("kind", "Özel Sektör"),
+    companyType: ci.company_type || str("companyType", "bagimsiz"),
     address: ci.address || str("address"),
     sector: ci.sector || str("sector"),
     naceCode: ci.nace_code || str("naceCode"),
@@ -154,8 +157,8 @@ export async function fetchCompaniesFromSupabase(): Promise<CompanyRecord[] | nu
         id, company_identity_id, display_name, notes, is_archived, metadata, logo_url,
         company_identities!inner (
           id, company_code, official_name, sector, nace_code, hazard_class,
-          address, city, district, is_active, is_archived, archived_at,
-          delete_requested_at, deleted_at
+          company_type, address, city, district, is_active, is_archived,
+          archived_at, delete_requested_at, deleted_at
         )
       `)
       .eq("is_archived", false)
@@ -191,8 +194,8 @@ export async function fetchArchivedFromSupabase(): Promise<CompanyRecord[] | nul
         id, company_identity_id, display_name, notes, is_archived, metadata, logo_url,
         company_identities!inner (
           id, company_code, official_name, sector, nace_code, hazard_class,
-          address, city, district, is_active, is_archived, archived_at,
-          delete_requested_at, deleted_at
+          company_type, address, city, district, is_active, is_archived,
+          archived_at, delete_requested_at, deleted_at
         )
       `)
       .eq("company_identities.is_archived", true)
@@ -226,8 +229,8 @@ export async function fetchDeletedFromSupabase(): Promise<CompanyRecord[] | null
         id, company_identity_id, display_name, notes, is_archived, metadata, logo_url,
         company_identities!inner (
           id, company_code, official_name, sector, nace_code, hazard_class,
-          address, city, district, is_active, is_archived, archived_at,
-          delete_requested_at, deleted_at
+          company_type, address, city, district, is_active, is_archived,
+          archived_at, delete_requested_at, deleted_at
         )
       `)
       .not("company_identities.deleted_at", "is", null);
@@ -292,6 +295,7 @@ export async function saveCompanyToSupabase(company: CompanyRecord): Promise<boo
         sector: company.sector || null,
         nace_code: company.naceCode || null,
         hazard_class: company.hazardClass || null,
+        company_type: company.companyType || "bagimsiz",
         address: company.address || null,
         updated_by: (await supabase.auth.getUser()).data.user?.id ?? null,
       })
@@ -326,6 +330,7 @@ export async function createCompanyInSupabase(company: CompanyRecord): Promise<s
         p_sector: company.sector || null,
         p_nace_code: company.naceCode || null,
         p_hazard_class: company.hazardClass || null,
+        p_company_type: company.companyType || "bagimsiz",
         p_address: company.address || null,
         p_display_name: company.shortName || company.name,
         p_notes: company.notes || null,
@@ -559,4 +564,170 @@ export async function uploadCompanyLogo(
     console.warn("[company-api] uploadLogo exception:", err);
     return null;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Company Relationships API                                           */
+/* ------------------------------------------------------------------ */
+
+/** Resolve a workspace ID to its company_identity_id */
+export async function getCompanyIdentityId(workspaceId: string): Promise<string | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from("company_workspaces")
+    .select("company_identity_id")
+    .eq("id", workspaceId)
+    .single();
+
+  if (error || !data) return null;
+  return data.company_identity_id;
+}
+
+/** Fetch all relationships for a company (as parent or child) */
+export async function fetchCompanyRelationships(
+  companyIdentityId: string,
+): Promise<CompanyRelationship[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("company_relationships")
+    .select(`
+      id, parent_company_id, child_company_id, relationship_type,
+      worksite, contract_start_date, contract_end_date, is_active, notes, created_at,
+      parent:company_identities!parent_company_id(official_name),
+      child:company_identities!child_company_id(official_name)
+    `)
+    .or(`parent_company_id.eq.${companyIdentityId},child_company_id.eq.${companyIdentityId}`)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((r) => ({
+    id: r.id,
+    parent_company_id: r.parent_company_id,
+    child_company_id: r.child_company_id,
+    parent_name: (r.parent as { official_name: string } | null)?.official_name,
+    child_name: (r.child as { official_name: string } | null)?.official_name,
+    relationship_type: r.relationship_type,
+    worksite: r.worksite,
+    contract_start_date: r.contract_start_date,
+    contract_end_date: r.contract_end_date,
+    is_active: r.is_active,
+    notes: r.notes,
+    created_at: r.created_at,
+  }));
+}
+
+/** Create a new company relationship */
+export async function createCompanyRelationship(rel: {
+  parent_company_id: string;
+  child_company_id: string;
+  relationship_type: string;
+  worksite?: string;
+  contract_start_date?: string;
+  contract_end_date?: string;
+  notes?: string;
+}): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+
+  const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { error } = await supabase.from("company_relationships").insert({
+    ...rel,
+    worksite: rel.worksite || null,
+    contract_start_date: rel.contract_start_date || null,
+    contract_end_date: rel.contract_end_date || null,
+    notes: rel.notes || null,
+    created_by: userId,
+    updated_by: userId,
+  });
+
+  if (error) {
+    console.warn("[company-api] createRelationship error:", error.message);
+    return false;
+  }
+  return true;
+}
+
+/** Update an existing company relationship */
+export async function updateCompanyRelationship(
+  id: string,
+  patch: Partial<{
+    relationship_type: string;
+    worksite: string | null;
+    contract_start_date: string | null;
+    contract_end_date: string | null;
+    is_active: boolean;
+    notes: string | null;
+  }>,
+): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+
+  const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const { error } = await supabase
+    .from("company_relationships")
+    .update({ ...patch, updated_by: userId })
+    .eq("id", id);
+
+  if (error) {
+    console.warn("[company-api] updateRelationship error:", error.message);
+    return false;
+  }
+  return true;
+}
+
+/** Delete a company relationship */
+export async function deleteCompanyRelationship(id: string): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+
+  const { error } = await supabase
+    .from("company_relationships")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.warn("[company-api] deleteRelationship error:", error.message);
+    return false;
+  }
+  return true;
+}
+
+/** Fetch a lightweight list of all accessible companies for picker dropdowns */
+export async function fetchCompanyPickerList(): Promise<
+  { identity_id: string; workspace_id: string; name: string; company_type: string }[]
+> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("company_workspaces")
+    .select(`
+      id, company_identity_id,
+      company_identities!inner(official_name, company_type, is_active, is_archived, deleted_at)
+    `)
+    .eq("is_archived", false)
+    .eq("company_identities.is_active", true)
+    .eq("company_identities.is_archived", false)
+    .is("company_identities.deleted_at", null)
+    .order("display_name");
+
+  if (error || !data) return [];
+
+  return data.map((r) => {
+    const ci = r.company_identities as unknown as {
+      official_name: string;
+      company_type: string;
+    };
+    return {
+      identity_id: r.company_identity_id,
+      workspace_id: r.id,
+      name: ci.official_name,
+      company_type: ci.company_type,
+    };
+  });
 }

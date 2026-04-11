@@ -8,11 +8,11 @@ const ghostButtonClass =
   "inline-flex h-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-5 text-sm font-medium text-white transition-colors hover:bg-white/20";
 
 const accentButtonClass =
-  "inline-flex h-11 items-center justify-center rounded-2xl border border-[#97c51f]/40 bg-[linear-gradient(135deg,#97c51f_0%,#b9e22f_100%)] px-5 text-sm font-medium text-[#10220a] shadow-[0_16px_34px_rgba(151,197,31,0.28)] transition-colors hover:brightness-[1.03]";
+  "inline-flex h-11 items-center justify-center rounded-2xl bg-white px-5 text-sm font-medium text-[#0b5fc1] shadow-lg transition-colors hover:bg-white/90";
 
 export function PublicHeader() {
   return (
-    <header className="sticky top-0 z-30 border-b border-white/10 bg-[linear-gradient(90deg,#0b5fc1_0%,#0f6dd2_48%,#084c9a_100%)] backdrop-blur-xl">
+    <header className="sticky top-0 z-30 border-b border-white/10 bg-[var(--header-bg)] backdrop-blur-xl">
       <div className="page-shell py-4">
         <div className="flex items-center justify-between gap-4">
           <Brand href="/" inverted />

@@ -13,7 +13,7 @@ const navigation = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/companies", label: "Firmalar" },
   { href: "/risk-analysis", label: "Risk Analizi" },
-  { href: "/score-history", label: "Skor Geçmişi" },
+  { href: "/solution-center", label: "Çözüm Merkezi" },
   { href: "/planner", label: "Planlayıcı" },
   { href: "/timesheet", label: "Puantaj" },
   { href: "/reports", label: "Raporlar" },

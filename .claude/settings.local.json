@@ -8,7 +8,10 @@
       "Bash(find 'C:\\\\Users\\\\MEHMET YILDIRIM\\\\risknova-platform\\\\frontend\\\\src\\\\lib\\\\supabase' -type f -name *companies* -o -name *api*)",
       "mcp__claude_ai_Supabase__apply_migration",
       "mcp__claude_ai_Supabase__execute_sql",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(node --input-type=module -e \":*)",
+      "Bash(node -e \":*)",
+      "Bash(curl:*)"
     ]
   }
 }

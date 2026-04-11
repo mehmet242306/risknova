@@ -472,11 +472,11 @@ export default function ProfileClient() {
 
       {/* ── Hero card ── */}
       <div className="relative overflow-hidden rounded-[1.75rem] shadow-[var(--shadow-card)]">
-        <div className="bg-[linear-gradient(135deg,#0b5fc1_0%,#2788ff_50%,#97c51f_100%)] px-6 py-8 sm:px-8">
+        <div className="bg-card border-b border-border px-6 py-8 sm:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
             {/* Avatar */}
             <div className="relative shrink-0">
-              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-white text-2xl font-bold text-[#0b5fc1] shadow-xl">
+              <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-border bg-secondary text-2xl font-bold text-primary shadow-xl">
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -494,7 +494,7 @@ export default function ProfileClient() {
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={avatarUploading}
-                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#0b5fc1] text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-card bg-primary text-primary-foreground shadow-md transition hover:brightness-110 disabled:opacity-60"
                 title="Fotoğraf değiştir"
               >
                 {avatarUploading ? (
@@ -520,24 +520,24 @@ export default function ProfileClient() {
 
             {/* Name / meta */}
             <div className="flex-1 pb-1">
-              <h1 className="text-2xl font-bold text-white drop-shadow-md">{displayName}</h1>
-              <p className="mt-0.5 text-sm text-white/90">{email}</p>
+              <h1 className="text-2xl font-bold text-foreground">{displayName}</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">{email}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {profile?.title && (
-                  <span className="inline-flex items-center rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+                  <span className="inline-flex items-center rounded-lg bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                     {profile.title}
                   </span>
                 )}
                 {roles.map((r) => (
                   <span
                     key={r}
-                    className="inline-flex items-center rounded-lg bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm"
+                    className="inline-flex items-center rounded-lg bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
                   >
                     {ROLE_LABELS[r] ?? r}
                   </span>
                 ))}
                 {org && (
-                  <span className="inline-flex items-center gap-1 text-xs text-white/80">
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
                     </svg>
@@ -548,7 +548,7 @@ export default function ProfileClient() {
             </div>
 
             {/* Dates */}
-            <div className="hidden shrink-0 text-right text-xs text-white/80 sm:block">
+            <div className="hidden shrink-0 text-right text-xs text-muted-foreground sm:block">
               <div>Üyelik: {formatDate(profile?.created_at)}</div>
               <div>Güncelleme: {formatDate(profile?.updated_at)}</div>
             </div>

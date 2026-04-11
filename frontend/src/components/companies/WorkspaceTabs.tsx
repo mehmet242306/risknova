@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CompanyRecord } from "@/lib/company-directory";
 import { getGuidedTasks, getOverallRiskState } from "@/lib/workplace-status";
 
-export type WTab = "overview" | "structure" | "risk" | "people" | "personnel" | "planner" | "tracking" | "documents" | "organization" | "history" | "digital_twin";
+export type WTab = "overview" | "structure" | "risk" | "people" | "personnel" | "planner" | "tracking" | "documents" | "organization" | "relationships" | "history" | "digital_twin";
 
 function pbv(p: string): "danger" | "warning" | "neutral" {
   if (p === "high") return "danger";
@@ -77,6 +77,7 @@ export function OverviewTab({ company, upd, risk, tasks, setTab }: {
           <div><label className="text-xs font-medium text-muted-foreground">{"Firma Ad\u0131"}</label><Input value={company.name} onChange={(e) => upd({ name: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">{"K\u0131sa Ad"}</label><Input value={company.shortName} onChange={(e) => upd({ shortName: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">{"T\u00FCr"}</label><select value={company.kind} onChange={(e) => upd({ kind: e.target.value })} className={FC}><option>{"\u00D6zel Sekt\u00F6r"}</option><option>Kamu Kurumu</option><option>Belediye</option><option>{"STK / Vak\u0131f"}</option></select></div>
+          <div><label className="text-xs font-medium text-muted-foreground">{"ISG Firma Tipi"}</label><select value={company.companyType || "bagimsiz"} onChange={(e) => upd({ companyType: e.target.value })} className={FC}><option value="bagimsiz">{"Ba\u011F\u0131ms\u0131z"}</option><option value="asil_isveren">{"As\u0131l \u0130\u015Fveren"}</option><option value="alt_isveren">{"Alt \u0130\u015Fveren (Ta\u015Feron)"}</option><option value="alt_yuklenici">{"Alt Y\u00FCklenici"}</option><option value="osgb">OSGB</option></select></div>
           <div><label className="text-xs font-medium text-muted-foreground">{"Sekt\u00F6r"}</label><Input value={company.sector} onChange={(e) => upd({ sector: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">NACE Kodu</label><Input value={company.naceCode} onChange={(e) => upd({ naceCode: e.target.value })} className="mt-1" /></div>
           <div><label className="text-xs font-medium text-muted-foreground">{"Tehlike S\u0131n\u0131f\u0131"}</label><select value={company.hazardClass} onChange={(e) => upd({ hazardClass: e.target.value })} className={FC}><option value="">{"Se\u00E7iniz"}</option><option>Az Tehlikeli</option><option>Tehlikeli</option><option>{"\u00C7ok Tehlikeli"}</option></select></div>

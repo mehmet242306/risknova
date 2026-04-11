@@ -15,12 +15,12 @@
   --card: #FFFFFF;
   --card-foreground: #0F172A;
 
-  --primary: #0F4C75;
-  --primary-hover: #0D4266;
+  --primary: #0b5fc1;
+  --primary-hover: #0a4fa8;
   --primary-foreground: #FFFFFF;
 
-  --accent: #1B6B93;
-  --accent-hover: #175B7D;
+  --accent: #2788ff;
+  --accent-hover: #1a6fd6;
   --accent-foreground: #FFFFFF;
 
   --secondary: #EEF2F7;
@@ -37,7 +37,7 @@
   --danger: #DC2626;
   --info: #0EA5E9;
 
-  --ring: rgba(15, 76, 117, 0.24);
+  --ring: rgba(11, 95, 193, 0.24);
 
   --radius: 0.75rem;
   --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.08);
@@ -49,6 +49,9 @@
   --header-muted: rgba(255, 255, 255, 0.6);
   --header-active: #ffffff;
   --header-border: rgba(255, 255, 255, 0.1);
+
+  --hero-from: #0b5fc1;
+  --hero-to: #2788ff;
 
   --hz-safe: #22C55E;
   --hz-warn: #F59E0B;
@@ -66,13 +69,13 @@
   --card: #1E293B;
   --card-foreground: #F1F5F9;
 
-  --primary: #14B8A6;
-  --primary-hover: #2DD4BF;
-  --primary-foreground: #042F2E;
+  --primary: #2788ff;
+  --primary-hover: #60a5fa;
+  --primary-foreground: #FFFFFF;
 
-  --accent: #38BDF8;
-  --accent-hover: #7DD3FC;
-  --accent-foreground: #0C4A6E;
+  --accent: #60a5fa;
+  --accent-hover: #93c5fd;
+  --accent-foreground: #0c2d6b;
 
   --secondary: #1E293B;
   --secondary-foreground: #F1F5F9;
@@ -88,7 +91,7 @@
   --danger: #F87171;
   --info: #38BDF8;
 
-  --ring: rgba(20, 184, 166, 0.3);
+  --ring: rgba(39, 136, 255, 0.3);
 
   --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -99,6 +102,9 @@
   --header-muted: rgba(255, 255, 255, 0.5);
   --header-active: #ffffff;
   --header-border: rgba(255, 255, 255, 0.08);
+
+  --hero-from: #1e3a5f;
+  --hero-to: #2788ff;
 
   --hz-safe: #4ADE80;
   --hz-warn: #FCD34D;
@@ -136,6 +142,9 @@
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-info: var(--info);
+
+  --color-hero-from: var(--hero-from);
+  --color-hero-to: var(--hero-to);
 
   --font-sans:
     "Inter", "Segoe UI", ui-sans-serif, system-ui, -apple-system,
@@ -180,7 +189,7 @@ html {
   }
 
   ::selection {
-    background: rgba(15, 118, 110, 0.18);
+    background: rgba(11, 95, 193, 0.18);
     color: var(--foreground);
   }
 
@@ -236,12 +245,12 @@ html {
 
   .eyebrow {
     @apply inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider;
-    background: rgba(15, 118, 110, 0.08);
+    background: rgba(11, 95, 193, 0.08);
     color: var(--primary);
   }
 
   [data-theme="dark"] .eyebrow {
-    background: rgba(20, 184, 166, 0.12);
+    background: rgba(39, 136, 255, 0.12);
   }
 
   .data-grid {

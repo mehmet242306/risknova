@@ -643,7 +643,7 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
           <button
             type="button"
             onClick={() => { setModalDate(undefined); setModalTask(null); }}
-            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-red-400/40 bg-[linear-gradient(135deg,#0b5fc1_0%,#2788ff_100%)] px-5 text-sm font-medium text-white shadow-[0_16px_34px_rgba(11,95,193,0.28)] hover:brightness-[1.04]"
+            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl bg-[#0b5fc1] px-5 text-sm font-medium text-white shadow-lg hover:bg-[#0a4fa8] transition-colors"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -659,7 +659,7 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
           <button
             type="button"
             onClick={() => { setModalDate(undefined); setModalTask(null); }}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-[linear-gradient(135deg,#0b5fc1_0%,#2788ff_100%)] px-4 text-sm font-medium text-white shadow-[0_8px_20px_rgba(11,95,193,0.25)] hover:brightness-[1.04]"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-xl bg-[#0b5fc1] px-4 text-sm font-medium text-white shadow-lg hover:bg-[#0a4fa8] transition-colors"
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />

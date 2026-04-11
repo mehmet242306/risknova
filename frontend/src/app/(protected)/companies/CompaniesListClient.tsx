@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { defaultCompanyDirectory, loadCompanyDirectory, saveCompanyDirectory, type CompanyRecord } from "@/lib/company-directory";
 import { getOverallRiskState } from "@/lib/workplace-status";
+import { COMPANY_TYPE_LABELS, type CompanyType } from "@/lib/company-types";
 import { fetchCompaniesFromSupabase, fetchArchivedFromSupabase, fetchDeletedFromSupabase, createCompanyInSupabase, archiveCompanyInSupabase, restoreCompanyInSupabase, deleteCompanyInSupabase, permanentDeleteFromSupabase } from "@/lib/supabase/company-api";
 
 /* ── localStorage helpers (fallback) ── */
@@ -19,7 +20,7 @@ function ldD(): CompanyRecord[] { if (typeof window === "undefined") return []; 
 function svD(l: CompanyRecord[]) { localStorage.setItem(DK, JSON.stringify(l)); }
 
 function mkEmpty(): CompanyRecord {
-  return { id: crypto.randomUUID(), name: "Yeni Firma / Kurum", shortName: "Yeni Kayıt", kind: "Özel Sektör", address: "", sector: "", naceCode: "", hazardClass: "", employeeCount: 0, shiftModel: "", phone: "", email: "", contactPerson: "", employerName: "", employerRepresentative: "", notes: "", activeProfessionals: 0, employeeRepresentativeCount: 0, supportStaffCount: 0, openActions: 0, overdueActions: 0, openRiskAssessments: 0, documentCount: 0, completionRate: 0, maturityScore: 0, openRiskScore: 0, last30DayImprovement: 0, completedTrainingCount: 0, expiringTrainingCount: 0, periodicControlCount: 0, overduePeriodicControlCount: 0, lastAnalysisDate: "", lastInspectionDate: "", lastDrillDate: "", locations: [""], departments: [""] };
+  return { id: crypto.randomUUID(), name: "Yeni Firma / Kurum", shortName: "Yeni Kayıt", kind: "Özel Sektör", companyType: "bagimsiz", address: "", sector: "", naceCode: "", hazardClass: "", employeeCount: 0, shiftModel: "", phone: "", email: "", contactPerson: "", employerName: "", employerRepresentative: "", notes: "", activeProfessionals: 0, employeeRepresentativeCount: 0, supportStaffCount: 0, openActions: 0, overdueActions: 0, openRiskAssessments: 0, documentCount: 0, completionRate: 0, maturityScore: 0, openRiskScore: 0, last30DayImprovement: 0, completedTrainingCount: 0, expiringTrainingCount: 0, periodicControlCount: 0, overduePeriodicControlCount: 0, lastAnalysisDate: "", lastInspectionDate: "", lastDrillDate: "", locations: [""], departments: [""] };
 }
 
 function rBV(l: string): "success" | "warning" | "danger" | "neutral" { if (l === "Kritik") return "danger"; if (l === "Yüksek" || l === "Orta") return "warning"; if (l === "Kontrollü") return "success"; return "neutral"; }
@@ -162,7 +163,7 @@ export function CompaniesListClient() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <Link href={`/companies/${co.id}`} className="block truncate text-base font-semibold text-foreground hover:text-primary transition-colors">{co.name}</Link>
-                        <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{co.kind}{co.sector ? ` · ${co.sector}` : ""}{co.address ? ` · ${co.address}` : ""}</p>
+                        <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{co.kind}{co.companyType && co.companyType !== "bagimsiz" ? ` · ${COMPANY_TYPE_LABELS[co.companyType as CompanyType] || co.companyType}` : ""}{co.sector ? ` · ${co.sector}` : ""}{co.address ? ` · ${co.address}` : ""}</p>
                       </div>
                     </div>
                     <Badge variant={rBV(risk.label)} className="shrink-0 text-[10px]">{risk.label}{risk.score !== null ? ` ${risk.score}` : ""}</Badge>
