@@ -149,7 +149,6 @@ function logAuth(
   const ts = new Date().toISOString();
   const userPart = context.userId ? ` [user=${context.userId}]` : "";
   const errorPart = context.error !== undefined ? context.error : "";
-  // eslint-disable-next-line no-console
   console.error(`[api-auth] [${ts}]${userPart} ${message}`, errorPart);
 }
 
