@@ -4,8 +4,8 @@
 
 This note captures the first production phase of:
 
-- Section 5 — Admin monitoring and management screens
-- Section 6 — Legal and operational documents
+- Section 5 - Admin monitoring and management screens
+- Section 6 - Legal and operational documents
 
 ## Implemented admin screens
 
@@ -61,7 +61,7 @@ Main objects added:
 Also added:
 
 - observability helper functions
-- database runtime/table/slow-query helper RPCs
+- database runtime, table, and slow-query helper RPCs
 - admin permissions and role seeds
 - seed document definitions and initial versions for Section 6 documents
 
@@ -112,3 +112,17 @@ Not fully implemented yet:
 - email fan-out for admin notifications
 
 These areas have usable visibility and data foundations, but not full operational automation yet.
+
+## Operational status
+
+This phase is considered closed for the current repo scope.
+
+Final operational notes:
+
+- migration `20260413020000_section5_admin_observability_and_documents.sql` initially had a SQL syntax issue in `list_database_runtime_stats()`
+- the runtime stats query was corrected
+- the corrected migration was applied to the remote Supabase project
+- Section 5 and 6 code was pushed to `main`
+- admin monitoring and document center foundations are active
+
+Remaining items are future product improvements, not blockers for closing this phase.
