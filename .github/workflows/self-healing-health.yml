@@ -16,8 +16,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$APP_BASE_URL" || { echo "::error::Missing APP_BASE_URL"; exit 1; }
-          test -n "$SELF_HEALING_CRON_SECRET" || { echo "::error::Missing SELF_HEALING_CRON_SECRET"; exit 1; }
+          if [ -z "${APP_BASE_URL:-}" ] || [ -z "${SELF_HEALING_CRON_SECRET:-}" ]; then
+            echo "::notice title=Self-healing health skipped::APP_BASE_URL veya SELF_HEALING_CRON_SECRET tanimli degil."
+            exit 0
+          fi
 
       - name: Run self-healing health checks
         shell: bash

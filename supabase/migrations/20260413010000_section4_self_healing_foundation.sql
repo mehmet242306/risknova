@@ -195,7 +195,8 @@ join role_map r on r.code = m.role_code
 join permission_map p on p.code = m.permission_code
 on conflict (role_id, permission_id) do nothing;
 
-create policy if not exists service_resilience_states_select_admin
+drop policy if exists service_resilience_states_select_admin on public.service_resilience_states;
+create policy service_resilience_states_select_admin
 on public.service_resilience_states
 for select
 to authenticated
@@ -204,7 +205,8 @@ using (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists health_checks_select_admin
+drop policy if exists health_checks_select_admin on public.health_checks;
+create policy health_checks_select_admin
 on public.health_checks
 for select
 to authenticated
@@ -213,7 +215,8 @@ using (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists recovery_scenarios_select_admin
+drop policy if exists recovery_scenarios_select_admin on public.recovery_scenarios;
+create policy recovery_scenarios_select_admin
 on public.recovery_scenarios
 for select
 to authenticated
@@ -222,7 +225,8 @@ using (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists recovery_scenarios_manage_admin
+drop policy if exists recovery_scenarios_manage_admin on public.recovery_scenarios;
+create policy recovery_scenarios_manage_admin
 on public.recovery_scenarios
 for all
 to authenticated
@@ -235,7 +239,8 @@ with check (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists task_queue_select_admin_or_owner
+drop policy if exists task_queue_select_admin_or_owner on public.task_queue;
+create policy task_queue_select_admin_or_owner
 on public.task_queue
 for select
 to authenticated
@@ -245,7 +250,8 @@ using (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists task_queue_manage_admin
+drop policy if exists task_queue_manage_admin on public.task_queue;
+create policy task_queue_manage_admin
 on public.task_queue
 for all
 to authenticated
@@ -258,7 +264,8 @@ with check (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists backup_runs_select_admin
+drop policy if exists backup_runs_select_admin on public.backup_runs;
+create policy backup_runs_select_admin
 on public.backup_runs
 for select
 to authenticated
@@ -267,7 +274,8 @@ using (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists backup_runs_manage_admin
+drop policy if exists backup_runs_manage_admin on public.backup_runs;
+create policy backup_runs_manage_admin
 on public.backup_runs
 for all
 to authenticated
@@ -280,7 +288,8 @@ with check (
   or public.user_has_permission('settings.manage')
 );
 
-create policy if not exists deployment_logs_select_admin
+drop policy if exists deployment_logs_select_admin on public.deployment_logs;
+create policy deployment_logs_select_admin
 on public.deployment_logs
 for select
 to authenticated
