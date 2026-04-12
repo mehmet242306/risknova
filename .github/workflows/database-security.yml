@@ -14,6 +14,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       SUPABASE_POOLER_HOST: ${{ secrets.SUPABASE_POOLER_HOST }}
     steps:
       - uses: actions/checkout@v6
@@ -31,6 +32,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ -n "${SUPABASE_DB_URL:-}" ]; then
+            exit 0
+          fi
           test -n "$SUPABASE_PROJECT_REF" || { echo "::error::Missing SUPABASE_PROJECT_REF"; exit 1; }
           test -n "$SUPABASE_DB_PASSWORD" || { echo "::error::Missing SUPABASE_DB_PASSWORD"; exit 1; }
 
@@ -45,19 +49,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          POOLER_HOST="${SUPABASE_POOLER_HOST:-aws-1-eu-west-1.pooler.supabase.com}"
-          DB_PASSWORD_ENCODED="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')"
-          DB_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD_ENCODED}@${POOLER_HOST}:5432/postgres?sslmode=require"
+          if [ -n "${SUPABASE_DB_URL:-}" ]; then
+            DB_URL="$SUPABASE_DB_URL"
+          else
+            POOLER_HOST="${SUPABASE_POOLER_HOST:-aws-1-eu-west-1.pooler.supabase.com}"
+            DB_PASSWORD_ENCODED="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')"
+            DB_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD_ENCODED}@${POOLER_HOST}:5432/postgres?sslmode=require"
+          fi
+          echo "::add-mask::$DB_URL"
           echo "SUPABASE_DB_URL=${DB_URL}" >> "$GITHUB_ENV"
 
       - name: Verify database connection
         shell: bash
         run: |
           set -euxo pipefail
-          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "select current_database(), current_user;" || {
-              echo "::error title=Database connection failed::psql could not connect to Supabase"
-              exit 1
-            }
+          if ! psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "select current_database(), current_user;" 2> /tmp/psql_connect.err; then
+            echo "::error title=Database connection failed::$(head -n 1 /tmp/psql_connect.err | tr -d '\r')"
+            cat /tmp/psql_connect.err
+            exit 1
+          fi
 
       - name: Validate migration history
         shell: bash
