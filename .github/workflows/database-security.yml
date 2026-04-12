@@ -57,13 +57,13 @@ jobs:
             DB_URL="postgresql://postgres.${SUPABASE_PROJECT_REF}:${DB_PASSWORD_ENCODED}@${POOLER_HOST}:5432/postgres?sslmode=require"
           fi
           echo "::add-mask::$DB_URL"
-          echo "SUPABASE_DB_URL=${DB_URL}" >> "$GITHUB_ENV"
+          echo "WORKFLOW_DB_URL=${DB_URL}" >> "$GITHUB_ENV"
 
       - name: Verify database connection
         shell: bash
         run: |
           set -euxo pipefail
-          if ! psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "select current_database(), current_user;" 2> /tmp/psql_connect.err; then
+          if ! psql "$WORKFLOW_DB_URL" -v ON_ERROR_STOP=1 -c "select current_database(), current_user;" 2> /tmp/psql_connect.err; then
             echo "::error title=Database connection failed::$(head -n 1 /tmp/psql_connect.err | tr -d '\r')"
             cat /tmp/psql_connect.err
             exit 1
@@ -74,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           find supabase/migrations -maxdepth 1 -type f -name '*.sql' -printf '%f\n' | sort > /tmp/local_migrations.txt
-          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -At -c "select version || '_' || name || '.sql' from supabase_migrations.schema_migrations order by version;" > /tmp/remote_migrations.txt
+          psql "$WORKFLOW_DB_URL" -v ON_ERROR_STOP=1 -At -c "select version || '_' || name || '.sql' from supabase_migrations.schema_migrations order by version;" > /tmp/remote_migrations.txt
           missing_count="$(comm -23 /tmp/local_migrations.txt /tmp/remote_migrations.txt | tee /tmp/pending_migrations.txt | wc -l | tr -d ' ')"
           if [ "$missing_count" != "0" ]; then
             echo "::error title=Migration validation failed::Remote database is missing committed migrations"
@@ -87,7 +87,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -c "select * from public.rls_tests();" || {
+          psql "$WORKFLOW_DB_URL" -v ON_ERROR_STOP=1 -c "select * from public.rls_tests();" || {
               echo "::error title=RLS test suite failed::public.rls_tests() returned an error"
               exit 1
             }
