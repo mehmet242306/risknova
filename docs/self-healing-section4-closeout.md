@@ -97,6 +97,21 @@ Not: GitHub Actions cron minimum 5 dakika oldugu icin "her dakika" istekleri bur
 - `SELF_HEALING_CRON_SECRET`
 - mevcut DB / Supabase secret'lari
 
+## Canliya Alma Sonrasi Zorunlu Hatirlatma
+
+Site su an canli ortamda degilse, `Self-Healing Health`, `Self-Healing Queue`, `Self-Healing Backup`, `Self-Healing Backup Daily` ve `Deployment Smoke` workflow'larinin gercekten calismasi icin canliya alma aninda asagidaki adimlar tamamlanmali:
+
+- GitHub Actions secret olarak `APP_BASE_URL` eklenmeli
+- GitHub Actions secret olarak `SELF_HEALING_CRON_SECRET` eklenmeli
+- Ayni `SELF_HEALING_CRON_SECRET` degeri uygulamanin calistigi ortam degiskenlerine de eklenmeli (ornegin Vercel environment variables)
+- Canli domain uzerinden su workflow'lar bir kez manuel dogrulanmali:
+  - `Self-Healing Health`
+  - `Self-Healing Queue`
+  - `Self-Healing Backup`
+  - `Deployment Smoke`
+
+Not: Bu adimlar tamamlanmadan self-healing workflow'lari ya skip olur ya da gercek endpoint'lere dogrulama yapamaz.
+
 ## Kismen Tamamlanan / Sonraki Faz
 
 - Edge Function helper tum function'lara yayildi, ancak her bir is akisinda queue fallback ve domain-level manuel alternatifler hala ikinci faz konusu.
