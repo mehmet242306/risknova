@@ -50,32 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${SUPABASE_DB_URL:-}" ]; then
-            DB_URL="$(python3 - <<'PY'
-import os
-from urllib.parse import urlsplit, urlunsplit
-
-raw = os.environ["SUPABASE_DB_URL"]
-project_ref = os.environ["SUPABASE_PROJECT_REF"]
-parts = urlsplit(raw)
-
-hostname = parts.hostname or ""
-username = parts.username or ""
-password = parts.password or ""
-port = f":{parts.port}" if parts.port else ""
-
-if hostname.endswith(".pooler.supabase.com") and username == "postgres":
-    username = f"postgres.{project_ref}"
-
-netloc = username
-if password:
-    netloc += f":{password}"
-if hostname:
-    netloc += f"@{hostname}{port}"
-
-normalized = urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
-print(normalized)
-PY
-)"
+            DB_URL="$(python3 -c 'import os; from urllib.parse import urlsplit, urlunsplit; raw=os.environ[\"SUPABASE_DB_URL\"]; project_ref=os.environ[\"SUPABASE_PROJECT_REF\"]; parts=urlsplit(raw); hostname=parts.hostname or \"\"; username=parts.username or \"\"; password=parts.password or \"\"; port=f\":{parts.port}\" if parts.port else \"\"; username = f\"postgres.{project_ref}\" if hostname.endswith(\".pooler.supabase.com\") and username == \"postgres\" else username; netloc=username; netloc += f\":{password}\" if password else \"\"; netloc += f\"@{hostname}{port}\" if hostname else \"\"; print(urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment)))')"
           else
             POOLER_HOST="${SUPABASE_POOLER_HOST:-aws-1-eu-west-1.pooler.supabase.com}"
             DB_PASSWORD_ENCODED="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')"
