@@ -15,12 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: supabase/setup-cli@v1
+      - uses: actions/setup-node@v4
         with:
-          version: latest
+          node-version: "22"
 
-      - name: Install psql client
+      - name: Install CLI tools
         run: |
+          npm install --global supabase
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
