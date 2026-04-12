@@ -48,7 +48,8 @@ type Message = {
 
 const authenticatedWelcomeActions: WidgetAction[] = [
   { label: "Nova Calisma Alani", path: "/solution-center", icon: "N" },
-  { label: "Sorgu Gecmisi", path: "/solution-center/history", icon: "H" },
+  { label: "Planlayici", path: "/planner", icon: "P" },
+  { label: "Yeni Olay", path: "/incidents/new", icon: "O" },
   { label: "Dokumanlar", path: "/solution-center/documents", icon: "D" },
 ];
 
@@ -104,7 +105,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           id: "welcome",
           role: "bot",
           text: isAuthenticated
-            ? "Merhaba! Ben Nova. Bu pencere dogrudan gercek cozum ajaniyla baglantili calisir. Hizli bir soru sorabilir veya tam oturum icin Nova calisma alanina gecebilirsiniz."
+            ? "Merhaba! Ben Nova. Mevzuati yorumlayabilir, sizi dogru modullere goturebilir, egitim veya gorev planlayabilir, olay taslagi baslatabilir ve dokuman akisini hazirlayabilirim. Dilerseniz burada yazin, dilerseniz Nova calisma alanina gecin."
             : "Merhaba! Nova artik ornek veya anahtar kelime cevabi vermiyor. Gercek ajana erismek icin giris yapmaniz gerekir. Isterseniz hemen oturum acin veya hesap olusturun.",
           suggestions: isAuthenticated ? authenticatedWelcomeActions : publicEntryActions,
           timestamp: new Date(),
@@ -216,7 +217,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         navigation,
         suggestions:
           navigation == null && answer.length < 220
-            ? authenticatedWelcomeActions.slice(0, 2)
+            ? authenticatedWelcomeActions.slice(0, 3)
             : undefined,
         timestamp: new Date(),
       };
@@ -228,7 +229,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         id: crypto.randomUUID(),
         role: "bot",
         text: "Uzgunum, su an cevap veremiyorum. Lutfen biraz sonra tekrar deneyin veya Nova calisma alanini kullanin.",
-        suggestions: [{ label: "Nova Calisma Alani", path: "/solution-center", icon: "N" }],
+        suggestions: authenticatedWelcomeActions.slice(0, 2),
         timestamp: new Date(),
         isError: true,
       };

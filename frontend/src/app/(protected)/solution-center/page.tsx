@@ -459,6 +459,25 @@ const quickQuestions = [
   "İş kazası bildirimi kaç gün içinde yapılmalı?",
 ];
 
+void novaModes;
+void quickQuestions;
+
+const novaOperationalModes = [
+  { label: "Mevzuat", hint: "mevzuati yorumlasin, kaynak gostersin ve riskleri aciklasin", badge: "RAG" },
+  { label: "Planlama", hint: "egitim, kurul ve operasyon gorevlerini olustursun", badge: "ACTION" },
+  { label: "Olay", hint: "ramak kala ve kaza taslaklarini baslatip sizi yonlendirsin", badge: "INCIDENT" },
+  { label: "Dokuman", hint: "editor icin prosedur, rapor ve taslaklar hazirlasin", badge: "DOC" },
+];
+
+const novaActionQuestions = [
+  "25 Haziran'a yuksekte calisma egitimi planla",
+  "28 Haziran icin aylik kurul toplantisi gorevi olustur",
+  "Yeni bir ramak kala olay taslagi baslat",
+  "Acil durum proseduru icin dokuman taslagi hazirla",
+  "Bu firmadaki acik riskleri ozetle",
+  "Is kazasi bildirimi kac gun icinde yapilmali?",
+];
+
 function WelcomeScreen({ onQuickQuestion }: { onQuickQuestion: (q: string) => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4 py-12">
@@ -476,7 +495,7 @@ function WelcomeScreen({ onQuickQuestion }: { onQuickQuestion: (q: string) => vo
       </div>
 
       <div className="grid w-full max-w-4xl gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {novaModes.map((mode) => (
+        {novaOperationalModes.map((mode) => (
           <div
             key={mode.label}
             className="rounded-2xl border border-border bg-card px-4 py-4 text-left shadow-[var(--shadow-soft)]"
@@ -493,7 +512,7 @@ function WelcomeScreen({ onQuickQuestion }: { onQuickQuestion: (q: string) => vo
       </div>
 
       <div className="grid w-full max-w-3xl gap-2 sm:grid-cols-2">
-        {quickQuestions.map((q) => (
+        {novaActionQuestions.map((q) => (
           <button
             key={q}
             type="button"

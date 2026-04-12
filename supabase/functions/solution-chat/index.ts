@@ -91,6 +91,8 @@ interface ToolResult {
 }
 
 const ISG_TASK_CATEGORY_EGITIM = '9b722ae5-0a72-48c8-9d1f-836e1a114b8a'
+const ISG_TASK_CATEGORY_PERIYODIK_KONTROL = '5656072d-c601-453d-a3c6-fa40e5a624e6'
+const ISG_TASK_CATEGORY_ISG_KURUL = '7e4dda4c-d0c0-4e61-adce-eba783e43085'
 
 const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
@@ -278,6 +280,81 @@ const NOVA_TOOLS = [
         company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' }
       },
       required: ['title', 'training_date']
+    }
+  },
+  {
+    name: 'create_planner_task',
+    description: 'Firma icin planner veya takip gorevi olusturur. Toplanti, kontrol, saha turu, kurul veya genel planlama taleplerinde kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Gorev basligi' },
+        start_date: { type: 'string', description: 'Baslangic tarihi (YYYY-MM-DD)' },
+        end_date: { type: 'string', description: 'Bitis tarihi (YYYY-MM-DD, opsiyonel)' },
+        description: { type: 'string', description: 'Gorev aciklamasi' },
+        location: { type: 'string', description: 'Lokasyon (opsiyonel)' },
+        recurrence: {
+          type: 'string',
+          enum: ['none', 'daily', 'weekly', 'monthly', 'quarterly', 'biannual', 'annual'],
+          default: 'none'
+        },
+        reminder_days: { type: 'integer', description: 'Kac gun once hatirlatma yapilacagi', default: 7 },
+        category_hint: {
+          type: 'string',
+          enum: ['genel', 'egitim', 'isg_kurul', 'periyodik_kontrol'],
+          default: 'genel'
+        },
+        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' }
+      },
+      required: ['title', 'start_date']
+    }
+  },
+  {
+    name: 'create_incident_draft',
+    description: 'Olay taslagi olusturur. Kullanici yeni olay, ramak kala, is kazasi veya meslek hastaligi kaydi baslatmak istediginde kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        incident_type: {
+          type: 'string',
+          enum: ['work_accident', 'near_miss', 'occupational_disease'],
+          description: 'Olay tipi'
+        },
+        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' },
+        incident_date: { type: 'string', description: 'Olay tarihi (YYYY-MM-DD, opsiyonel)' },
+        incident_time: { type: 'string', description: 'Olay saati (HH:MM, opsiyonel)' },
+        incident_location: { type: 'string', description: 'Olay lokasyonu (opsiyonel)' },
+        incident_department: { type: 'string', description: 'Bolum (opsiyonel)' },
+        general_activity: { type: 'string', description: 'Genel faaliyet (opsiyonel)' },
+        tool_used: { type: 'string', description: 'Kullanilan arac veya ekipman (opsiyonel)' },
+        description: { type: 'string', description: 'Kisa olay aciklamasi (opsiyonel)' },
+        severity_level: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'critical'],
+          description: 'On degerlendirme siddeti (opsiyonel)'
+        },
+        dof_required: { type: 'boolean', default: false },
+        ishikawa_required: { type: 'boolean', default: false }
+      },
+      required: ['incident_type']
+    }
+  },
+  {
+    name: 'create_document_draft',
+    description: 'Editor icinde yeni bir dokuman taslagi olusturur. Prosedur, form, tutanak, plan veya rapor taslagi istendiginde kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Dokuman basligi' },
+        document_type: {
+          type: 'string',
+          enum: ['procedure', 'training_form', 'meeting_minutes', 'risk_report', 'emergency_plan', 'inspection_report', 'checklist', 'custom'],
+          default: 'custom'
+        },
+        summary: { type: 'string', description: 'Taslak kapsam veya amac ozeti' },
+        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' }
+      },
+      required: ['title']
     }
   }
 ]
@@ -475,6 +552,195 @@ async function getActiveWorkspaceId(
   return ws?.id || null
 }
 
+async function getUserProfileId(context: ToolContext): Promise<string | null> {
+  const { data: profile } = await context.supabase
+    .from('user_profiles')
+    .select('id')
+    .eq('auth_user_id', context.user.id)
+    .maybeSingle()
+
+  return profile?.id || null
+}
+
+async function buildUserPreferenceContext(context: ToolContext): Promise<string> {
+  const [profileRes, preferenceRes] = await Promise.all([
+    context.supabase
+      .from('user_profiles')
+      .select('full_name, title')
+      .eq('auth_user_id', context.user.id)
+      .maybeSingle(),
+    context.supabase
+      .from('user_preferences')
+      .select('language, email_notifications, push_notifications')
+      .eq('user_id', context.user.id)
+      .maybeSingle(),
+  ])
+
+  const profile = profileRes.data
+  const preferences = preferenceRes.data
+
+  if (!profile && !preferences) return ''
+
+  if (context.session.language === 'en') {
+    return [
+      '## USER PREFERENCE MEMORY',
+      profile?.full_name ? `Operator: ${profile.full_name}` : null,
+      profile?.title ? `Role title: ${profile.title}` : null,
+      preferences?.language ? `Preferred interface language: ${preferences.language}` : null,
+      preferences?.email_notifications != null
+        ? `Email notifications: ${preferences.email_notifications ? 'enabled' : 'disabled'}`
+        : null,
+      preferences?.push_notifications != null
+        ? `Push notifications: ${preferences.push_notifications ? 'enabled' : 'disabled'}`
+        : null,
+      'Keep the answer in the active language unless the user explicitly switches language.',
+    ].filter(Boolean).join('\n')
+  }
+
+  return [
+    '## KULLANICI TERCIH HAFIZASI',
+    profile?.full_name ? `Operator: ${profile.full_name}` : null,
+    profile?.title ? `Unvan: ${profile.title}` : null,
+    preferences?.language ? `Tercih edilen arayuz dili: ${preferences.language}` : null,
+    preferences?.email_notifications != null
+      ? `E-posta bildirimleri: ${preferences.email_notifications ? 'acik' : 'kapali'}`
+      : null,
+    preferences?.push_notifications != null
+      ? `Push bildirimleri: ${preferences.push_notifications ? 'acik' : 'kapali'}`
+      : null,
+    'Kullanici dili acikca degistirmedikce aktif dilde cevap ver.',
+  ].filter(Boolean).join('\n')
+}
+
+async function buildActiveWorkspaceContext(context: ToolContext): Promise<string> {
+  const workspaceId = await getActiveWorkspaceId(context)
+  if (!workspaceId) return ''
+
+  const today = new Date().toISOString().slice(0, 10)
+  const last90Days = new Date(Date.now() - 90 * 86400000).toISOString()
+
+  const [workspaceRes, tasksRes, incidentsRes, nextTrainingRes] = await Promise.all([
+    context.supabase
+      .from('company_workspaces')
+      .select('id, display_name, company_identities(official_name, sector, nace_code, hazard_class, city)')
+      .eq('id', workspaceId)
+      .eq('organization_id', context.user.organization_id)
+      .maybeSingle(),
+    context.supabase
+      .from('isg_tasks')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', context.user.organization_id)
+      .eq('company_workspace_id', workspaceId)
+      .in('status', ['planned', 'in_progress']),
+    context.supabase
+      .from('incidents')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', context.user.organization_id)
+      .eq('company_workspace_id', workspaceId)
+      .gte('created_at', last90Days),
+    context.supabase
+      .from('company_trainings')
+      .select('title, training_date')
+      .eq('organization_id', context.user.organization_id)
+      .eq('company_workspace_id', workspaceId)
+      .gte('training_date', today)
+      .order('training_date', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ])
+
+  const workspace = workspaceRes.data
+  if (!workspace?.id) return ''
+
+  const identity = Array.isArray(workspace.company_identities)
+    ? workspace.company_identities[0]
+    : workspace.company_identities
+
+  const companyName = workspace.display_name || identity?.official_name || 'Aktif firma'
+  const openTaskCount = tasksRes.count ?? 0
+  const recentIncidentCount = incidentsRes.count ?? 0
+  const nextTraining = nextTrainingRes.data
+
+  if (context.session.language === 'en') {
+    return [
+      '## ACTIVE COMPANY MEMORY',
+      `Default company: ${companyName}`,
+      identity?.sector ? `Sector: ${identity.sector}` : null,
+      identity?.hazard_class ? `Hazard class: ${identity.hazard_class}` : null,
+      identity?.nace_code ? `NACE: ${identity.nace_code}` : null,
+      identity?.city ? `City: ${identity.city}` : null,
+      `Open operational tasks: ${openTaskCount}`,
+      `Incidents in the last 90 days: ${recentIncidentCount}`,
+      nextTraining?.training_date
+        ? `Next planned training: ${nextTraining.title || 'Training'} on ${nextTraining.training_date}`
+        : null,
+      'Use this company as the default action context unless the user clearly switches company.',
+    ].filter(Boolean).join('\n')
+  }
+
+  return [
+    '## AKTIF FIRMA HAFIZASI',
+    `Varsayilan firma: ${companyName}`,
+    identity?.sector ? `Sektor: ${identity.sector}` : null,
+    identity?.hazard_class ? `Tehlike sinifi: ${identity.hazard_class}` : null,
+    identity?.nace_code ? `NACE: ${identity.nace_code}` : null,
+    identity?.city ? `Sehir: ${identity.city}` : null,
+    `Acik operasyon gorevi: ${openTaskCount}`,
+    `Son 90 gundeki olay sayisi: ${recentIncidentCount}`,
+    nextTraining?.training_date
+      ? `Siradaki planli egitim: ${nextTraining.title || 'Egitim'} - ${nextTraining.training_date}`
+      : null,
+    'Aksiyon toollarinda kullanici acikca farkli bir firma istemedikce bu firmayi varsayilan baglam olarak kullan.',
+  ].filter(Boolean).join('\n')
+}
+
+function buildNovaDocumentContent(title: string, summary: string, language: string) {
+  const intro = language === 'en'
+    ? 'This draft was created by Nova as a starting point for operational work.'
+    : 'Bu taslak Nova tarafindan operasyon akisini hizlandirmak icin olusturuldu.'
+  const scope = summary
+    ? (language === 'en' ? `Scope: ${summary}` : `Kapsam: ${summary}`)
+    : (language === 'en'
+      ? 'The scope and details of this draft are waiting for review.'
+      : 'Bu taslagin kapsam ve detaylari gozden gecirilmeyi bekliyor.')
+
+  return {
+    type: 'doc',
+    content: [
+      {
+        type: 'heading',
+        attrs: { level: 1 },
+        content: [{ type: 'text', text: title }],
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: intro }],
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: scope }],
+      },
+      {
+        type: 'bulletList',
+        content: [
+          {
+            type: 'listItem',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: language === 'en' ? 'Objectives and legal basis' : 'Amac ve yasal dayanak' }] }],
+          },
+          {
+            type: 'listItem',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: language === 'en' ? 'Operational steps and responsibilities' : 'Operasyon adimlari ve sorumluluklar' }] }],
+          },
+          {
+            type: 'listItem',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: language === 'en' ? 'Review and approval notes' : 'Gozden gecirme ve onay notlari' }] }],
+          },
+        ],
+      },
+    ],
+  }
+}
+
 async function executeCreateTrainingPlan(input: any, context: ToolContext): Promise<ToolResult> {
   try {
     const title = String(input.title || '').trim()
@@ -593,6 +859,256 @@ async function executeCreateTrainingPlan(input: any, context: ToolContext): Prom
     }
   } catch (err: any) {
     console.error('[create_training_plan] error:', err)
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
+async function executeCreatePlannerTask(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const title = String(input.title || '').trim()
+    const startDate = String(input.start_date || '').trim()
+
+    if (!title) return { success: false, error: 'Gorev basligi gerekli' }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      return { success: false, error: 'Baslangic tarihi YYYY-MM-DD formatinda olmali' }
+    }
+
+    const workspaceId = await getActiveWorkspaceId(context, input.company_workspace_id || null)
+    if (!workspaceId) {
+      return { success: false, error: 'Gorev olusturmak icin aktif firma bulunamadi.' }
+    }
+
+    const { data: workspace } = await context.supabase
+      .from('company_workspaces')
+      .select('id, display_name')
+      .eq('id', workspaceId)
+      .eq('organization_id', context.user.organization_id)
+      .maybeSingle()
+
+    if (!workspace?.id) {
+      return { success: false, error: 'Gorev olusturulacak firma bulunamadi.' }
+    }
+
+    const categoryHint = String(input.category_hint || 'genel')
+    const categoryId = categoryHint === 'egitim'
+      ? ISG_TASK_CATEGORY_EGITIM
+      : categoryHint === 'isg_kurul'
+        ? ISG_TASK_CATEGORY_ISG_KURUL
+        : categoryHint === 'periyodik_kontrol'
+          ? ISG_TASK_CATEGORY_PERIYODIK_KONTROL
+          : null
+
+    const endDate = typeof input.end_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.end_date)
+      ? input.end_date
+      : null
+    const recurrence = ['none', 'daily', 'weekly', 'monthly', 'quarterly', 'biannual', 'annual'].includes(input.recurrence)
+      ? input.recurrence
+      : 'none'
+    const reminderDays = Math.max(0, Math.min(365, Number(input.reminder_days ?? 7)))
+
+    const { data: taskRow, error: taskError } = await context.supabase
+      .from('isg_tasks')
+      .insert({
+        organization_id: context.user.organization_id,
+        company_workspace_id: workspaceId,
+        title,
+        description: String(input.description || '').trim() || null,
+        category_id: categoryId,
+        start_date: startDate,
+        end_date: endDate,
+        recurrence,
+        status: 'planned',
+        location: String(input.location || '').trim() || null,
+        reminder_days: reminderDays,
+      })
+      .select('id, title, start_date, status')
+      .single()
+
+    if (taskError || !taskRow?.id) {
+      console.error('[create_planner_task] isg_tasks insert failed:', taskError)
+      return { success: false, error: 'Planner gorevi olusturulamadi.' }
+    }
+
+    return {
+      success: true,
+      data: {
+        task_id: taskRow.id,
+        title: taskRow.title,
+        start_date: taskRow.start_date,
+        status: taskRow.status,
+        company_workspace_id: workspaceId,
+        company_name: workspace.display_name ?? null,
+        summary: `${title} gorevi ${startDate} icin planlandi.`,
+        navigation: {
+          action: 'navigate',
+          url: `/companies/${workspaceId}?tab=planner`,
+          label: 'Planner gorevi olusturuldu',
+          reason: 'Gorevi planner sekmesinde gorebilir ve duzenleyebilirsiniz.',
+          destination: 'company_planner',
+          auto_navigate: false,
+        },
+      },
+    }
+  } catch (err: any) {
+    console.error('[create_planner_task] error:', err)
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
+async function executeCreateIncidentDraft(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const incidentType = String(input.incident_type || '').trim()
+    if (!['work_accident', 'near_miss', 'occupational_disease'].includes(incidentType)) {
+      return { success: false, error: 'Gecerli bir olay tipi gerekli' }
+    }
+
+    const workspaceId = await getActiveWorkspaceId(context, input.company_workspace_id || null)
+    if (!workspaceId) {
+      return { success: false, error: 'Olay taslagi icin aktif firma bulunamadi.' }
+    }
+
+    const { data: workspace } = await context.supabase
+      .from('company_workspaces')
+      .select('id, display_name')
+      .eq('id', workspaceId)
+      .eq('organization_id', context.user.organization_id)
+      .maybeSingle()
+
+    if (!workspace?.id) {
+      return { success: false, error: 'Olay taslagi olusturulacak firma bulunamadi.' }
+    }
+
+    const payload: Record<string, unknown> = {
+      organization_id: context.user.organization_id,
+      company_workspace_id: workspaceId,
+      incident_type: incidentType,
+      status: 'draft',
+      description: String(input.description || '').trim() || null,
+      incident_location: String(input.incident_location || '').trim() || null,
+      incident_department: String(input.incident_department || '').trim() || null,
+      general_activity: String(input.general_activity || '').trim() || null,
+      tool_used: String(input.tool_used || '').trim() || null,
+      dof_required: Boolean(input.dof_required ?? false),
+      ishikawa_required: Boolean(input.ishikawa_required ?? false),
+      created_by: context.user.id,
+    }
+
+    if (typeof input.incident_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.incident_date)) {
+      payload.incident_date = input.incident_date
+    }
+    if (typeof input.incident_time === 'string' && /^\d{2}:\d{2}$/.test(input.incident_time)) {
+      payload.incident_time = input.incident_time
+    }
+    if (typeof input.severity_level === 'string' && ['low', 'medium', 'high', 'critical'].includes(input.severity_level)) {
+      payload.severity_level = input.severity_level
+    }
+
+    const { data: incidentRow, error: incidentError } = await context.supabase
+      .from('incidents')
+      .insert(payload)
+      .select('id, incident_code, incident_type, status')
+      .single()
+
+    if (incidentError || !incidentRow?.id) {
+      console.error('[create_incident_draft] incidents insert failed:', incidentError)
+      return { success: false, error: 'Olay taslagi olusturulamadi.' }
+    }
+
+    return {
+      success: true,
+      data: {
+        incident_id: incidentRow.id,
+        incident_code: incidentRow.incident_code,
+        incident_type: incidentRow.incident_type,
+        status: incidentRow.status,
+        company_workspace_id: workspaceId,
+        company_name: workspace.display_name ?? null,
+        summary: `${incidentRow.incident_code} olay taslagi olusturuldu.`,
+        navigation: {
+          action: 'navigate',
+          url: `/incidents/${incidentRow.id}`,
+          label: 'Olay taslagi hazir',
+          reason: 'Taslagi detay ekraninda tamamlayabilirsiniz.',
+          destination: 'incident_detail',
+          auto_navigate: false,
+        },
+      },
+    }
+  } catch (err: any) {
+    console.error('[create_incident_draft] error:', err)
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
+async function executeCreateDocumentDraft(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const title = String(input.title || '').trim()
+    if (!title) return { success: false, error: 'Dokuman basligi gerekli' }
+
+    const documentType = String(input.document_type || 'custom').trim()
+    const groupKeyMap: Record<string, string> = {
+      procedure: 'procedure',
+      training_form: 'training_form',
+      meeting_minutes: 'meeting_minutes',
+      risk_report: 'risk_report',
+      emergency_plan: 'emergency_plan',
+      inspection_report: 'inspection_report',
+      checklist: 'checklist',
+      custom: 'custom',
+    }
+    const groupKey = groupKeyMap[documentType] || 'custom'
+    const summary = String(input.summary || '').trim()
+
+    const profileId = await getUserProfileId(context)
+    const workspaceId = await getActiveWorkspaceId(context, input.company_workspace_id || null)
+
+    const { data: documentRow, error: documentError } = await context.supabase
+      .from('editor_documents')
+      .insert({
+        organization_id: context.user.organization_id,
+        company_workspace_id: workspaceId,
+        template_id: null,
+        group_key: groupKey,
+        title,
+        content_json: buildNovaDocumentContent(title, summary, context.session.language),
+        variables_data: {
+          generated_by: 'nova',
+          document_type: documentType,
+          request_summary: summary || null,
+          company_workspace_id: workspaceId,
+        },
+        status: 'taslak',
+        prepared_by: profileId,
+      })
+      .select('id, title, group_key, status')
+      .single()
+
+    if (documentError || !documentRow?.id) {
+      console.error('[create_document_draft] editor_documents insert failed:', documentError)
+      return { success: false, error: 'Dokuman taslagi olusturulamadi.' }
+    }
+
+    return {
+      success: true,
+      data: {
+        document_id: documentRow.id,
+        title: documentRow.title,
+        group_key: documentRow.group_key,
+        status: documentRow.status,
+        company_workspace_id: workspaceId,
+        summary: `${title} dokuman taslagi olusturuldu.`,
+        navigation: {
+          action: 'navigate',
+          url: `/documents/${documentRow.id}`,
+          label: 'Dokuman taslagi hazir',
+          reason: 'Taslagi editor ekraninda tamamlayabilirsiniz.',
+          destination: 'document_detail',
+          auto_navigate: false,
+        },
+      },
+    }
+  } catch (err: any) {
+    console.error('[create_document_draft] error:', err)
     return { success: false, error: `Hata: ${err.message}` }
   }
 }
@@ -750,6 +1266,15 @@ async function executeTool(toolName: string, input: any, context: ToolContext): 
       case 'create_training_plan':
         result = await executeCreateTrainingPlan(input, context)
         break
+      case 'create_planner_task':
+        result = await executeCreatePlannerTask(input, context)
+        break
+      case 'create_incident_draft':
+        result = await executeCreateIncidentDraft(input, context)
+        break
+      case 'create_document_draft':
+        result = await executeCreateDocumentDraft(input, context)
+        break
       default:
         result = { success: false, error: `Bilinmeyen tool: ${toolName}` }
     }
@@ -790,9 +1315,7 @@ async function logToolCall(
 // NAVIGATION EXTRACTOR
 // ============================================================================
 
-function extractNavigation(toolsUsed: string[], messages: any[]): any | null {
-  if (!toolsUsed.includes('navigate_to_page')) return null
-
+function extractNavigation(_toolsUsed: string[], messages: any[]): any | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i]
     if (!Array.isArray(msg.content)) continue
@@ -1247,8 +1770,8 @@ serve(async (req) => {
     let systemPrompt = getSystemPrompt(language)
 
     systemPrompt += language === 'tr'
-      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, olustur, takvime ekle, baslat, yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan tool'unu kullan.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi dogrudan yap; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle ve gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.`
-      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling requests.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, execute the action directly; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.`
+      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi dogrudan yap; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle ve gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.`
+      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, execute the action directly; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.`
 
     // Zayıf cache eşleşmesi varsa, Claude'a ipucu olarak ver
     if (cacheResult.isWeakMatch && cacheResult.answer) {
@@ -1259,7 +1782,15 @@ Benzer bir soruya daha önce şu cevap verilmiş:
 Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
     }
 
-    const FREE_TOOLS = ['search_legislation', 'search_past_answers', 'navigate_to_page', 'create_training_plan']
+    const FREE_TOOLS = [
+      'search_legislation',
+      'search_past_answers',
+      'navigate_to_page',
+      'create_training_plan',
+      'create_planner_task',
+      'create_incident_draft',
+      'create_document_draft',
+    ]
     const availableTools = NOVA_TOOLS.filter(tool =>
       FREE_TOOLS.includes(tool.name) ||
       allowedTools.includes(tool.name) ||
@@ -1289,6 +1820,19 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
         language: language,
         company_workspace_id: body.company_workspace_id ?? null
       }
+    }
+
+    const [userMemory, workspaceMemory] = await Promise.all([
+      buildUserPreferenceContext(toolContext),
+      buildActiveWorkspaceContext(toolContext),
+    ])
+
+    if (userMemory) {
+      systemPrompt += `\n\n${userMemory}`
+    }
+
+    if (workspaceMemory) {
+      systemPrompt += `\n\n${workspaceMemory}`
     }
 
     // Tool Use Loop
