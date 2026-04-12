@@ -52,7 +52,7 @@ jobs:
           set -euxo pipefail
           DB_PASSWORD_ENCODED="$(node -p 'encodeURIComponent(process.env.SUPABASE_DB_PASSWORD)')"
           DB_URL="postgresql://postgres:${DB_PASSWORD_ENCODED}@db.${SUPABASE_PROJECT_REF}.supabase.co:5432/postgres?sslmode=require"
-          npx --yes supabase@latest --debug db push --db-url "$DB_URL" --dry-run --include-all || {
+          npx --yes supabase@latest --debug db push --linked=false --db-url "$DB_URL" --dry-run --include-all || {
             echo "::error title=Migration validation failed::supabase db push --dry-run failed"
             exit 1
           }
