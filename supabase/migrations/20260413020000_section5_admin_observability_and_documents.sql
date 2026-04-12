@@ -391,7 +391,7 @@ begin
     count(*)::integer as total_connections,
     count(*) filter (where state = 'active')::integer as active_connections,
     count(*) filter (where wait_event_type is not null)::integer as waiting_connections,
-    v_slow_query_count;
+    v_slow_query_count
   from pg_stat_activity
   where datname = current_database();
 end;
