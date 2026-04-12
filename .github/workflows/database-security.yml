@@ -18,15 +18,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "22"
-
       - name: Install CLI tools
+        shell: bash
         run: |
-          npm install --global supabase
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+          set -euo pipefail
+          if ! command -v node >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y nodejs npm
+          fi
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          npm install --global supabase || {
+            echo "::error title=CLI installation failed::Failed to install Supabase CLI"
+            exit 1
+          }
 
       - name: Validate required secrets
         shell: bash
@@ -49,8 +56,14 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          supabase link --project-ref "$SUPABASE_PROJECT_REF" -p "$SUPABASE_DB_PASSWORD"
-          supabase --debug db push --linked --dry-run --include-all
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" -p "$SUPABASE_DB_PASSWORD" || {
+            echo "::error title=Supabase link failed::Could not link to remote project"
+            exit 1
+          }
+          supabase --debug db push --linked --dry-run --include-all || {
+            echo "::error title=Migration validation failed::supabase db push --dry-run failed"
+            exit 1
+          }
 
       - name: Verify database connection
         shell: bash
@@ -60,7 +73,10 @@ jobs:
           set -euxo pipefail
           psql "host=db.$SUPABASE_PROJECT_REF.supabase.co port=5432 dbname=postgres user=postgres sslmode=require" \
             -v ON_ERROR_STOP=1 \
-            -c "select current_database(), current_user;"
+            -c "select current_database(), current_user;" || {
+              echo "::error title=Database connection failed::psql could not connect to Supabase"
+              exit 1
+            }
 
       - name: Run RLS pgTAP suite
         shell: bash
@@ -70,4 +86,7 @@ jobs:
           set -euxo pipefail
           psql "host=db.${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co port=5432 dbname=postgres user=postgres sslmode=require" \
             -v ON_ERROR_STOP=1 \
-            -c "select * from public.rls_tests();"
+            -c "select * from public.rls_tests();" || {
+              echo "::error title=RLS test suite failed::public.rls_tests() returned an error"
+              exit 1
+            }
