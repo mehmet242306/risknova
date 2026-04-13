@@ -83,11 +83,15 @@ export async function POST(request: NextRequest) {
   try {
     const payload = bodySchema.parse(await request.json());
     const supabase = await createClient();
+    const internalServiceSecret =
+      process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || null;
 
     let authContext =
       payload.access_token
         ? await resolveAuthFromAccessToken(payload.access_token, supabase)
         : null;
+
+    let useInternalNovaAuth = false;
 
     if (!authContext) {
       const auth = await requireAuth(request);
@@ -101,31 +105,44 @@ export async function POST(request: NextRequest) {
         (await supabase.auth.getSession()).data.session?.access_token ??
         null;
 
-      if (!accessToken) {
-        return NextResponse.json(
-          {
-            message:
-              "Nova oturumunuzu dogrulayamadi. Lutfen cikis yapip tekrar girin ve yeniden deneyin.",
-            detail: refreshError?.message ?? "access_token_missing",
-          },
-          { status: 401 },
-        );
-      }
-
       authContext = {
         userId: auth.userId,
         organizationId: auth.organizationId,
-        accessToken,
+        accessToken: accessToken ?? "",
       };
+
+      useInternalNovaAuth = !accessToken;
+
+      if (useInternalNovaAuth && !internalServiceSecret) {
+        return NextResponse.json(
+          {
+            message:
+              "Nova sunucu dogrulama katmani su an hazir degil. Lutfen daha sonra tekrar deneyin.",
+            detail: refreshError?.message ?? "internal_auth_secret_missing",
+          },
+          { status: 500 },
+        );
+      }
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      apikey: getPublishableKey(),
+    };
+
+    if (authContext.accessToken) {
+      headers.Authorization = `Bearer ${authContext.accessToken}`;
+    }
+
+    if (useInternalNovaAuth && internalServiceSecret) {
+      headers["x-nova-internal-auth"] = internalServiceSecret;
+      headers["x-nova-user-id"] = authContext.userId;
+      headers["x-nova-organization-id"] = authContext.organizationId;
     }
 
     const response = await fetch(`${getSupabaseUrl()}/functions/v1/solution-chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authContext.accessToken}`,
-        apikey: getPublishableKey(),
-      },
+      headers,
       body: JSON.stringify({
         message: payload.message,
         organization_id: authContext.organizationId,

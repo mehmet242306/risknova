@@ -49,7 +49,7 @@ function buildCorsHeaders(req: Request) {
 
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-nova-internal-auth, x-nova-user-id, x-nova-organization-id',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
   }
@@ -4419,7 +4419,16 @@ serve(async (req) => {
     }
 
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    const internalAuthHeader = req.headers.get('x-nova-internal-auth')
+    const internalUserId = req.headers.get('x-nova-user-id')
+    const internalOrganizationId = req.headers.get('x-nova-organization-id')
+    const internalAuthAllowed =
+      !!internalAuthHeader &&
+      internalAuthHeader === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') &&
+      !!internalUserId &&
+      !!internalOrganizationId
+
+    if (!authHeader && !internalAuthAllowed) {
       return await jsonErrorResponse(req, {
         status: 401,
         error: 'missing_auth',
@@ -4427,18 +4436,13 @@ serve(async (req) => {
       })
     }
 
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Yetkilendirme gerekli' }),
-        { status: 401, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
-      )
-    }
-
     // Supabase client
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
+      authHeader
+        ? { global: { headers: { Authorization: authHeader } } }
+        : undefined
     )
 
     const anthropic = new Anthropic({
@@ -4449,9 +4453,19 @@ serve(async (req) => {
       apiKey: Deno.env.get('OPENAI_API_KEY')!
     })
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
+    let user: { id: string } | null = null
+    let authError: { message?: string } | null = null
+
+    if (internalAuthAllowed) {
+      user = { id: internalUserId! }
+      body.organization_id = internalOrganizationId!
+    } else {
+      const authResult = await supabase.auth.getUser(
+        authHeader!.replace('Bearer ', '')
+      )
+      user = authResult.data.user
+      authError = authResult.error
+    }
 
     if (authError || !user) {
       return await jsonErrorResponse(req, {
@@ -4462,13 +4476,6 @@ serve(async (req) => {
           auth_error: authError?.message ?? null,
         },
       })
-    }
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Kullanıcı doğrulanamadı' }),
-        { status: 401, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
-      )
     }
 
     // Subscription kontrolü
