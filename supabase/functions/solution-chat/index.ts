@@ -59,6 +59,26 @@ const MAX_TOOL_ITERATIONS = 10
 const MAX_TOKENS = 4096
 const TEMPERATURE = 0.3
 
+const SUPPORTED_NOVA_LANGUAGES = [
+  'tr',
+  'en',
+  'ar',
+  'ru',
+  'de',
+  'fr',
+  'es',
+  'zh',
+  'ja',
+  'hi',
+  'ko',
+  'az',
+  'id',
+] as const
+
+type NovaLanguage = typeof SUPPORTED_NOVA_LANGUAGES[number]
+
+const NOVA_STRATEGIC_MEMORY_STALE_MS = 6 * 60 * 60 * 1000
+
 // Cosine similarity eşikleri (0-1 arası, 1 = tam eşleşme)
 const CACHE_STRONG_MATCH = 0.92   // Güçlü: direkt dön
 const CACHE_WEAK_MATCH = 0.85     // Zayıf: Claude'a ipucu ver
@@ -72,7 +92,7 @@ interface ChatRequest {
   session_id?: string
   organization_id: string
   company_workspace_id?: string
-  language?: string
+  language?: NovaLanguage
   history?: Array<{ role: 'user' | 'assistant', content: string }>
 }
 
@@ -80,7 +100,12 @@ interface ToolContext {
   user: { id: string; organization_id: string; role: string; preferred_language: string }
   subscription: { plan_key: string; allowed_tools: string[]; subscription_id: string }
   supabase: SupabaseClient
-  session: { id: string; language: string; company_workspace_id?: string | null }
+  session: {
+    id: string
+    language: 'tr' | 'en'
+    answer_language: NovaLanguage
+    company_workspace_id?: string | null
+  }
 }
 
 interface ToolResult {
@@ -106,7 +131,7 @@ const chatRequestSchema = z.object({
   session_id: z.string().uuid().optional(),
   organization_id: z.string().uuid(),
   company_workspace_id: z.string().uuid().optional(),
-  language: z.enum(['tr', 'en']).optional(),
+  language: z.enum(SUPPORTED_NOVA_LANGUAGES).optional(),
   history: z.array(
     z.object({
       role: z.enum(['user', 'assistant']),
@@ -190,8 +215,66 @@ NEVER:
 - Referenced (cite from tools)
 - Respond in user's language`
 
-function getSystemPrompt(language: string): string {
-  return language === 'tr' ? NOVA_SYSTEM_PROMPT_TR : NOVA_SYSTEM_PROMPT_EN
+function normalizeNovaLanguage(language?: string | null): NovaLanguage {
+  if (!language) return 'tr'
+  const normalized = String(language).trim().toLowerCase()
+  return (SUPPORTED_NOVA_LANGUAGES as readonly string[]).includes(normalized)
+    ? (normalized as NovaLanguage)
+    : 'tr'
+}
+
+function getOperationalLanguage(language: NovaLanguage): 'tr' | 'en' {
+  return language === 'tr' ? 'tr' : 'en'
+}
+
+function getNovaLanguageLabel(language: NovaLanguage): string {
+  const labels: Record<NovaLanguage, string> = {
+    tr: 'Turkish',
+    en: 'English',
+    ar: 'Arabic',
+    ru: 'Russian',
+    de: 'German',
+    fr: 'French',
+    es: 'Spanish',
+    zh: 'Chinese',
+    ja: 'Japanese',
+    hi: 'Hindi',
+    ko: 'Korean',
+    az: 'Azerbaijani',
+    id: 'Indonesian',
+  }
+
+  return labels[language]
+}
+
+function getSystemPrompt(language: NovaLanguage): string {
+  const operationalLanguage = getOperationalLanguage(language)
+  const basePrompt = operationalLanguage === 'tr' ? NOVA_SYSTEM_PROMPT_TR : NOVA_SYSTEM_PROMPT_EN
+  const answerLanguageLabel = getNovaLanguageLabel(language)
+
+  if (operationalLanguage === 'tr') {
+    return `${basePrompt}
+
+## YANIT DILI MODU
+- Son yaniti ${answerLanguageLabel} dilinde ver.
+- Resmi mevzuat adlarini, madde numaralarini ve kaynak basliklarini orijinal haliyle koru.
+- Mevzuat yorumunda cevabi uc katmanda kur:
+  1. Kaynaga dayali bulgu
+  2. Nova yorumu / operasyonel yorum
+  3. Onerilen sonraki adim
+- Kullanici farkli bir dilde yazsa bile operasyon ve mevzuat tutarliligini bozma.`
+  }
+
+  return `${basePrompt}
+
+## RESPONSE LANGUAGE MODE
+- Deliver the final answer in ${answerLanguageLabel}.
+- Keep official regulation titles, article numbers, and source names in their original form.
+- For regulation-heavy answers, structure the response in three parts:
+  1. Source-backed finding
+  2. Nova interpretation
+  3. Recommended operational next step
+- Keep operational guidance concise and globally understandable.`
 }
 
 function detectMessageLanguage(text: string, fallback: 'tr' | 'en' = 'tr'): 'tr' | 'en' {
@@ -230,6 +313,63 @@ function resolveConversationLanguage(
   return detectMessageLanguage(`${recentContext}\n${message}`, requested)
 }
 
+function detectNovaMessageLanguage(text: string, fallback: NovaLanguage = 'tr'): NovaLanguage {
+  const lower = text.toLowerCase()
+
+  if (/\b(answer in english|respond in english|english please)\b/.test(lower)) return 'en'
+  if (/\b(answer in turkish|respond in turkish|turkish please|turkce cevapla|turkce yaz)\b/.test(lower)) return 'tr'
+  if (/\b(responde en español|en español|habla español)\b/.test(lower)) return 'es'
+  if (/\b(repondez en français|en français|parle français)\b/.test(lower)) return 'fr'
+  if (/\b(auf deutsch|deutsch antworten|bitte deutsch)\b/.test(lower)) return 'de'
+  if (/\b(на русском|ответь по-русски|по русски)\b/.test(lower)) return 'ru'
+  if (/\b(bahasa indonesia|dalam bahasa indonesia)\b/.test(lower)) return 'id'
+  if (/\b(azərbaycanca|azerbaycanca|azerice)\b/.test(lower)) return 'az'
+
+  if (/[\u0600-\u06FF]/.test(text)) return 'ar'
+  if (/[\u0400-\u04FF]/.test(text)) return 'ru'
+  if (/[\u4E00-\u9FFF]/.test(text)) return 'zh'
+  if (/[\u3040-\u30FF]/.test(text)) return 'ja'
+  if (/[\u0900-\u097F]/.test(text)) return 'hi'
+  if (/[\uAC00-\uD7AF]/.test(text)) return 'ko'
+
+  const languageSignals: Record<NovaLanguage, string[]> = {
+    tr: ['ve', 'ile', 'icin', 'nasil', 'nedir', 'hangi', 'egitim', 'risk', 'mevzuat', 'gorev', 'olay', 'dokuman', 'planla', 'hazirla'],
+    en: ['and', 'with', 'how', 'what', 'which', 'training', 'incident', 'document', 'schedule', 'plan', 'show', 'prepare', 'regulation'],
+    ar: ['السلام', 'مرحبا', 'التدريب', 'المخاطر', 'السلامة'],
+    ru: ['как', 'что', 'обучение', 'риск', 'закон'],
+    de: ['und', 'wie', 'was', 'schulung', 'risiko', 'verordnung'],
+    fr: ['et', 'comment', 'formation', 'risque', 'règlement', 'reglement'],
+    es: ['y', 'como', 'qué', 'capacitacion', 'riesgo', 'normativa'],
+    zh: ['培训', '风险', '法规', '计划'],
+    ja: ['教育', '研修', 'リスク', '法令'],
+    hi: ['और', 'कैसे', 'प्रशिक्षण', 'जोखिम'],
+    ko: ['교육', '위험', '법규', '계획'],
+    az: ['və', 'necə', 'təlim', 'risk', 'qanunvericilik'],
+    id: ['dan', 'bagaimana', 'pelatihan', 'risiko', 'regulasi'],
+  }
+
+  const best = Object.entries(languageSignals)
+    .map(([lang, tokens]) => ({
+      lang: lang as NovaLanguage,
+      score: tokens.reduce((sum, token) => sum + (lower.includes(token) ? 1 : 0), 0),
+    }))
+    .sort((a, b) => b.score - a.score)[0]
+
+  if (best && best.score > 0) return best.lang
+  if (/[çğıöşüÇĞİÖŞÜ]/.test(text)) return 'tr'
+  return fallback
+}
+
+function resolveNovaConversationLanguage(
+  message: string,
+  requestedLanguage?: string,
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+): NovaLanguage {
+  const requested = normalizeNovaLanguage(requestedLanguage)
+  const recentContext = history?.slice(-4).map((item) => item.content).join(' ') ?? ''
+  return detectNovaMessageLanguage(`${recentContext}\n${message}`, requested)
+}
+
 function detectNovaIntent(message: string): 'regulation' | 'training' | 'planning' | 'incident' | 'document' | 'navigation' | 'analysis' | 'general' {
   const lower = message.toLowerCase()
 
@@ -243,8 +383,24 @@ function detectNovaIntent(message: string): 'regulation' | 'training' | 'plannin
   return 'general'
 }
 
+function detectNovaIntentAdvanced(message: string): 'regulation' | 'training' | 'planning' | 'incident' | 'document' | 'navigation' | 'analysis' | 'general' {
+  const normalized = message
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+
+  if (/(mevzuat|yonetmelik|kanun|madde|regulation|law|article|legal|gesetz|verordnung|ley|leyes|loi|reglement|reglamento|normativa)/.test(normalized)) return 'regulation'
+  if (/(egitim|training|sertifika|certificate|schulung|formation|curso|capacitacion|pelatihan)/.test(normalized)) return 'training'
+  if (/(ramak kala|is kazasi|incident|near miss|occupational disease|olay|unfall|incidente|accident|accidente)/.test(normalized)) return 'incident'
+  if (/(dokuman|procedure|prosedur|report|rapor|form|tutanak|document|dokument|documento|rapport)/.test(normalized)) return 'document'
+  if (/(planla|takvim|gorev|schedule|planner|task|kurul|planifier|programar|planen|aufgabe|agenda)/.test(normalized)) return 'planning'
+  if (/(ac|gotur|show|open|navigate|go to|ouvrir|abrir|offnen|zeigen)/.test(normalized)) return 'navigation'
+  if (/(analiz|analysis|degerlendir|ozetle|risk|analyse|analisis|analizar|bewerten|summary)/.test(normalized)) return 'analysis'
+  return detectNovaIntent(message)
+}
+
 function buildIntentRoutingContext(message: string, language: string): string {
-  const intent = detectNovaIntent(message)
+  const intent = detectNovaIntentAdvanced(message)
 
   if (language === 'en') {
     const hints: Record<string, string> = {
@@ -272,6 +428,28 @@ function buildIntentRoutingContext(message: string, language: string): string {
   }
 
   return `## NIYET YONLENDIRMESI\n${hints[intent]}`
+}
+
+function buildRegulatoryReasoningContext(message: string, language: 'tr' | 'en'): string {
+  if (detectNovaIntentAdvanced(message) !== 'regulation') return ''
+
+  if (language === 'en') {
+    return [
+      '## REGULATORY REASONING LAYER',
+      '- When the user asks a legislation-heavy question, search first and anchor the answer to returned sources.',
+      '- Clearly separate three parts: source-backed finding, Nova interpretation, and operational next step.',
+      '- If multiple sources conflict or point to different duties, say so explicitly instead of flattening them.',
+      '- Treat internal memory as an operational hint, never as regulatory evidence.',
+    ].join('\n')
+  }
+
+  return [
+    '## MEVZUAT YORUM KATMANI',
+    '- Mevzuat agirlikli sorularda once arama yap ve cevabi donen kaynaklara dayandir.',
+    '- Cevabi uc parcaya ayir: kaynaga dayali bulgu, Nova yorumu, operasyonel sonraki adim.',
+    '- Birden fazla kaynak farkli yukumluluklere isaret ediyorsa bunu duzlestirme; acikca belirt.',
+    '- Ic hafizayi sadece operasyon ipucu olarak kullan; mevzuat kaniti yerine koyma.',
+  ].join('\n')
 }
 
 // ============================================================================
@@ -550,6 +728,35 @@ const NOVA_TOOLS = [
 // TOOL EXECUTORS
 // ============================================================================
 
+function inferLegislationMetadata(docTitle: string, articleNumber?: string | null) {
+  const normalizedTitle = (docTitle || '').toLowerCase()
+
+  let sourceType = 'official_document'
+  let bindingLevel = 'high'
+
+  if (normalizedTitle.includes('kanun')) {
+    sourceType = 'law'
+    bindingLevel = 'very_high'
+  } else if (normalizedTitle.includes('yonetmelik')) {
+    sourceType = 'regulation'
+    bindingLevel = 'high'
+  } else if (normalizedTitle.includes('teblig')) {
+    sourceType = 'communique'
+    bindingLevel = 'medium_high'
+  } else if (normalizedTitle.includes('genelge') || normalizedTitle.includes('rehber')) {
+    sourceType = 'guidance'
+    bindingLevel = 'medium'
+  }
+
+  return {
+    jurisdiction: 'TR',
+    source_language: 'tr',
+    source_type: sourceType,
+    binding_level: bindingLevel,
+    official_citation: articleNumber ? `${docTitle} md. ${articleNumber}` : docTitle,
+  }
+}
+
 async function executeSearchLegislation(input: any, context: ToolContext): Promise<ToolResult> {
   try {
     // Build search_terms array from query string
@@ -588,7 +795,8 @@ async function executeSearchLegislation(input: any, context: ToolContext): Promi
               article: chunk.article_number,
               title: chunk.article_title,
               content: (chunk.content || '').substring(0, 500),
-              relevance_score: chunk.rank || 0
+              relevance_score: chunk.rank || 0,
+              ...inferLegislationMetadata(chunk.doc_title || 'Mevzuat', chunk.article_number),
             }))
           }
         }
@@ -605,8 +813,12 @@ async function executeSearchLegislation(input: any, context: ToolContext): Promi
           article: chunk.article_number,
           title: chunk.article_title,
           content: (chunk.content || '').substring(0, 500),
-          relevance_score: chunk.rank || 0
-        }))
+          relevance_score: chunk.rank || 0,
+          ...inferLegislationMetadata(chunk.doc_title || 'Mevzuat', chunk.article_number),
+        })),
+        interpretation_guidance: context.session.language === 'en'
+          ? 'Use these results by clearly separating source-backed statements, Nova interpretation, and operational next step.'
+          : 'Bu sonuclari kullanirken kaynaga dayali bilgi, Nova yorumu ve operasyonel sonraki adimi acikca ayir.',
       }
     }
   } catch (err: any) {
@@ -1025,6 +1237,255 @@ async function buildLearningSignalContext(context: ToolContext): Promise<string>
   }
 }
 
+async function synthesizeStrategicMemorySnapshot(params: {
+  snapshotScope: 'user' | 'company'
+  snapshotKey: string
+  companyWorkspaceId?: string | null
+}, context: ToolContext): Promise<{
+  snapshot_scope: 'user' | 'company'
+  snapshot_key: string
+  company_workspace_id: string | null
+  title: string
+  summary_text: string
+  structured_snapshot: Record<string, unknown>
+  confidence_score: number
+  source_profile_count: number
+  source_signal_count: number
+} | null> {
+  try {
+    let profilesQuery = context.supabase
+      .from('nova_memory_profiles')
+      .select('profile_scope, profile_key, title, summary_text, observation_count, confidence_score, updated_at')
+      .eq('user_id', context.user.id)
+      .order('confidence_score', { ascending: false })
+      .order('observation_count', { ascending: false })
+      .limit(6)
+
+    let signalsQuery = context.supabase
+      .from('nova_learning_signals')
+      .select('signal_label, outcome, signal_key, confidence_score, created_at')
+      .eq('user_id', context.user.id)
+      .order('created_at', { ascending: false })
+      .limit(8)
+
+    let workflowsQuery = context.supabase
+      .from('nova_workflow_runs')
+      .select('workflow_type, title, status, current_step, total_steps, updated_at')
+      .eq('user_id', context.user.id)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(3)
+
+    if (params.snapshotScope === 'company' && params.companyWorkspaceId) {
+      profilesQuery = profilesQuery.or(`company_workspace_id.is.null,company_workspace_id.eq.${params.companyWorkspaceId}`)
+      signalsQuery = signalsQuery.or(`company_workspace_id.is.null,company_workspace_id.eq.${params.companyWorkspaceId}`)
+      workflowsQuery = workflowsQuery.or(`company_workspace_id.is.null,company_workspace_id.eq.${params.companyWorkspaceId}`)
+    } else {
+      profilesQuery = profilesQuery.is('company_workspace_id', null)
+      signalsQuery = signalsQuery.is('company_workspace_id', null)
+    }
+
+    const [profilesRes, signalsRes, workflowsRes] = await Promise.all([
+      profilesQuery,
+      signalsQuery,
+      workflowsQuery,
+    ])
+
+    const profiles = profilesRes.data || []
+    const signals = signalsRes.data || []
+    const workflows = workflowsRes.data || []
+
+    if (!profiles.length && !signals.length && !workflows.length) return null
+
+    const topProfiles = profiles.slice(0, 3)
+    const positiveSignals = signals.filter((item: any) => item.outcome === 'positive').slice(0, 3)
+    const negativeSignals = signals.filter((item: any) => item.outcome === 'negative').slice(0, 2)
+    const workflowTitles = workflows.map((item: any) => item.title).slice(0, 2)
+
+    const title = params.snapshotScope === 'company'
+      ? (context.session.language === 'en' ? 'Company operating profile' : 'Firma operasyon profili')
+      : (context.session.language === 'en' ? 'User working profile' : 'Kullanici calisma profili')
+
+    const summaryLines = context.session.language === 'en'
+      ? [
+          topProfiles.length ? `Top patterns: ${topProfiles.map((item: any) => item.title).join('; ')}` : null,
+          positiveSignals.length ? `Confirmed habits: ${positiveSignals.map((item: any) => item.signal_label).join('; ')}` : null,
+          negativeSignals.length ? `Avoid repeating: ${negativeSignals.map((item: any) => item.signal_label).join('; ')}` : null,
+          workflowTitles.length ? `Active focus chains: ${workflowTitles.join('; ')}` : null,
+        ].filter(Boolean)
+      : [
+          topProfiles.length ? `Temel kaliplar: ${topProfiles.map((item: any) => item.title).join('; ')}` : null,
+          positiveSignals.length ? `Dogrulanan aliskanliklar: ${positiveSignals.map((item: any) => item.signal_label).join('; ')}` : null,
+          negativeSignals.length ? `Tekrar edilmemesi gerekenler: ${negativeSignals.map((item: any) => item.signal_label).join('; ')}` : null,
+          workflowTitles.length ? `Aktif odak akislari: ${workflowTitles.join('; ')}` : null,
+        ].filter(Boolean)
+
+    const confidenceCandidates = [
+      ...topProfiles.map((item: any) => Number(item.confidence_score ?? 0.75)),
+      ...positiveSignals.map((item: any) => Number(item.confidence_score ?? 0.75)),
+    ]
+    const confidenceScore = confidenceCandidates.length
+      ? Math.max(0.55, Math.min(0.98, confidenceCandidates.reduce((sum, value) => sum + value, 0) / confidenceCandidates.length))
+      : 0.7
+
+    return {
+      snapshot_scope: params.snapshotScope,
+      snapshot_key: params.snapshotKey,
+      company_workspace_id: params.companyWorkspaceId ?? null,
+      title,
+      summary_text: summaryLines.join(' | '),
+      structured_snapshot: {
+        top_profiles: topProfiles.map((item: any) => ({
+          key: item.profile_key,
+          title: item.title,
+          summary: item.summary_text,
+        })),
+        positive_signals: positiveSignals.map((item: any) => item.signal_label),
+        negative_signals: negativeSignals.map((item: any) => item.signal_label),
+        active_workflows: workflowTitles,
+      },
+      confidence_score: confidenceScore,
+      source_profile_count: profiles.length,
+      source_signal_count: signals.length,
+    }
+  } catch (err) {
+    console.error('[synthesizeStrategicMemorySnapshot] failed:', err)
+    return null
+  }
+}
+
+async function ensureStrategicMemorySnapshots(context: ToolContext): Promise<any[]> {
+  try {
+    const workspaceId = await getActiveWorkspaceId(context)
+    const desiredSnapshots = [
+      { snapshotScope: 'user' as const, snapshotKey: 'primary-user', companyWorkspaceId: null },
+      ...(workspaceId ? [{ snapshotScope: 'company' as const, snapshotKey: `company:${workspaceId}`, companyWorkspaceId: workspaceId }] : []),
+    ]
+
+    const snapshotKeys = desiredSnapshots.map((item) => item.snapshotKey)
+    let snapshotQuery = context.supabase
+      .from('nova_memory_snapshots')
+      .select('id, snapshot_scope, snapshot_key, title, summary_text, structured_snapshot, confidence_score, source_profile_count, source_signal_count, updated_at')
+      .eq('user_id', context.user.id)
+      .in('snapshot_key', snapshotKeys)
+
+    if (workspaceId) {
+      snapshotQuery = snapshotQuery.or(`company_workspace_id.is.null,company_workspace_id.eq.${workspaceId}`)
+    } else {
+      snapshotQuery = snapshotQuery.is('company_workspace_id', null)
+    }
+
+    const { data: existingSnapshots } = await snapshotQuery
+    const existingMap = new Map<string, any>((existingSnapshots || []).map((item: any) => [item.snapshot_key, item]))
+    let refreshNeeded = false
+
+    for (const desired of desiredSnapshots) {
+      const existing = existingMap.get(desired.snapshotKey)
+      const isStale = existing?.updated_at
+        ? (Date.now() - new Date(existing.updated_at).getTime()) > NOVA_STRATEGIC_MEMORY_STALE_MS
+        : true
+
+      if (existing && !isStale) continue
+
+      const synthesized = await synthesizeStrategicMemorySnapshot(desired, context)
+      if (!synthesized) continue
+
+      refreshNeeded = true
+      await context.supabase
+        .from('nova_memory_snapshots')
+        .upsert({
+          user_id: context.user.id,
+          organization_id: context.user.organization_id,
+          company_workspace_id: desired.companyWorkspaceId ?? null,
+          language: context.session.answer_language,
+          snapshot_scope: synthesized.snapshot_scope,
+          snapshot_key: synthesized.snapshot_key,
+          title: synthesized.title,
+          summary_text: synthesized.summary_text,
+          structured_snapshot: synthesized.structured_snapshot,
+          confidence_score: synthesized.confidence_score,
+          source_profile_count: synthesized.source_profile_count,
+          source_signal_count: synthesized.source_signal_count,
+          last_compacted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,snapshot_scope,snapshot_key',
+        })
+    }
+
+    if (!refreshNeeded) {
+      return existingSnapshots || []
+    }
+
+    const { data: refreshedSnapshots } = await context.supabase
+      .from('nova_memory_snapshots')
+      .select('id, snapshot_scope, snapshot_key, title, summary_text, structured_snapshot, confidence_score, source_profile_count, source_signal_count, updated_at')
+      .eq('user_id', context.user.id)
+      .in('snapshot_key', snapshotKeys)
+
+    return refreshedSnapshots || existingSnapshots || []
+  } catch (err) {
+    console.error('[ensureStrategicMemorySnapshots] failed:', err)
+    return []
+  }
+}
+
+async function buildStrategicMemorySnapshotContext(context: ToolContext): Promise<string> {
+  try {
+    const snapshots = await ensureStrategicMemorySnapshots(context)
+    if (!snapshots.length) return ''
+
+    if (context.session.language === 'en') {
+      return [
+        '## STRATEGIC NOVA MEMORY SNAPSHOTS',
+        ...snapshots.map((item: any) => `- [${item.snapshot_scope}] ${item.title}: ${item.summary_text}`),
+        'Use these compressed snapshots as stable long-term user and company memory. Do not treat them as regulatory evidence.',
+      ].join('\n')
+    }
+
+    return [
+      '## STRATEJIK NOVA HAFIZA SNAPSHOTLARI',
+      ...snapshots.map((item: any) => `- [${item.snapshot_scope}] ${item.title}: ${item.summary_text}`),
+      'Bu snapshotlari istikrarli uzun donem kullanici ve firma hafizasi olarak kullan. Mevzuat kaniti yerine koyma.',
+    ].join('\n')
+  } catch (_err) {
+    return ''
+  }
+}
+
+async function buildWorkflowOrchestrationContext(context: ToolContext): Promise<string> {
+  try {
+    const proactive = await executeGetProactiveOperations({ max_results: 5 }, context)
+    if (!proactive.success || !proactive.data) return ''
+
+    const actions = Array.isArray(proactive.data.follow_up_actions) ? proactive.data.follow_up_actions.slice(0, 4) : []
+    const workflows = Array.isArray(proactive.data.workflows) ? proactive.data.workflows.slice(0, 3) : []
+    const insights = Array.isArray(proactive.data.insights) ? proactive.data.insights.slice(0, 3) : []
+
+    if (!actions.length && !workflows.length && !insights.length) return ''
+
+    if (context.session.language === 'en') {
+      return [
+        '## WORKFLOW ORCHESTRATION LAYER',
+        ...workflows.map((item: any) => `- Active chain: ${item.title}`),
+        ...actions.map((item: any, index: number) => `- Priority ${index + 1}: ${item.label}${item.description ? ` (${item.description})` : ''}`),
+        ...insights.map((item: any) => `- Learning cue: ${item}`),
+        'Use this layer to proactively sequence the next operational steps instead of only answering the last question.',
+      ].join('\n')
+    }
+
+    return [
+      '## WORKFLOW ORKESTRASYON KATMANI',
+      ...workflows.map((item: any) => `- Aktif zincir: ${item.title}`),
+      ...actions.map((item: any, index: number) => `- Oncelik ${index + 1}: ${item.label}${item.description ? ` (${item.description})` : ''}`),
+      ...insights.map((item: any) => `- Ogrenme ipucu: ${item}`),
+      'Bu katmani kullanarak yalnizca son soruya cevap verme; sonraki operasyon adimlarini da proaktif sekilde sirala.',
+    ].join('\n')
+  } catch (_err) {
+    return ''
+  }
+}
+
 async function getWorkflowLearningProfile(
   workflowType: string,
   companyWorkspaceId: string | null,
@@ -1106,7 +1567,7 @@ async function createNovaWorkflow(params: {
         title: params.title,
         summary: params.summary ?? null,
         status: workflowStatus,
-        language: context.session.language,
+        language: context.session.answer_language,
         current_step: Math.max(1, currentStep),
         total_steps: params.steps.length,
         navigation_url: params.navigation?.url ?? null,
@@ -1504,7 +1965,7 @@ async function executeSaveMemoryNote(input: any, context: ToolContext): Promise<
           memory_text: memoryText,
           confidence_score: confidenceScore,
           company_workspace_id: workspaceId,
-          language: context.session.language,
+          language: context.session.answer_language,
           is_active: true,
           updated_at: new Date().toISOString(),
           last_used_at: new Date().toISOString(),
@@ -1527,7 +1988,7 @@ async function executeSaveMemoryNote(input: any, context: ToolContext): Promise<
           memory_type: memoryType,
           title,
           memory_text: memoryText,
-          language: context.session.language,
+          language: context.session.answer_language,
           confidence_score: confidenceScore,
         })
         .select('id')
@@ -1788,9 +2249,22 @@ async function executeGetProactiveOperations(input: any, context: ToolContext): 
         ? `Nova learned: ${item.signal_label}`
         : `Nova ogrendi: ${item.signal_label}`)
 
-    const uniqueActions = followUpActions.filter((item, index, arr) =>
-      arr.findIndex((candidate) => candidate.id === item.id) === index,
-    ).slice(0, maxResults + 2)
+    const priorityRank = (action: Record<string, unknown>) => {
+      const id = String(action.id || '')
+      const status = String(action.status || '')
+
+      if (id.startsWith('incident:')) return 100
+      if (id.startsWith('training:')) return 92
+      if (id.startsWith('task:')) return status === 'overdue' ? 96 : 88
+      if (id.startsWith('document:')) return 80
+      if (String(action.workflow_run_id || '')) return 90
+      return 70
+    }
+
+    const uniqueActions = followUpActions
+      .filter((item, index, arr) => arr.findIndex((candidate) => candidate.id === item.id) === index)
+      .sort((left, right) => priorityRank(right as Record<string, unknown>) - priorityRank(left as Record<string, unknown>))
+      .slice(0, maxResults + 2)
 
     return {
       success: true,
@@ -1989,7 +2463,7 @@ async function queueActionConfirmation(params: {
           action_title: params.actionTitle,
           action_summary: params.actionSummary,
           action_payload: basePayload,
-          language: context.session.language,
+          language: context.session.answer_language,
         })
         .select('id')
         .single()
@@ -3852,11 +4326,12 @@ serve(async (req) => {
     }
 
     const userMessage = parsedBody.data.message
-    const language = resolveConversationLanguage(
+    const answerLanguage = resolveNovaConversationLanguage(
       userMessage,
       parsedBody.data.language,
       parsedBody.data.history,
     )
+    const operationalLanguage = getOperationalLanguage(answerLanguage)
 
     if (!userMessage || userMessage.trim().length === 0) {
       return new Response(
@@ -3969,7 +4444,7 @@ serve(async (req) => {
       user.id,
       body.organization_id,
       body.session_id,
-      language,
+      answerLanguage,
       supabase
     )
 
@@ -4001,7 +4476,7 @@ serve(async (req) => {
         responseTokens: 0,
         sessionId,
         toolsUsed: ['cache_hit'],
-        language,
+        language: answerLanguage,
         navigation: null,
         workflow: null,
         followUpActions: [],
@@ -4026,9 +4501,9 @@ serve(async (req) => {
     // STEP 2: Claude Tool Use Loop
     // ========================================================================
 
-    let systemPrompt = getSystemPrompt(language)
+    let systemPrompt = getSystemPrompt(answerLanguage)
 
-    systemPrompt += language === 'tr'
+    systemPrompt += operationalLanguage === 'tr'
       ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Benzer sorularda search_past_answers ile onceki basarili cevaplari ve kullanicinin gecmisini kontrol et.\n- Kullanici kalici bir tercih, tekrar eden operasyon kalibi veya firma icin uzun omurlu bir not verirse save_memory_note ile hafizaya al.\n- Kullanici \"sirada ne var\", \"ne kaldi\", \"devam edelim\", \"bugun bende ne var\" gibi ifadeler kullanirsa once get_proactive_operations; aktif akis odakliysa get_active_workflows kullan.\n- Kullanici bir adimi tamamladigini soyluyorsa complete_workflow_step ile ilgili adimi kapat ve siradaki adimi sun.\n- Kritik kayit acan islemlerde ilk adimda islemi hemen tamamlama; once bekleyen aksiyon hazirla ve acik kullanici onayi bekle.\n- Kullanici acikca \"onayliyorum\", \"devam et\", \"uygula\" derse confirm_pending_action kullan. \"Iptal et\", \"vazgectim\" derse cancel_pending_action kullan.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi hazirla; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle, workflow ve sonraki adimlari belirt, gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.\n- Ogrenme sinyallerini ve firma hafizasini kullanarak ayni tur operasyonlarda daha iyi takip zinciri oner.`
       : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Use search_past_answers to inspect previous successful answers and the user's own history for recurring requests.\n- Use save_memory_note only for durable user preferences, repeated company patterns, or stable operational notes.\n- When the user asks what is next, what remains, how to continue, or what needs attention today, use get_proactive_operations first; when the request is about an active operational chain, use get_active_workflows.\n- When the user says a step is done, use complete_workflow_step to close the current step and surface the next one.\n- For critical record-creating operations, do not complete the action immediately on the first turn; prepare a pending action and wait for explicit approval.\n- When the user clearly says approve, go ahead, or proceed, use confirm_pending_action. When the user cancels or declines, use cancel_pending_action.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, prepare the action; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result, mention the workflow and next steps, and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.\n- Use learning signals and company memory to suggest better follow-up chains for recurring operational work.`
 
@@ -4072,7 +4547,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
         id: user.id,
         organization_id: body.organization_id,
         role: 'ohs_specialist',
-        preferred_language: language
+        preferred_language: answerLanguage
       },
       subscription: {
         plan_key: subCheck.plan_key || 'free',
@@ -4082,20 +4557,24 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       supabase: supabase,
       session: {
         id: sessionId,
-        language: language,
+        language: operationalLanguage,
+        answer_language: answerLanguage,
         company_workspace_id: body.company_workspace_id ?? null
       }
     }
 
-    const intentRoutingContext = buildIntentRoutingContext(userMessage, language)
+    const intentRoutingContext = buildIntentRoutingContext(userMessage, operationalLanguage)
+    const regulatoryReasoningContext = buildRegulatoryReasoningContext(userMessage, operationalLanguage)
 
-    const [userMemory, storedMemory, longTermProfileMemory, learningSignalContext, workspaceMemory, activeWorkflowMemory, pendingActionMemory, learnedAnswerContext] = await Promise.all([
+    const [userMemory, storedMemory, longTermProfileMemory, strategicMemorySnapshotContext, learningSignalContext, workspaceMemory, activeWorkflowMemory, workflowOrchestrationContext, pendingActionMemory, learnedAnswerContext] = await Promise.all([
       buildUserPreferenceContext(toolContext),
       buildStoredMemoryContext(toolContext),
       buildLongTermProfileContext(toolContext),
+      buildStrategicMemorySnapshotContext(toolContext),
       buildLearningSignalContext(toolContext),
       buildActiveWorkspaceContext(toolContext),
       buildActiveWorkflowContext(toolContext),
+      buildWorkflowOrchestrationContext(toolContext),
       buildPendingActionContext(toolContext),
       buildLearnedAnswerContext(userMessage, toolContext),
     ])
@@ -4116,6 +4595,10 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       systemPrompt += `\n\n${longTermProfileMemory}`
     }
 
+    if (strategicMemorySnapshotContext) {
+      systemPrompt += `\n\n${strategicMemorySnapshotContext}`
+    }
+
     if (learningSignalContext) {
       systemPrompt += `\n\n${learningSignalContext}`
     }
@@ -4128,8 +4611,16 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       systemPrompt += `\n\n${activeWorkflowMemory}`
     }
 
+    if (workflowOrchestrationContext) {
+      systemPrompt += `\n\n${workflowOrchestrationContext}`
+    }
+
     if (pendingActionMemory) {
       systemPrompt += `\n\n${pendingActionMemory}`
+    }
+
+    if (regulatoryReasoningContext) {
+      systemPrompt += `\n\n${regulatoryReasoningContext}`
     }
 
     if (learnedAnswerContext) {
@@ -4160,7 +4651,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       )
 
       if (!response) {
-        finalAnswer = language === 'tr'
+        finalAnswer = operationalLanguage === 'tr'
           ? 'Nova AI servisi gecici olarak kullanilamiyor. Elle devam edebilir veya biraz sonra tekrar deneyebilirsiniz.'
           : 'Nova AI is temporarily unavailable. You can continue manually or try again shortly.'
         break
@@ -4235,7 +4726,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
         )
 
         if (!fallbackResponse) {
-          finalAnswer = language === 'tr'
+          finalAnswer = operationalLanguage === 'tr'
             ? 'Nova AI servisi gecici olarak kullanilamiyor. Elle devam edebilir veya daha sonra tekrar deneyebilirsiniz.'
             : 'Nova AI is temporarily unavailable. Please continue manually or try again later.'
           break
@@ -4312,7 +4803,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       responseTokens: totalOutputTokens,
       sessionId,
       toolsUsed,
-      language,
+      language: answerLanguage,
       navigation,
       workflow,
       followUpActions,

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { downloadDocument, type DocumentBlock } from "@/lib/document-generator";
 import { useI18n } from "@/lib/i18n";
+import { getNovaUiCopy } from "@/lib/nova-ui";
 import {
   getNovaProactiveBrief,
   markNovaWorkflowStep,
@@ -157,6 +158,9 @@ function SourceCard({ source }: { source: Source }) {
 /* ------------------------------------------------------------------ */
 
 function NavigationCard({ navigation, onNavigate }: { navigation: NavigationAction; onNavigate: (url: string) => void }) {
+  const { locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
+
   return (
     <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-4 transition-colors hover:bg-primary/10">
       <div className="flex items-start justify-between gap-3">
@@ -165,7 +169,7 @@ function NavigationCard({ navigation, onNavigate }: { navigation: NavigationActi
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">Sayfa Yonlendirme</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">{ui.solutionCenter.navigationTitle}</span>
           </div>
           <p className="text-sm font-medium text-foreground">{navigation.label}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{navigation.reason}</p>
@@ -175,7 +179,7 @@ function NavigationCard({ navigation, onNavigate }: { navigation: NavigationActi
           onClick={() => onNavigate(navigation.url)}
           className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
-          Sayfaya Git
+          {ui.solutionCenter.gotoPage}
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
@@ -186,6 +190,8 @@ function NavigationCard({ navigation, onNavigate }: { navigation: NavigationActi
 }
 
 function WorkflowCard({ workflow }: { workflow: NovaWorkflowSummary }) {
+  const { locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
   const progress = workflow.total_steps > 0
     ? Math.min(100, Math.round((workflow.current_step / workflow.total_steps) * 100))
     : 0;
@@ -196,7 +202,7 @@ function WorkflowCard({ workflow }: { workflow: NovaWorkflowSummary }) {
         <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
             <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-              Nova Workflow
+              {ui.solutionCenter.workflowLabel}
             </span>
             <span className="text-[11px] text-muted-foreground">
               {workflow.current_step}/{workflow.total_steps}
@@ -208,7 +214,7 @@ function WorkflowCard({ workflow }: { workflow: NovaWorkflowSummary }) {
           )}
           {workflow.next_step_label && (
             <p className="mt-2 text-xs font-medium text-emerald-700">
-              Siradaki adim: {workflow.next_step_label}
+              {ui.solutionCenter.nextStepLabel}: {workflow.next_step_label}
             </p>
           )}
         </div>
@@ -232,13 +238,16 @@ function FollowUpActionsCard({
   onNavigate: (action: NovaFollowUpAction) => void;
   onPrompt: (action: NovaFollowUpAction) => void;
 }) {
+  const { locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
+
   if (!actions.length) return null;
 
   return (
     <div className="mt-3 rounded-xl border border-border bg-secondary/30 p-3">
       <div className="mb-2 flex items-center gap-2">
         <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-          Sonraki Adimlar
+          {ui.solutionCenter.nextStepsLabel}
         </span>
       </div>
       <div className="grid gap-2">
@@ -256,7 +265,7 @@ function FollowUpActionsCard({
                 onClick={() => (action.kind === "navigate" ? onNavigate(action) : onPrompt(action))}
                 className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
               >
-                {action.kind === "navigate" ? "Ac" : "Devam Et"}
+                {action.kind === "navigate" ? ui.widget.openLabel : ui.widget.continueLabel}
               </button>
             </div>
           </div>
@@ -271,6 +280,8 @@ function FollowUpActionsCard({
 /* ------------------------------------------------------------------ */
 
 function DocumentDownloadCard({ doc }: { doc: DocumentBlock }) {
+  const { locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
   const [downloading, setDownloading] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -325,9 +336,7 @@ function DocumentDownloadCard({ doc }: { doc: DocumentBlock }) {
       {/* Info */}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{doc.title}</p>
-        <p className="text-xs text-muted-foreground">
-          {isPptx ? "PowerPoint Sunumu" : "Word Belgesi"} (.{doc.type})
-        </p>
+        <p className="text-xs text-muted-foreground">{ui.solutionCenter.documentType(isPptx, doc.type)}</p>
       </div>
 
       {/* Download indicator */}
@@ -372,6 +381,8 @@ function MessageBubble({
   onFollowUpNavigate: (action: NovaFollowUpAction) => void;
   onFollowUpPrompt: (action: NovaFollowUpAction) => void;
 }) {
+  const { locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
   const [showSources, setShowSources] = useState(false);
   const isUser = message.role === "user";
 
@@ -431,7 +442,7 @@ function MessageBubble({
               >
                 <polyline points="9 18 15 12 9 6" />
               </svg>
-              {message.sources.length} mevzuat kaynağı
+              {ui.solutionCenter.sourceCount(message.sources.length)}
             </button>
             {showSources && (
               <div className="mt-2 grid gap-1.5">
@@ -498,7 +509,7 @@ function MessageBubble({
                 <path d="M7 10v12" />
                 <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3 3 0 0 1 3 3.88Z" />
               </svg>
-              Yararlı
+              {ui.solutionCenter.helpful}
             </button>
             <button
               type="button"
@@ -526,7 +537,7 @@ function MessageBubble({
                 <path d="M17 14V2" />
                 <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3 3 0 0 1-3-3.88Z" />
               </svg>
-              Eksik
+              {ui.solutionCenter.lacking}
             </button>
             <button
               type="button"
@@ -551,7 +562,7 @@ function MessageBubble({
               >
                 <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
               </svg>
-              {message.saved ? "Kaydedildi" : "Kaydet"}
+              {message.saved ? ui.solutionCenter.saved : ui.solutionCenter.save}
             </button>
             <button
               type="button"
@@ -574,7 +585,7 @@ function MessageBubble({
                 <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
                 <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
               </svg>
-              Kopyala
+              {ui.solutionCenter.copy}
             </button>
           </div>
         )}
@@ -608,41 +619,6 @@ function TypingIndicator() {
 /* Welcome screen                                                      */
 /* ------------------------------------------------------------------ */
 
-const novaModes = [
-  { label: "Mevzuat", hint: "yorumlasın ve kaynak göstersin", badge: "RAG" },
-  { label: "Planlama", hint: "takvime işlesin ve takip etsin", badge: "ACTION" },
-  { label: "Doküman", hint: "rapor, sunum ve taslak oluştursun", badge: "DOC" },
-  { label: "Yönlendirme", hint: "doğru modülü açsın ve götürsün", badge: "FLOW" },
-];
-
-const quickQuestions = [
-  "25 Haziran'a eğitim planla",
-  "Bu firmadaki açık riskleri özetle",
-  "Risk değerlendirme sunumu hazırla",
-  "Beni eğitim belgelerine götür",
-  "Bu ay yapılacak İSG görevlerini listele",
-  "İş kazası bildirimi kaç gün içinde yapılmalı?",
-];
-
-void novaModes;
-void quickQuestions;
-
-const novaOperationalModes = [
-  { label: "Mevzuat", hint: "mevzuati yorumlasin, kaynak gostersin ve riskleri aciklasin", badge: "RAG" },
-  { label: "Planlama", hint: "egitim, kurul ve operasyon gorevlerini olustursun", badge: "ACTION" },
-  { label: "Olay", hint: "ramak kala ve kaza taslaklarini baslatip sizi yonlendirsin", badge: "INCIDENT" },
-  { label: "Dokuman", hint: "editor icin prosedur, rapor ve taslaklar hazirlasin", badge: "DOC" },
-];
-
-const novaActionQuestions = [
-  "25 Haziran'a yuksekte calisma egitimi planla",
-  "28 Haziran icin aylik kurul toplantisi gorevi olustur",
-  "Yeni bir ramak kala olay taslagi baslat",
-  "Acil durum proseduru icin dokuman taslagi hazirla",
-  "Bu firmadaki acik riskleri ozetle",
-  "Is kazasi bildirimi kac gun icinde yapilmali?",
-];
-
 function WelcomeScreen({
   onQuickQuestion,
   proactiveBrief,
@@ -656,6 +632,9 @@ function WelcomeScreen({
   onFollowUpNavigate: (action: NovaFollowUpAction) => void;
   onFollowUpPrompt: (action: NovaFollowUpAction) => void;
 }) {
+  const { locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4 py-12">
       <div className="text-center">
@@ -666,13 +645,12 @@ function WelcomeScreen({
           Nova
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-          Nova; mevzuatı yorumlayan, sizi doğru modüllere götüren, belge ve operasyon
-          akışlarını başlatan kurumsal İSG ajanıdır.
+          {ui.solutionCenter.welcomeDescription}
         </p>
       </div>
 
       <div className="grid w-full max-w-4xl gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {novaOperationalModes.map((mode) => (
+        {ui.solutionCenter.modes.map((mode) => (
           <div
             key={mode.label}
             className="rounded-2xl border border-border bg-card px-4 py-4 text-left shadow-[var(--shadow-soft)]"
@@ -694,19 +672,19 @@ function WelcomeScreen({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-                  Nova Brief
+                  {ui.solutionCenter.briefEyebrow}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-foreground">
-                  Bugun sizin icin neye odaklanmaliyiz?
+                  {ui.solutionCenter.focusQuestion}
                 </h3>
                 <p className="mt-2 text-sm leading-7 text-muted-foreground">
                   {loadingProactive
-                    ? "Nova aktif akislarinizi ve takip bekleyen operasyonlari tarıyor..."
+                    ? ui.solutionCenter.loadingBrief
                     : proactiveBrief?.summary}
                 </p>
               </div>
               {proactiveBrief?.actions?.length ? (
-                <Badge variant="success">{proactiveBrief.actions.length} takip adimi</Badge>
+                <Badge variant="success">{`${proactiveBrief.actions.length} ${ui.solutionCenter.nextStepsLabel.toLowerCase()}`}</Badge>
               ) : null}
             </div>
 
@@ -743,7 +721,7 @@ function WelcomeScreen({
       )}
 
       <div className="grid w-full max-w-3xl gap-2 sm:grid-cols-2">
-        {novaActionQuestions.map((q) => (
+        {ui.solutionCenter.quickQuestions.map((q) => (
           <button
             key={q}
             type="button"
@@ -765,6 +743,7 @@ function WelcomeScreen({
 export default function SolutionCenterPage() {
   const router = useRouter();
   const { t, locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -794,7 +773,7 @@ export default function SolutionCenterPage() {
     setLoadingProactive(true);
 
     (async () => {
-      const brief = await getNovaProactiveBrief(locale === "en" ? "en" : "tr");
+      const brief = await getNovaProactiveBrief(locale);
       if (cancelled) return;
       setProactiveBrief(brief);
       proactiveLocaleRef.current = locale;
@@ -1003,7 +982,7 @@ export default function SolutionCenterPage() {
               {t("solutionCenter.title")} Agent
             </p>
             <h1 className="mt-1 text-lg font-semibold text-foreground">
-              Mevzuat, yonlendirme ve operasyon aksiyonlari tek akista
+              {ui.solutionCenter.routeTitle}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {t("solutionCenter.description")}
@@ -1013,7 +992,7 @@ export default function SolutionCenterPage() {
           <div className="flex flex-wrap gap-2">
             <Badge variant="neutral">RAG</Badge>
             <Badge variant="success">Navigation</Badge>
-            <Badge variant="warning">Action Ready</Badge>
+            <Badge variant="warning">{ui.solutionCenter.actionReadyBadge}</Badge>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { getNovaUiLanguage } from "@/lib/nova-ui";
 
 export type NovaFollowUpAction = {
   id: string;
@@ -47,7 +48,8 @@ export async function markNovaWorkflowStep(stepId: string, status: "completed" |
   return data ?? null;
 }
 
-export async function getNovaProactiveBrief(locale: "tr" | "en" = "tr"): Promise<NovaProactiveBrief | null> {
+export async function getNovaProactiveBrief(locale: string = "tr"): Promise<NovaProactiveBrief | null> {
+  const uiLanguage = getNovaUiLanguage(locale);
   const supabase = createClient();
   if (!supabase) return null;
 
@@ -159,8 +161,8 @@ export async function getNovaProactiveBrief(locale: "tr" | "en" = "tr"): Promise
   for (const task of dueTasksRes.data || []) {
     actions.push({
       id: `task:${task.id}`,
-      label: locale === "en" ? `Review task: ${task.title}` : `Gorevi gozden gecir: ${task.title}`,
-      description: locale === "en"
+      label: uiLanguage === "en" ? `Review task: ${task.title}` : `Gorevi gozden gecir: ${task.title}`,
+      description: uiLanguage === "en"
         ? `Due on ${task.start_date}.`
         : `${task.start_date} tarihinde takip bekliyor.`,
       kind: "navigate",
@@ -174,10 +176,10 @@ export async function getNovaProactiveBrief(locale: "tr" | "en" = "tr"): Promise
   for (const training of dueTrainingsRes.data || []) {
     actions.push({
       id: `training:${training.id}`,
-      label: locale === "en"
+      label: uiLanguage === "en"
         ? `Follow up training: ${training.title}`
         : `Egitim takibini yap: ${training.title}`,
-      description: locale === "en"
+      description: uiLanguage === "en"
         ? `Training date ${training.training_date}.`
         : `${training.training_date} tarihli egitim icin takip yap.`,
       kind: "navigate",
@@ -191,10 +193,10 @@ export async function getNovaProactiveBrief(locale: "tr" | "en" = "tr"): Promise
   for (const incident of incidentsRes.data || []) {
     actions.push({
       id: `incident:${incident.id}`,
-      label: locale === "en"
+      label: uiLanguage === "en"
         ? `Continue incident: ${incident.incident_code}`
         : `Olayi devam ettir: ${incident.incident_code}`,
-      description: locale === "en"
+      description: uiLanguage === "en"
         ? `Status ${incident.status}.`
         : `${incident.status} durumundaki olayi tamamlayin.`,
       kind: "navigate",
@@ -206,10 +208,10 @@ export async function getNovaProactiveBrief(locale: "tr" | "en" = "tr"): Promise
   for (const document of documentsRes.data || []) {
     actions.push({
       id: `document:${document.id}`,
-      label: locale === "en"
+      label: uiLanguage === "en"
         ? `Review document: ${document.title}`
         : `Dokumani gozden gecir: ${document.title}`,
-      description: locale === "en"
+      description: uiLanguage === "en"
         ? `Document status ${document.status}.`
         : `${document.status} durumundaki dokumani tamamlayin.`,
       kind: "navigate",
@@ -222,7 +224,7 @@ export async function getNovaProactiveBrief(locale: "tr" | "en" = "tr"): Promise
     .filter((signal) => signal.outcome === "positive")
     .slice(0, 3)
     .map((signal) =>
-      locale === "en"
+      uiLanguage === "en"
         ? `Nova learned: ${signal.signal_label}`
         : `Nova ogrendi: ${signal.signal_label}`,
     );
@@ -231,7 +233,7 @@ export async function getNovaProactiveBrief(locale: "tr" | "en" = "tr"): Promise
     .filter((action, index, arr) => arr.findIndex((candidate) => candidate.id === action.id) === index)
     .slice(0, 6);
 
-  const summary = locale === "en"
+  const summary = uiLanguage === "en"
     ? activeWorkflows.length || uniqueActions.length
       ? `Nova found ${activeWorkflows.length} active workflows and ${uniqueActions.length} follow-up actions for you.`
       : "Nova does not see an urgent follow-up right now. You can still ask it to review your next operational step."

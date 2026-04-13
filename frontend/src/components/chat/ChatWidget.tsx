@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
+import { getNovaUiCopy } from "@/lib/nova-ui";
 import {
   getNovaProactiveBrief,
   markNovaWorkflowStep,
@@ -55,22 +56,11 @@ type Message = {
   isError?: boolean;
 };
 
-const authenticatedWelcomeActions: WidgetAction[] = [
-  { label: "Nova Calisma Alani", path: "/solution-center", icon: "N" },
-  { label: "Planlayici", path: "/planner", icon: "P" },
-  { label: "Yeni Olay", path: "/incidents/new", icon: "O" },
-  { label: "Dokumanlar", path: "/solution-center/documents", icon: "D" },
-];
-
-const publicEntryActions: WidgetAction[] = [
-  { label: "Giris Yap", path: "/login", icon: "G" },
-  { label: "Hesap Olustur", path: "/register", icon: "K" },
-];
-
 export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const { locale } = useI18n();
+  const ui = getNovaUiCopy(locale);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -81,6 +71,16 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
   const inputRef = useRef<HTMLInputElement>(null);
   const proactiveLoadedRef = useRef(false);
   const supabase = createClient();
+  const authenticatedWelcomeActions = useMemo<WidgetAction[]>(() => ([
+    { label: ui.quickActions.workspace, path: "/solution-center", icon: "N" },
+    { label: ui.quickActions.planner, path: "/planner", icon: "P" },
+    { label: ui.quickActions.newIncident, path: "/incidents/new", icon: "O" },
+    { label: ui.quickActions.documents, path: "/solution-center/documents", icon: "D" },
+  ]), [ui.quickActions.documents, ui.quickActions.newIncident, ui.quickActions.planner, ui.quickActions.workspace]);
+  const publicEntryActions = useMemo<WidgetAction[]>(() => ([
+    { label: ui.quickActions.login, path: "/login", icon: "G" },
+    { label: ui.quickActions.register, path: "/register", icon: "K" },
+  ]), [ui.quickActions.login, ui.quickActions.register]);
 
   // Fetch organization_id for authenticated users
   useEffect(() => {
@@ -116,14 +116,14 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           id: "welcome",
           role: "bot",
           text: isAuthenticated
-            ? "Merhaba! Ben Nova. Mevzuati yorumlayabilir, sizi dogru modullere goturebilir, egitim veya gorev planlayabilir, olay taslagi baslatabilir ve dokuman akisini hazirlayabilirim. Dilerseniz burada yazin, dilerseniz Nova calisma alanina gecin."
-            : "Merhaba! Nova artik ornek veya anahtar kelime cevabi vermiyor. Gercek ajana erismek icin giris yapmaniz gerekir. Isterseniz hemen oturum acin veya hesap olusturun.",
+            ? ui.widget.welcomeAuthenticated
+            : ui.widget.welcomePublic,
           suggestions: isAuthenticated ? authenticatedWelcomeActions : publicEntryActions,
           timestamp: new Date(),
         },
       ]);
     }
-  }, [open, messages.length, isAuthenticated]);
+  }, [authenticatedWelcomeActions, isAuthenticated, messages.length, open, publicEntryActions, ui.widget.welcomeAuthenticated, ui.widget.welcomePublic]);
 
   useEffect(() => {
     if (!open || !isAuthenticated || !organizationId || proactiveLoadedRef.current) return;
@@ -133,7 +133,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
     let cancelled = false;
 
     (async () => {
-      const brief = await getNovaProactiveBrief(locale === "en" ? "en" : "tr");
+      const brief = await getNovaProactiveBrief(locale);
       if (cancelled || !brief) return;
       if (!brief.actions.length && !brief.insights.length && !brief.activeWorkflows.length) return;
 
@@ -160,7 +160,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
     return () => {
       cancelled = true;
     };
-  }, [open, isAuthenticated, organizationId, locale, messages]);
+  }, [open, isAuthenticated, organizationId, locale, messages, ui.widget.publicLocked]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -193,7 +193,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         const botMsg: Message = {
           id: crypto.randomUUID(),
           role: "bot",
-          text: "Bu alanda artik hazir cevap veren basit katman yok. Gercek Nova ajanina erismek icin giris yapin. Oturum actiktan sonra ayni soruyu bu widget'ta veya Nova calisma alaninda devam ettirebilirsiniz.",
+          text: ui.widget.publicLocked,
           suggestions: publicEntryActions,
           timestamp: new Date(),
         };
@@ -209,7 +209,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         const errorMsg: Message = {
           id: crypto.randomUUID(),
           role: "bot",
-          text: "Lutfen bir saniye, henuz hazirlaniyorum...",
+          text: ui.widget.initializing,
           timestamp: new Date(),
           isError: true,
         };
@@ -237,7 +237,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       });
 
       if (error) {
-        throw new Error(error.message || "Nova yanit veremedi");
+        throw new Error(error.message || ui.widget.unavailable);
       }
 
       // Preserve session
@@ -245,7 +245,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         setSessionId(data.session_id);
       }
 
-      const answer = data?.answer || data?.response || "Yanit alinamadi.";
+      const answer = data?.answer || data?.response || ui.widget.unavailable;
       const rawSources = data?.sources || [];
       const navigation: NovaNavigation | null = data?.navigation || null;
       const workflow: NovaWorkflowSummary | null = data?.workflow || null;
@@ -282,7 +282,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       const errorMsg: Message = {
         id: crypto.randomUUID(),
         role: "bot",
-        text: "Uzgunum, su an cevap veremiyorum. Lutfen biraz sonra tekrar deneyin veya Nova calisma alanini kullanin.",
+        text: ui.widget.unavailable,
         suggestions: authenticatedWelcomeActions.slice(0, 2),
         timestamp: new Date(),
         isError: true,
@@ -307,7 +307,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       const botMsg: Message = {
         id: crypto.randomUUID(),
         role: "bot",
-        text: `${action.label} sayfasina yonlendiriliyorsunuz...`,
+        text: ui.widget.redirecting(action.label),
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, botMsg]);
@@ -342,7 +342,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           type="button"
           onClick={() => setOpen(true)}
           className="group fixed bottom-6 right-6 z-50 inline-flex size-14 items-center justify-center rounded-full bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] text-white shadow-[0_8px_32px_rgba(184,134,11,0.4)] transition-all hover:scale-110 hover:shadow-[0_12px_40px_rgba(184,134,11,0.5)]"
-          aria-label="Sohbet asistanini ac"
+          aria-label={ui.widget.openAriaLabel}
         >
           <span className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] opacity-40 animate-ping" style={{ animationDuration: "2.5s" }} />
           <span className="absolute -inset-1 rounded-full border-2 border-amber-400/30 animate-pulse" style={{ animationDuration: "3s" }} />
@@ -362,7 +362,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
               </span>
               <div>
                 <p className="text-sm font-semibold text-white">Nova</p>
-                <p className="text-xs text-white/50">AI ISG Asistani</p>
+                <p className="text-xs text-white/50">{ui.widget.subtitle}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -414,7 +414,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                   {msg.sources && msg.sources.length > 0 && (
                     <details className="mt-2 text-xs">
                       <summary className="cursor-pointer text-yellow-500/80 hover:text-yellow-400 select-none">
-                        {msg.sources.length} mevzuat kaynagi
+                        {ui.widget.sourceCount(msg.sources.length)}
                       </summary>
                       <div className="mt-2 space-y-1 pl-2 border-l-2 border-yellow-500/20">
                         {msg.sources.slice(0, 5).map((src, i) => (
@@ -439,7 +439,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                   {/* Nova Navigation Card */}
                   {msg.navigation && (
                     <div className="mt-2 p-2 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
-                      <div className="text-xs text-yellow-500/80 mb-1">Sayfa Yonlendirme</div>
+                      <div className="text-xs text-yellow-500/80 mb-1">{ui.widget.navigationTitle}</div>
                       <div className="text-xs font-medium mb-2">{msg.navigation.label}</div>
                       <button
                         type="button"
@@ -451,7 +451,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                         }}
                         className="w-full px-3 py-1.5 rounded-md bg-gradient-to-r from-yellow-600 to-yellow-500 text-black text-xs font-semibold hover:from-yellow-500 hover:to-yellow-400 transition-all"
                       >
-                        Sayfaya Git
+                        {ui.widget.gotoPage}
                       </button>
                     </div>
                   )}
@@ -459,7 +459,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                   {msg.workflow && (
                     <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5">
                       <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Nova Workflow</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">{ui.widget.workflowLabel}</span>
                         <span className="text-[10px] text-muted-foreground">
                           {msg.workflow.current_step}/{msg.workflow.total_steps}
                         </span>
@@ -467,7 +467,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                       <div className="text-xs font-medium text-foreground">{msg.workflow.title}</div>
                       {msg.workflow.next_step_label && (
                         <div className="mt-1 text-[11px] text-muted-foreground">
-                          Siradaki: {msg.workflow.next_step_label}
+                          {ui.widget.nextStepLabel}: {msg.workflow.next_step_label}
                         </div>
                       )}
                     </div>
@@ -485,7 +485,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-xs font-medium text-foreground">{action.label}</span>
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
-                              {action.kind === "navigate" ? "Git" : "Devam"}
+                              {action.kind === "navigate" ? ui.widget.openLabel : ui.widget.continueLabel}
                             </span>
                           </div>
                           {action.description && (
@@ -535,7 +535,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           {/* Current page indicator */}
           <div className="border-t border-border bg-muted/50 px-4 py-1.5">
             <p className="text-[10px] text-muted-foreground">
-              Su an: <span className="font-medium text-foreground">{pathname}</span>
+              {ui.widget.currentPageLabel}: <span className="font-medium text-foreground">{pathname}</span>
             </p>
           </div>
 
@@ -549,8 +549,8 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={
                   isAuthenticated
-                    ? "Nova'ya sorun..."
-                    : "Gercek Nova ajani icin giris yapin..."
+                    ? ui.widget.authenticatedPlaceholder
+                    : ui.widget.publicPlaceholder
                 }
                 className="h-10 flex-1 rounded-xl border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
               />
