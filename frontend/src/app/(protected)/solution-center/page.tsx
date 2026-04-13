@@ -8,6 +8,11 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { downloadDocument, type DocumentBlock } from "@/lib/document-generator";
 import { useI18n } from "@/lib/i18n";
+import {
+  markNovaWorkflowStep,
+  type NovaFollowUpAction,
+  type NovaWorkflowSummary,
+} from "@/lib/supabase/nova-workflows";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -37,6 +42,8 @@ interface ChatMessage {
   sources?: Source[];
   documents?: DocumentBlock[];
   navigation?: NavigationAction | null;
+  workflow?: NovaWorkflowSummary | null;
+  followUpActions?: NovaFollowUpAction[];
   queryId?: string;
   timestamp: Date;
   saved?: boolean;
@@ -176,6 +183,87 @@ function NavigationCard({ navigation, onNavigate }: { navigation: NavigationActi
   );
 }
 
+function WorkflowCard({ workflow }: { workflow: NovaWorkflowSummary }) {
+  const progress = workflow.total_steps > 0
+    ? Math.min(100, Math.round((workflow.current_step / workflow.total_steps) * 100))
+    : 0;
+
+  return (
+    <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              Nova Workflow
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {workflow.current_step}/{workflow.total_steps}
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-foreground">{workflow.title}</p>
+          {workflow.summary && (
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">{workflow.summary}</p>
+          )}
+          {workflow.next_step_label && (
+            <p className="mt-2 text-xs font-medium text-emerald-700">
+              Siradaki adim: {workflow.next_step_label}
+            </p>
+          )}
+        </div>
+        <span className="rounded-full bg-card px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+          {workflow.status}
+        </span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-500/10">
+        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function FollowUpActionsCard({
+  actions,
+  onNavigate,
+  onPrompt,
+}: {
+  actions: NovaFollowUpAction[];
+  onNavigate: (action: NovaFollowUpAction) => void;
+  onPrompt: (action: NovaFollowUpAction) => void;
+}) {
+  if (!actions.length) return null;
+
+  return (
+    <div className="mt-3 rounded-xl border border-border bg-secondary/30 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+          Sonraki Adimlar
+        </span>
+      </div>
+      <div className="grid gap-2">
+        {actions.map((action) => (
+          <div key={action.id} className="rounded-xl border border-border bg-card px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">{action.label}</p>
+                {action.description && (
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{action.description}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => (action.kind === "navigate" ? onNavigate(action) : onPrompt(action))}
+                className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
+              >
+                {action.kind === "navigate" ? "Ac" : "Devam Et"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Document download card                                              */
 /* ------------------------------------------------------------------ */
@@ -272,11 +360,15 @@ function MessageBubble({
   onToggleSave,
   onFeedback,
   onNavigate,
+  onFollowUpNavigate,
+  onFollowUpPrompt,
 }: {
   message: ChatMessage;
   onToggleSave?: (id: string) => void;
   onFeedback?: (id: string, feedback: "positive" | "negative") => void;
   onNavigate: (url: string) => void;
+  onFollowUpNavigate: (action: NovaFollowUpAction) => void;
+  onFollowUpPrompt: (action: NovaFollowUpAction) => void;
 }) {
   const [showSources, setShowSources] = useState(false);
   const isUser = message.role === "user";
@@ -361,6 +453,18 @@ function MessageBubble({
         {/* Navigation */}
         {!isUser && message.navigation && (
           <NavigationCard navigation={message.navigation} onNavigate={onNavigate} />
+        )}
+
+        {!isUser && message.workflow && (
+          <WorkflowCard workflow={message.workflow} />
+        )}
+
+        {!isUser && message.followUpActions && message.followUpActions.length > 0 && (
+          <FollowUpActionsCard
+            actions={message.followUpActions}
+            onNavigate={onFollowUpNavigate}
+            onPrompt={onFollowUpPrompt}
+          />
         )}
 
         {/* Actions */}
@@ -698,6 +802,10 @@ export default function SolutionCenterPage() {
       }));
 
       const navigation: NavigationAction | null = data.navigation || null;
+      const workflow: NovaWorkflowSummary | null = data.workflow || null;
+      const followUpActions: NovaFollowUpAction[] = Array.isArray(data.follow_up_actions)
+        ? data.follow_up_actions
+        : [];
 
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -706,6 +814,8 @@ export default function SolutionCenterPage() {
         sources: normalizedSources,
         documents: docs,
         navigation,
+        workflow,
+        followUpActions,
         queryId: queryId,
         timestamp: new Date(),
         saved: false,
@@ -765,6 +875,26 @@ export default function SolutionCenterPage() {
     );
   }
 
+  async function handleFollowUpNavigate(action: NovaFollowUpAction) {
+    if (action.workflow_step_id) {
+      await markNovaWorkflowStep(action.workflow_step_id, "completed");
+    }
+
+    if (action.url) {
+      router.push(action.url);
+    }
+  }
+
+  async function handleFollowUpPrompt(action: NovaFollowUpAction) {
+    if (action.workflow_step_id) {
+      await markNovaWorkflowStep(action.workflow_step_id, "completed");
+    }
+
+    if (action.prompt) {
+      await sendMessage(action.prompt);
+    }
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -809,6 +939,8 @@ export default function SolutionCenterPage() {
                 onToggleSave={toggleSave}
                 onFeedback={rateMessage}
                 onNavigate={(url) => router.push(url)}
+                onFollowUpNavigate={handleFollowUpNavigate}
+                onFollowUpPrompt={handleFollowUpPrompt}
               />
             ))}
             {loading && <TypingIndicator />}

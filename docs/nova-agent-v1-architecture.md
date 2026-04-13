@@ -188,6 +188,8 @@ Nova'nin ilk hedef tool'lari:
 - `create_planner_task`
 - `create_document_draft`
 - `create_incident_draft`
+- `get_active_workflows`
+- `complete_workflow_step`
 - `list_open_tasks`
 - `list_due_trainings`
 - `open_company_context`
@@ -209,8 +211,11 @@ Onerilen yeni tablolar:
 Ilk uygulama fazinda bunun hafifletilmis karsiliklari:
 
 - `nova_memories`
+- `nova_memory_profiles`
 - `nova_feedback`
 - `nova_action_runs`
+- `nova_workflow_runs`
+- `nova_workflow_steps`
 
 Kurallar:
 
@@ -249,6 +254,30 @@ Aksiyonlar iki sinifa ayrilir:
   - ornek: planlama, kayit acma, toplu atama, toplu bildirim, silme
 
 Bu model hem guvenlik hem kullanici guveni icin zorunludur.
+
+## Mevcut Nova V1 Durumu
+
+Su an repoda aktif olan Nova omurgasi:
+
+- `nova_memories`
+  - kullanici ve firma notlari
+- `nova_memory_profiles`
+  - uzun donem kullanici/firma operasyon profilleri
+- `nova_feedback`
+  - yararli / eksik geri bildirimi
+- `nova_action_runs`
+  - onay bekleyen kritik aksiyonlar
+- `nova_workflow_runs`
+  - tamamlanmis veya aktif operasyon akislari
+- `nova_workflow_steps`
+  - workflow icindeki tekil takip adimlari
+
+Bu sayede Nova:
+
+- egitim / planner / olay / dokuman aksiyonlarini onayla-calistir modelinde yurutebilir
+- bir aksiyon tamamlandiktan sonra sonraki adimlari `follow_up_actions` olarak dondurebilir
+- kullaniciyi ekranlar arasinda daha aktif yonlendirebilir
+- tekrar eden operasyon kaliplarini uzun donem hafizaya alabilir
 
 ## Dil ve Global Destek
 

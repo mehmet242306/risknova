@@ -5,6 +5,11 @@ import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import {
+  markNovaWorkflowStep,
+  type NovaFollowUpAction,
+  type NovaWorkflowSummary,
+} from "@/lib/supabase/nova-workflows";
+import {
   MessageCircle,
   X,
   Send,
@@ -44,6 +49,8 @@ type Message = {
   timestamp: Date;
   sources?: NovaSource[];
   navigation?: NovaNavigation | null;
+  workflow?: NovaWorkflowSummary | null;
+  followUpActions?: NovaFollowUpAction[];
   isError?: boolean;
 };
 
@@ -202,6 +209,10 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       const answer = data?.answer || data?.response || "Yanit alinamadi.";
       const rawSources = data?.sources || [];
       const navigation: NovaNavigation | null = data?.navigation || null;
+      const workflow: NovaWorkflowSummary | null = data?.workflow || null;
+      const followUpActions: NovaFollowUpAction[] = Array.isArray(data?.follow_up_actions)
+        ? data.follow_up_actions
+        : [];
 
       const normalizedSources: NovaSource[] = rawSources.map((s: Record<string, string>) => ({
         doc_title: s.doc_title || s.law || "",
@@ -217,6 +228,8 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         text: answer,
         sources: normalizedSources.length > 0 ? normalizedSources : undefined,
         navigation,
+        workflow,
+        followUpActions,
         suggestions:
           navigation == null && answer.length < 220
             ? authenticatedWelcomeActions.slice(0, 3)
@@ -263,6 +276,23 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
 
       setTimeout(() => router.push(action.path), 800);
     }, 400);
+  }
+
+  async function handleFollowUpAction(action: NovaFollowUpAction) {
+    if (action.workflow_step_id) {
+      await markNovaWorkflowStep(action.workflow_step_id, "completed");
+    }
+
+    if (action.kind === "navigate" && action.url) {
+      router.push(action.url);
+      setOpen(false);
+      return;
+    }
+
+    if (action.kind === "prompt" && action.prompt) {
+      setInput(action.prompt);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
   }
 
   return (
@@ -384,6 +414,48 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                       >
                         Sayfaya Git
                       </button>
+                    </div>
+                  )}
+
+                  {msg.workflow && (
+                    <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Nova Workflow</span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {msg.workflow.current_step}/{msg.workflow.total_steps}
+                        </span>
+                      </div>
+                      <div className="text-xs font-medium text-foreground">{msg.workflow.title}</div>
+                      {msg.workflow.next_step_label && (
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          Siradaki: {msg.workflow.next_step_label}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {msg.followUpActions && msg.followUpActions.length > 0 && (
+                    <div className="mt-2 space-y-1.5">
+                      {msg.followUpActions.map((action) => (
+                        <button
+                          key={action.id}
+                          type="button"
+                          onClick={() => handleFollowUpAction(action)}
+                          className="w-full rounded-lg border border-border bg-card px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-primary/5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-foreground">{action.label}</span>
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
+                              {action.kind === "navigate" ? "Git" : "Devam"}
+                            </span>
+                          </div>
+                          {action.description && (
+                            <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                              {action.description}
+                            </div>
+                          )}
+                        </button>
+                      ))}
                     </div>
                   )}
 
