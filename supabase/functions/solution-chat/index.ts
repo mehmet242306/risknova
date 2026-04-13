@@ -382,6 +382,17 @@ const NOVA_TOOLS = [
     }
   },
   {
+    name: 'get_proactive_operations',
+    description: 'Nova kullanicinin aktif akislarini, yaklasan gorevlerini, taslaklarini ve siradaki oncelikli operasyonlarini toplu olarak getirir. Kullanici "bugun ne yapmaliyim", "oncelikli ne var", "beni yonlendir", "takip etmem gerekenler neler" gibi sorular sordugunda kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        max_results: { type: 'integer', description: 'Her kategori icin maksimum sonuc sayisi', default: 4 },
+        company_workspace_id: { type: 'string', description: 'Opsiyonel firma workspace ID' }
+      }
+    }
+  },
+  {
     name: 'navigate_to_page',
     description: 'Kullaniciyi platform icinde bir sayfaya yonlendirir. Kullanici "ac", "goster", "git", "yonlendir" gibi eylem komutlari verdiginde kullan. ONEMLI URL YAPISI: Bu platformda firma yonetimi query param tab sistemiyle calisir (/companies/[id]?tab=slug). Personel, ekip, planlama, takip, arsiv gibi sayfalar BAGIMSIZ DEGIL, aktif firmanin alt tab\'larindadir. Kullanici "personel listesi" derse company_personnel kullan. "Ekip" derse company_people kullan. "Risk ve saha" derse company_risk kullan. "Son risk analizi" derse latest_risk_assessment kullan (ayri /risk-analysis sayfasina gider). "Firma sayfasi" derse active_company kullan (aktif firmanin overview\'una gider). Tek bir personelin detayi icin personnel_detail + record_id kullan. Bagimsiz sayfalar: dashboard, notifications, settings, profile, reports, calendar, incidents, documents, training.',
     input_schema: {
@@ -898,6 +909,38 @@ async function upsertLongTermMemoryProfile(params: {
   }
 }
 
+async function recordLearningSignal(params: {
+  signalSource: 'feedback' | 'workflow' | 'memory' | 'suggestion'
+  signalKey: string
+  signalLabel: string
+  outcome: 'positive' | 'neutral' | 'negative'
+  confidenceScore?: number
+  queryId?: string | null
+  workflowRunId?: string | null
+  companyWorkspaceId?: string | null
+  payload?: Record<string, unknown>
+}, context: ToolContext): Promise<void> {
+  try {
+    await context.supabase
+      .from('nova_learning_signals')
+      .insert({
+        user_id: context.user.id,
+        organization_id: context.user.organization_id,
+        company_workspace_id: params.companyWorkspaceId ?? null,
+        query_id: params.queryId ?? null,
+        workflow_run_id: params.workflowRunId ?? null,
+        signal_source: params.signalSource,
+        signal_key: params.signalKey,
+        signal_label: params.signalLabel,
+        outcome: params.outcome,
+        confidence_score: Math.max(0.35, Math.min(1, Number(params.confidenceScore ?? 0.75))),
+        payload: params.payload || {},
+      })
+  } catch (err) {
+    console.error('[recordLearningSignal] failed:', err)
+  }
+}
+
 async function buildLongTermProfileContext(context: ToolContext): Promise<string> {
   try {
     const workspaceId = await getActiveWorkspaceId(context)
@@ -935,6 +978,91 @@ async function buildLongTermProfileContext(context: ToolContext): Promise<string
     ].join('\n')
   } catch (_err) {
     return ''
+  }
+}
+
+async function buildLearningSignalContext(context: ToolContext): Promise<string> {
+  try {
+    const workspaceId = await getActiveWorkspaceId(context)
+
+    let query = context.supabase
+      .from('nova_learning_signals')
+      .select('signal_label, outcome, signal_key, created_at')
+      .eq('user_id', context.user.id)
+      .order('created_at', { ascending: false })
+      .limit(6)
+
+    if (workspaceId) {
+      query = query.or(`company_workspace_id.is.null,company_workspace_id.eq.${workspaceId}`)
+    } else {
+      query = query.is('company_workspace_id', null)
+    }
+
+    const { data } = await query
+    if (!data?.length) return ''
+
+    const positiveSignals = data.filter((item: any) => item.outcome === 'positive').slice(0, 3)
+    const negativeSignals = data.filter((item: any) => item.outcome === 'negative').slice(0, 2)
+    if (!positiveSignals.length && !negativeSignals.length) return ''
+
+    if (context.session.language === 'en') {
+      return [
+        '## LEARNING LOOP SIGNALS',
+        ...positiveSignals.map((item: any) => `- Confirmed pattern: ${item.signal_label}`),
+        ...negativeSignals.map((item: any) => `- Avoid repeating exactly: ${item.signal_label}`),
+        'Use these signals to improve follow-up quality and next-step recommendations. Do not treat them as regulatory sources.',
+      ].join('\n')
+    }
+
+    return [
+      '## OGRENME DONGUSU SINYALLERI',
+      ...positiveSignals.map((item: any) => `- Dogrulanan kalip: ${item.signal_label}`),
+      ...negativeSignals.map((item: any) => `- Ayni sekilde tekrar etme: ${item.signal_label}`),
+      'Bu sinyalleri sonraki adim kalitesini artirmak ve daha iyi operasyon yonlendirmesi yapmak icin kullan. Mevzuat kaynagi yerine koyma.',
+    ].join('\n')
+  } catch (_err) {
+    return ''
+  }
+}
+
+async function getWorkflowLearningProfile(
+  workflowType: string,
+  companyWorkspaceId: string | null,
+  context: ToolContext,
+): Promise<{ shouldDeepenChain: boolean; positiveCount: number; negativeCount: number; hintLine: string | null }> {
+  try {
+    let query = context.supabase
+      .from('nova_learning_signals')
+      .select('outcome, signal_label, signal_key')
+      .eq('user_id', context.user.id)
+      .eq('signal_source', 'workflow')
+      .ilike('signal_key', `%${workflowType}%`)
+      .order('created_at', { ascending: false })
+      .limit(12)
+
+    if (companyWorkspaceId) {
+      query = query.or(`company_workspace_id.is.null,company_workspace_id.eq.${companyWorkspaceId}`)
+    } else {
+      query = query.is('company_workspace_id', null)
+    }
+
+    const { data } = await query
+    const positiveCount = (data || []).filter((item: any) => item.outcome === 'positive').length
+    const negativeCount = (data || []).filter((item: any) => item.outcome === 'negative').length
+    const shouldDeepenChain = positiveCount >= 2 || (positiveCount >= 1 && negativeCount === 0)
+
+    return {
+      shouldDeepenChain,
+      positiveCount,
+      negativeCount,
+      hintLine: shouldDeepenChain
+        ? (context.session.language === 'en'
+          ? `Nova has seen this ${workflowType} flow complete successfully before and can suggest a deeper follow-up chain.`
+          : `Nova bu ${workflowType} akisinin daha once basariyla tamamlandigini gordu; daha derin bir takip zinciri onerilebilir.`)
+        : null,
+    }
+  } catch (_err) {
+    return { shouldDeepenChain: false, positiveCount: 0, negativeCount: 0, hintLine: null }
   }
 }
 
@@ -1425,6 +1553,19 @@ async function executeSaveMemoryNote(input: any, context: ToolContext): Promise<
       confirmObservation: true,
     }, context)
 
+    await recordLearningSignal({
+      signalSource: 'memory',
+      signalKey: `memory:${memoryType}`,
+      signalLabel: title,
+      outcome: 'positive',
+      confidenceScore,
+      companyWorkspaceId: workspaceId,
+      payload: {
+        memory_type: memoryType,
+        title,
+      },
+    }, context)
+
     return {
       success: true,
       data: {
@@ -1434,6 +1575,232 @@ async function executeSaveMemoryNote(input: any, context: ToolContext): Promise<
         summary: context.session.language === 'en'
           ? `Nova saved the memory note: ${title}`
           : `Nova hafizaya su notu kaydetti: ${title}`,
+      },
+    }
+  } catch (err: any) {
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
+async function executeGetProactiveOperations(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const maxResults = Math.max(1, Math.min(6, Number(input.max_results ?? 4)))
+    const workspaceId = await getActiveWorkspaceId(context, input.company_workspace_id || null)
+    const horizonDate = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)
+
+    let workflowRunsQuery = context.supabase
+      .from('nova_workflow_runs')
+      .select('id, title, summary, status, current_step, total_steps, company_workspace_id')
+      .eq('user_id', context.user.id)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(maxResults)
+
+    if (workspaceId) {
+      workflowRunsQuery = workflowRunsQuery.or(`company_workspace_id.is.null,company_workspace_id.eq.${workspaceId}`)
+    }
+
+    let taskQuery = context.supabase
+      .from('isg_tasks')
+      .select('id, title, start_date, status, company_workspace_id')
+      .eq('organization_id', context.user.organization_id)
+      .in('status', ['planned', 'in_progress', 'overdue'])
+      .lte('start_date', horizonDate)
+      .order('start_date', { ascending: true })
+      .limit(maxResults)
+
+    let trainingQuery = context.supabase
+      .from('company_trainings')
+      .select('id, title, training_date, status, company_workspace_id')
+      .eq('organization_id', context.user.organization_id)
+      .eq('status', 'planned')
+      .lte('training_date', horizonDate)
+      .order('training_date', { ascending: true })
+      .limit(maxResults)
+
+    let incidentQuery = context.supabase
+      .from('incidents')
+      .select('id, incident_code, status, company_workspace_id, created_at')
+      .eq('organization_id', context.user.organization_id)
+      .in('status', ['draft', 'investigating', 'dof_open'])
+      .order('created_at', { ascending: false })
+      .limit(maxResults)
+
+    let documentQuery = context.supabase
+      .from('editor_documents')
+      .select('id, title, status, company_workspace_id, updated_at')
+      .eq('organization_id', context.user.organization_id)
+      .in('status', ['taslak', 'revizyon', 'onay_bekliyor'])
+      .order('updated_at', { ascending: false })
+      .limit(maxResults)
+
+    let signalQuery = context.supabase
+      .from('nova_learning_signals')
+      .select('signal_label, outcome, signal_key, created_at')
+      .eq('user_id', context.user.id)
+      .order('created_at', { ascending: false })
+      .limit(6)
+
+    if (workspaceId) {
+      taskQuery = taskQuery.eq('company_workspace_id', workspaceId)
+      trainingQuery = trainingQuery.eq('company_workspace_id', workspaceId)
+      incidentQuery = incidentQuery.eq('company_workspace_id', workspaceId)
+      documentQuery = documentQuery.eq('company_workspace_id', workspaceId)
+      signalQuery = signalQuery.or(`company_workspace_id.is.null,company_workspace_id.eq.${workspaceId}`)
+    }
+
+    const [
+      workflowRunsRes,
+      tasksRes,
+      trainingsRes,
+      incidentsRes,
+      documentsRes,
+      signalsRes,
+    ] = await Promise.all([
+      workflowRunsQuery,
+      taskQuery,
+      trainingQuery,
+      incidentQuery,
+      documentQuery,
+      signalQuery,
+    ])
+
+    const runs = workflowRunsRes.data || []
+    const runIds = runs.map((item: any) => item.id)
+    const { data: steps } = runIds.length
+      ? await context.supabase
+          .from('nova_workflow_steps')
+          .select('id, workflow_run_id, step_order, title, description, action_kind, target_url, prompt_text, status')
+          .in('workflow_run_id', runIds)
+          .in('status', ['pending', 'in_progress'])
+          .order('step_order', { ascending: true })
+      : { data: [] as any[] }
+
+    const stepMap = new Map<string, any[]>()
+    for (const step of steps || []) {
+      stepMap.set(step.workflow_run_id, [...(stepMap.get(step.workflow_run_id) || []), step])
+    }
+
+    const workflows = runs.map((run: any) => ({
+      id: run.id,
+      title: run.title,
+      summary: run.summary,
+      status: run.status,
+      current_step: run.current_step,
+      total_steps: run.total_steps,
+      next_step: (stepMap.get(run.id) || [])[0] || null,
+    }))
+
+    const followUpActions: Array<Record<string, unknown>> = []
+
+    for (const workflow of workflows) {
+      if (workflow.next_step) {
+        followUpActions.push({
+          id: `${workflow.id}:${workflow.next_step.id}`,
+          label: workflow.next_step.title,
+          description: workflow.next_step.description || null,
+          kind: workflow.next_step.action_kind === 'navigate' ? 'navigate' : 'prompt',
+          url: workflow.next_step.target_url || null,
+          prompt: workflow.next_step.prompt_text || null,
+          workflow_run_id: workflow.id,
+          workflow_step_id: workflow.next_step.id,
+          status: workflow.next_step.status,
+        })
+      }
+    }
+
+    for (const task of tasksRes.data || []) {
+      followUpActions.push({
+        id: `task:${task.id}`,
+        label: context.session.language === 'en'
+          ? `Review task: ${task.title}`
+          : `Gorevi gozden gecir: ${task.title}`,
+        description: context.session.language === 'en'
+          ? `Task due on ${task.start_date}.`
+          : `${task.start_date} tarihli gorevi kontrol et.`,
+        kind: 'navigate',
+        url: task.company_workspace_id ? `/companies/${task.company_workspace_id}?tab=planner` : '/planner',
+        prompt: null,
+        workflow_run_id: null,
+        workflow_step_id: null,
+        status: task.status,
+      })
+    }
+
+    for (const training of trainingsRes.data || []) {
+      followUpActions.push({
+        id: `training:${training.id}`,
+        label: context.session.language === 'en'
+          ? `Follow up training: ${training.title}`
+          : `Egitim takibini yap: ${training.title}`,
+        description: context.session.language === 'en'
+          ? `Training date ${training.training_date}.`
+          : `${training.training_date} tarihli egitim icin takip yap.`,
+        kind: 'navigate',
+        url: training.company_workspace_id ? `/companies/${training.company_workspace_id}?tab=tracking` : '/planner',
+        prompt: null,
+        workflow_run_id: null,
+        workflow_step_id: null,
+        status: training.status,
+      })
+    }
+
+    for (const incident of incidentsRes.data || []) {
+      followUpActions.push({
+        id: `incident:${incident.id}`,
+        label: context.session.language === 'en'
+          ? `Continue incident: ${incident.incident_code}`
+          : `Olayi devam ettir: ${incident.incident_code}`,
+        description: context.session.language === 'en'
+          ? `Incident is currently ${incident.status}.`
+          : `Olay su an ${incident.status} durumunda.`,
+        kind: 'navigate',
+        url: `/incidents/${incident.id}`,
+        prompt: null,
+        workflow_run_id: null,
+        workflow_step_id: null,
+        status: incident.status,
+      })
+    }
+
+    for (const document of documentsRes.data || []) {
+      followUpActions.push({
+        id: `document:${document.id}`,
+        label: context.session.language === 'en'
+          ? `Review document: ${document.title}`
+          : `Dokumani gozden gecir: ${document.title}`,
+        description: context.session.language === 'en'
+          ? `Document is currently ${document.status}.`
+          : `Dokuman su an ${document.status} durumunda.`,
+        kind: 'navigate',
+        url: `/documents/${document.id}`,
+        prompt: null,
+        workflow_run_id: null,
+        workflow_step_id: null,
+        status: document.status,
+      })
+    }
+
+    const insights = (signalsRes.data || [])
+      .filter((item: any) => item.outcome === 'positive')
+      .slice(0, 3)
+      .map((item: any) => context.session.language === 'en'
+        ? `Nova learned: ${item.signal_label}`
+        : `Nova ogrendi: ${item.signal_label}`)
+
+    const uniqueActions = followUpActions.filter((item, index, arr) =>
+      arr.findIndex((candidate) => candidate.id === item.id) === index,
+    ).slice(0, maxResults + 2)
+
+    return {
+      success: true,
+      data: {
+        workflows,
+        follow_up_actions: uniqueActions,
+        insights,
+        summary: context.session.language === 'en'
+          ? `Nova found ${workflows.length} active flows and ${uniqueActions.length} proactive follow-up actions.`
+          : `Nova ${workflows.length} aktif akis ve ${uniqueActions.length} proaktif takip adimi buldu.`,
       },
     }
   } catch (err: any) {
@@ -1939,6 +2306,8 @@ async function executeCreateTrainingPlan(input: any, context: ToolContext): Prom
       return { success: false, error: 'Egitim planlanacak firma bulunamadi.' }
     }
 
+    const workflowLearning = await getWorkflowLearningProfile('training_plan', workspaceId, context)
+
     const durationHours = Math.max(1, Number(input.duration_hours ?? 2))
     const trainingType = ['zorunlu', 'istege_bagli', 'yenileme'].includes(input.training_type)
       ? input.training_type
@@ -2028,12 +2397,61 @@ async function executeCreateTrainingPlan(input: any, context: ToolContext): Prom
       auto_navigate: false,
     }
 
+    const trainingWorkflowSteps: NovaWorkflowStepDefinition[] = [
+      {
+        stepKey: 'training_created',
+        title: context.session.language === 'en' ? 'Training plan created' : 'Egitim plani olusturuldu',
+        description: context.session.language === 'en'
+          ? 'Nova created the training record and linked follow-up task.'
+          : 'Nova egitim kaydini ve takip gorevini olusturdu.',
+        actionKind: 'system',
+        initialStatus: 'completed',
+      },
+      {
+        stepKey: 'review_training_tracking',
+        title: context.session.language === 'en' ? 'Review training tracking tab' : 'Egitim takip sekmesini gozden gecir',
+        description: context.session.language === 'en'
+          ? 'Open the company tracking tab and verify schedule details.'
+          : 'Takip sekmesini acip plan detaylarini kontrol et.',
+        actionKind: 'navigate',
+        targetUrl: `/companies/${workspaceId}?tab=tracking`,
+        initialStatus: 'pending',
+      },
+      {
+        stepKey: 'prepare_training_followup',
+        title: context.session.language === 'en' ? 'Prepare participant follow-up' : 'Katilimci takibini hazirla',
+        description: context.session.language === 'en'
+          ? 'Ask Nova to prepare participant or reminder follow-up for this training.'
+          : 'Bu egitim icin katilimci veya hatirlatma takibini Nova ile hazirla.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Prepare participant follow-up for the training "${title}".`
+          : `"${title}" egitimi icin katilimci takibini hazirla.`,
+        initialStatus: 'pending',
+      },
+    ]
+
+    if (workflowLearning.shouldDeepenChain) {
+      trainingWorkflowSteps.push({
+        stepKey: 'prepare_training_reminder_chain',
+        title: context.session.language === 'en' ? 'Prepare reminder and attendance chain' : 'Hatirlatma ve katilim zincirini hazirla',
+        description: context.session.language === 'en'
+          ? 'Nova learned that this company benefits from reminder and attendance follow-up after planning trainings.'
+          : 'Nova bu firmada egitim planlamasindan sonra hatirlatma ve katilim takibinin faydali oldugunu ogrendi.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Create a reminder and attendance follow-up checklist for the training "${title}".`
+          : `"${title}" egitimi icin hatirlatma ve katilim takip kontrol listesini hazirla.`,
+        initialStatus: 'pending',
+      })
+    }
+
     const workflowBundle = await createNovaWorkflow({
       workflowType: 'training_plan',
       title: context.session.language === 'en' ? `Training workflow: ${title}` : `Egitim akisi: ${title}`,
       summary: context.session.language === 'en'
-        ? `${title} was scheduled for ${trainingDate}.`
-        : `${title} ${trainingDate} tarihine planlandi.`,
+        ? `${title} was scheduled for ${trainingDate}.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`
+        : `${title} ${trainingDate} tarihine planlandi.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`,
       companyWorkspaceId: workspaceId,
       navigation,
       metadata: {
@@ -2041,39 +2459,7 @@ async function executeCreateTrainingPlan(input: any, context: ToolContext): Prom
         task_id: taskRow?.id ?? null,
         training_type: trainingType,
       },
-      steps: [
-        {
-          stepKey: 'training_created',
-          title: context.session.language === 'en' ? 'Training plan created' : 'Egitim plani olusturuldu',
-          description: context.session.language === 'en'
-            ? 'Nova created the training record and linked follow-up task.'
-            : 'Nova egitim kaydini ve takip gorevini olusturdu.',
-          actionKind: 'system',
-          initialStatus: 'completed',
-        },
-        {
-          stepKey: 'review_training_tracking',
-          title: context.session.language === 'en' ? 'Review training tracking tab' : 'Egitim takip sekmesini gozden gecir',
-          description: context.session.language === 'en'
-            ? 'Open the company tracking tab and verify schedule details.'
-            : 'Takip sekmesini acip plan detaylarini kontrol et.',
-          actionKind: 'navigate',
-          targetUrl: `/companies/${workspaceId}?tab=tracking`,
-          initialStatus: 'pending',
-        },
-        {
-          stepKey: 'prepare_training_followup',
-          title: context.session.language === 'en' ? 'Prepare participant follow-up' : 'Katilimci takibini hazirla',
-          description: context.session.language === 'en'
-            ? 'Ask Nova to prepare participant or reminder follow-up for this training.'
-            : 'Bu egitim icin katilimci veya hatirlatma takibini Nova ile hazirla.',
-          actionKind: 'prompt',
-          promptText: context.session.language === 'en'
-            ? `Prepare participant follow-up for the training "${title}".`
-            : `"${title}" egitimi icin katilimci takibini hazirla.`,
-          initialStatus: 'pending',
-        },
-      ],
+      steps: trainingWorkflowSteps,
     }, context)
 
     await upsertLongTermMemoryProfile({
@@ -2109,6 +2495,22 @@ async function executeCreateTrainingPlan(input: any, context: ToolContext): Prom
       },
       companyWorkspaceId: workspaceId,
       confidenceScore: 0.76,
+    }, context)
+
+    await recordLearningSignal({
+      signalSource: 'workflow',
+      signalKey: 'workflow-start:training_plan',
+      signalLabel: context.session.language === 'en'
+        ? `Training flow started for ${title}`
+        : `${title} icin egitim akisi baslatildi`,
+      outcome: 'neutral',
+      confidenceScore: 0.74,
+      companyWorkspaceId: workspaceId,
+      payload: {
+        action: 'create_training_plan',
+        training_id: trainingRow.id,
+        task_id: taskRow?.id ?? null,
+      },
     }, context)
 
     return {
@@ -2158,6 +2560,8 @@ async function executeCreatePlannerTask(input: any, context: ToolContext): Promi
     if (!workspace?.id) {
       return { success: false, error: 'Gorev olusturulacak firma bulunamadi.' }
     }
+
+    const workflowLearning = await getWorkflowLearningProfile('planner_task', workspaceId, context)
 
     const categoryHint = String(input.category_hint || 'genel')
     const categoryId = categoryHint === 'egitim'
@@ -2230,12 +2634,61 @@ async function executeCreatePlannerTask(input: any, context: ToolContext): Promi
       auto_navigate: false,
     }
 
+    const plannerWorkflowSteps: NovaWorkflowStepDefinition[] = [
+      {
+        stepKey: 'task_created',
+        title: context.session.language === 'en' ? 'Planner task created' : 'Planner gorevi olusturuldu',
+        description: context.session.language === 'en'
+          ? 'Nova created the operational task.'
+          : 'Nova operasyon gorevini olusturdu.',
+        actionKind: 'system',
+        initialStatus: 'completed',
+      },
+      {
+        stepKey: 'review_planner',
+        title: context.session.language === 'en' ? 'Open planner tab' : 'Planner sekmesini ac',
+        description: context.session.language === 'en'
+          ? 'Review scheduling details in the company planner.'
+          : 'Firma planner ekraninda plan detaylarini gozden gecir.',
+        actionKind: 'navigate',
+        targetUrl: `/companies/${workspaceId}?tab=planner`,
+        initialStatus: 'pending',
+      },
+      {
+        stepKey: 'assign_owner',
+        title: context.session.language === 'en' ? 'Prepare owner follow-up' : 'Sorumlu atama takibini hazirla',
+        description: context.session.language === 'en'
+          ? 'Ask Nova to prepare responsible person follow-up for this task.'
+          : 'Bu gorev icin sorumlu atama takibini Nova ile hazirla.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Prepare follow-up guidance for assigning an owner to the task "${title}".`
+          : `"${title}" gorevi icin sorumlu atama takibini hazirla.`,
+        initialStatus: 'pending',
+      },
+    ]
+
+    if (workflowLearning.shouldDeepenChain) {
+      plannerWorkflowSteps.push({
+        stepKey: 'review_deadline_risk',
+        title: context.session.language === 'en' ? 'Review deadline risk and reminder' : 'Termin riskini ve hatirlatmayi gozden gecir',
+        description: context.session.language === 'en'
+          ? 'Nova learned that this company benefits from deadline reminders after task creation.'
+          : 'Nova bu firmada gorev olusturduktan sonra termin hatirlatmasinin faydali oldugunu ogrendi.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Prepare a deadline reminder and owner follow-up plan for "${title}".`
+          : `"${title}" gorevi icin termin hatirlatma ve sorumlu takip plani hazirla.`,
+        initialStatus: 'pending',
+      })
+    }
+
     const workflowBundle = await createNovaWorkflow({
       workflowType: 'planner_task',
       title: context.session.language === 'en' ? `Planner workflow: ${title}` : `Planner akisi: ${title}`,
       summary: context.session.language === 'en'
-        ? `${title} was planned for ${startDate}.`
-        : `${title} gorevi ${startDate} icin planlandi.`,
+        ? `${title} was planned for ${startDate}.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`
+        : `${title} gorevi ${startDate} icin planlandi.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`,
       companyWorkspaceId: workspaceId,
       navigation,
       metadata: {
@@ -2243,39 +2696,7 @@ async function executeCreatePlannerTask(input: any, context: ToolContext): Promi
         category_hint: categoryHint,
         recurrence,
       },
-      steps: [
-        {
-          stepKey: 'task_created',
-          title: context.session.language === 'en' ? 'Planner task created' : 'Planner gorevi olusturuldu',
-          description: context.session.language === 'en'
-            ? 'Nova created the operational task.'
-            : 'Nova operasyon gorevini olusturdu.',
-          actionKind: 'system',
-          initialStatus: 'completed',
-        },
-        {
-          stepKey: 'review_planner',
-          title: context.session.language === 'en' ? 'Open planner tab' : 'Planner sekmesini ac',
-          description: context.session.language === 'en'
-            ? 'Review scheduling details in the company planner.'
-            : 'Firma planner ekraninda plan detaylarini gozden gecir.',
-          actionKind: 'navigate',
-          targetUrl: `/companies/${workspaceId}?tab=planner`,
-          initialStatus: 'pending',
-        },
-        {
-          stepKey: 'assign_owner',
-          title: context.session.language === 'en' ? 'Prepare owner follow-up' : 'Sorumlu atama takibini hazirla',
-          description: context.session.language === 'en'
-            ? 'Ask Nova to prepare responsible person follow-up for this task.'
-            : 'Bu gorev icin sorumlu atama takibini Nova ile hazirla.',
-          actionKind: 'prompt',
-          promptText: context.session.language === 'en'
-            ? `Prepare follow-up guidance for assigning an owner to the task "${title}".`
-            : `"${title}" gorevi icin sorumlu atama takibini hazirla.`,
-          initialStatus: 'pending',
-        },
-      ],
+      steps: plannerWorkflowSteps,
     }, context)
 
     await upsertLongTermMemoryProfile({
@@ -2310,6 +2731,22 @@ async function executeCreatePlannerTask(input: any, context: ToolContext): Promi
       },
       companyWorkspaceId: workspaceId,
       confidenceScore: 0.75,
+    }, context)
+
+    await recordLearningSignal({
+      signalSource: 'workflow',
+      signalKey: 'workflow-start:planner_task',
+      signalLabel: context.session.language === 'en'
+        ? `Planner flow started for ${title}`
+        : `${title} icin planner akisi baslatildi`,
+      outcome: 'neutral',
+      confidenceScore: 0.72,
+      companyWorkspaceId: workspaceId,
+      payload: {
+        action: 'create_planner_task',
+        task_id: taskRow.id,
+        category_hint: categoryHint,
+      },
     }, context)
 
     return {
@@ -2355,6 +2792,8 @@ async function executeCreateIncidentDraft(input: any, context: ToolContext): Pro
     if (!workspace?.id) {
       return { success: false, error: 'Olay taslagi olusturulacak firma bulunamadi.' }
     }
+
+    const workflowLearning = await getWorkflowLearningProfile('incident_draft', workspaceId, context)
 
     const payload: Record<string, unknown> = {
       organization_id: context.user.organization_id,
@@ -2432,51 +2871,68 @@ async function executeCreateIncidentDraft(input: any, context: ToolContext): Pro
       auto_navigate: false,
     }
 
+    const incidentWorkflowSteps: NovaWorkflowStepDefinition[] = [
+      {
+        stepKey: 'incident_draft_created',
+        title: context.session.language === 'en' ? 'Incident draft created' : 'Olay taslagi olusturuldu',
+        description: context.session.language === 'en'
+          ? 'Nova created the controlled incident draft.'
+          : 'Nova kontrollu olay taslagini olusturdu.',
+        actionKind: 'system',
+        initialStatus: 'completed',
+      },
+      {
+        stepKey: 'open_incident_detail',
+        title: context.session.language === 'en' ? 'Open incident detail' : 'Olay detayini ac',
+        description: context.session.language === 'en'
+          ? 'Review and complete the draft on the incident detail screen.'
+          : 'Taslagi olay detay ekraninda gozden gecirip tamamla.',
+        actionKind: 'navigate',
+        targetUrl: `/incidents/${incidentRow.id}`,
+        initialStatus: 'pending',
+      },
+      {
+        stepKey: 'continue_incident_followup',
+        title: context.session.language === 'en' ? 'Continue incident follow-up' : 'Olay takibini surdur',
+        description: context.session.language === 'en'
+          ? 'Ask Nova to prepare DOF or root cause follow-up if needed.'
+          : 'Gerekirse DOF veya kok neden takibini Nova ile hazirla.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Prepare the next incident follow-up actions for ${incidentRow.incident_code}.`
+          : `${incidentRow.incident_code} icin sonraki olay takip adimlarini hazirla.`,
+        initialStatus: 'pending',
+      },
+    ]
+
+    if (workflowLearning.shouldDeepenChain) {
+      incidentWorkflowSteps.push({
+        stepKey: 'prepare_root_cause_chain',
+        title: context.session.language === 'en' ? 'Prepare root cause and DOF chain' : 'Kok neden ve DOF zincirini hazirla',
+        description: context.session.language === 'en'
+          ? 'Nova learned that this organization benefits from continuing the incident flow with corrective action planning.'
+          : 'Nova bu organizasyonda olay akisindan sonra duzeltici faaliyet planlamasinin faydali oldugunu ogrendi.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Prepare a root cause and corrective action follow-up chain for ${incidentRow.incident_code}.`
+          : `${incidentRow.incident_code} icin kok neden ve duzeltici faaliyet takip zinciri hazirla.`,
+        initialStatus: 'pending',
+      })
+    }
+
     const workflowBundle = await createNovaWorkflow({
       workflowType: 'incident_draft',
       title: context.session.language === 'en' ? `Incident workflow: ${incidentRow.incident_code}` : `Olay akisi: ${incidentRow.incident_code}`,
       summary: context.session.language === 'en'
-        ? `${incidentRow.incident_code} draft was created.`
-        : `${incidentRow.incident_code} taslagi olusturuldu.`,
+        ? `${incidentRow.incident_code} draft was created.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`
+        : `${incidentRow.incident_code} taslagi olusturuldu.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`,
       companyWorkspaceId: workspaceId,
       navigation,
       metadata: {
         incident_id: incidentRow.id,
         incident_type: incidentRow.incident_type,
       },
-      steps: [
-        {
-          stepKey: 'incident_draft_created',
-          title: context.session.language === 'en' ? 'Incident draft created' : 'Olay taslagi olusturuldu',
-          description: context.session.language === 'en'
-            ? 'Nova created the controlled incident draft.'
-            : 'Nova kontrollu olay taslagini olusturdu.',
-          actionKind: 'system',
-          initialStatus: 'completed',
-        },
-        {
-          stepKey: 'open_incident_detail',
-          title: context.session.language === 'en' ? 'Open incident detail' : 'Olay detayini ac',
-          description: context.session.language === 'en'
-            ? 'Review and complete the draft on the incident detail screen.'
-            : 'Taslagi olay detay ekraninda gozden gecirip tamamla.',
-          actionKind: 'navigate',
-          targetUrl: `/incidents/${incidentRow.id}`,
-          initialStatus: 'pending',
-        },
-        {
-          stepKey: 'continue_incident_followup',
-          title: context.session.language === 'en' ? 'Continue incident follow-up' : 'Olay takibini surdur',
-          description: context.session.language === 'en'
-            ? 'Ask Nova to prepare DOF or root cause follow-up if needed.'
-            : 'Gerekirse DOF veya kok neden takibini Nova ile hazirla.',
-          actionKind: 'prompt',
-          promptText: context.session.language === 'en'
-            ? `Prepare the next incident follow-up actions for ${incidentRow.incident_code}.`
-            : `${incidentRow.incident_code} icin sonraki olay takip adimlarini hazirla.`,
-          initialStatus: 'pending',
-        },
-      ],
+      steps: incidentWorkflowSteps,
     }, context)
 
     await upsertLongTermMemoryProfile({
@@ -2508,6 +2964,22 @@ async function executeCreateIncidentDraft(input: any, context: ToolContext): Pro
       },
       companyWorkspaceId: workspaceId,
       confidenceScore: 0.74,
+    }, context)
+
+    await recordLearningSignal({
+      signalSource: 'workflow',
+      signalKey: 'workflow-start:incident_draft',
+      signalLabel: context.session.language === 'en'
+        ? `Incident flow started for ${incidentRow.incident_code}`
+        : `${incidentRow.incident_code} icin olay akisi baslatildi`,
+      outcome: 'neutral',
+      confidenceScore: 0.71,
+      companyWorkspaceId: workspaceId,
+      payload: {
+        action: 'create_incident_draft',
+        incident_id: incidentRow.id,
+        incident_type: incidentRow.incident_type,
+      },
     }, context)
 
     return {
@@ -2552,6 +3024,7 @@ async function executeCreateDocumentDraft(input: any, context: ToolContext): Pro
 
     const profileId = await getUserProfileId(context)
     const workspaceId = await getActiveWorkspaceId(context, input.company_workspace_id || null)
+    const workflowLearning = await getWorkflowLearningProfile('document_draft', workspaceId, context)
 
     if (input.confirmed !== true) {
       return await queueActionConfirmation({
@@ -2605,51 +3078,68 @@ async function executeCreateDocumentDraft(input: any, context: ToolContext): Pro
       auto_navigate: false,
     }
 
+    const documentWorkflowSteps: NovaWorkflowStepDefinition[] = [
+      {
+        stepKey: 'document_draft_created',
+        title: context.session.language === 'en' ? 'Document draft created' : 'Dokuman taslagi olusturuldu',
+        description: context.session.language === 'en'
+          ? 'Nova created the document draft in the editor.'
+          : 'Nova editor icinde dokuman taslagini olusturdu.',
+        actionKind: 'system',
+        initialStatus: 'completed',
+      },
+      {
+        stepKey: 'review_document_editor',
+        title: context.session.language === 'en' ? 'Open document editor' : 'Dokuman editorunu ac',
+        description: context.session.language === 'en'
+          ? 'Review and enrich the draft in the document editor.'
+          : 'Taslagi dokuman editorunde gozden gecir ve genislet.',
+        actionKind: 'navigate',
+        targetUrl: `/documents/${documentRow.id}`,
+        initialStatus: 'pending',
+      },
+      {
+        stepKey: 'request_document_revision',
+        title: context.session.language === 'en' ? 'Prepare revision follow-up' : 'Revizyon takibini hazirla',
+        description: context.session.language === 'en'
+          ? 'Ask Nova to refine this draft further when needed.'
+          : 'Gerekirse bu taslagi Nova ile bir adim daha olgunlastir.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Refine the document draft "${title}" with the next revision step.`
+          : `"${title}" dokuman taslagini bir sonraki revizyon adimiyla gelistir.`,
+        initialStatus: 'pending',
+      },
+    ]
+
+    if (workflowLearning.shouldDeepenChain) {
+      documentWorkflowSteps.push({
+        stepKey: 'prepare_document_approval_chain',
+        title: context.session.language === 'en' ? 'Prepare approval chain' : 'Onay zincirini hazirla',
+        description: context.session.language === 'en'
+          ? 'Nova learned that this company benefits from a revision and approval follow-up after the first draft.'
+          : 'Nova bu firmada ilk taslaktan sonra revizyon ve onay takibinin faydali oldugunu ogrendi.',
+        actionKind: 'prompt',
+        promptText: context.session.language === 'en'
+          ? `Prepare a revision and approval follow-up plan for the document "${title}".`
+          : `"${title}" dokumani icin revizyon ve onay takip plani hazirla.`,
+        initialStatus: 'pending',
+      })
+    }
+
     const workflowBundle = await createNovaWorkflow({
       workflowType: 'document_draft',
       title: context.session.language === 'en' ? `Document workflow: ${title}` : `Dokuman akisi: ${title}`,
       summary: context.session.language === 'en'
-        ? `${title} draft was created for editor review.`
-        : `${title} taslagi editor incelemesi icin olusturuldu.`,
+        ? `${title} draft was created for editor review.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`
+        : `${title} taslagi editor incelemesi icin olusturuldu.${workflowLearning.hintLine ? ` ${workflowLearning.hintLine}` : ''}`,
       companyWorkspaceId: workspaceId,
       navigation,
       metadata: {
         document_id: documentRow.id,
         document_type: documentType,
       },
-      steps: [
-        {
-          stepKey: 'document_draft_created',
-          title: context.session.language === 'en' ? 'Document draft created' : 'Dokuman taslagi olusturuldu',
-          description: context.session.language === 'en'
-            ? 'Nova created the document draft in the editor.'
-            : 'Nova editor icinde dokuman taslagini olusturdu.',
-          actionKind: 'system',
-          initialStatus: 'completed',
-        },
-        {
-          stepKey: 'review_document_editor',
-          title: context.session.language === 'en' ? 'Open document editor' : 'Dokuman editorunu ac',
-          description: context.session.language === 'en'
-            ? 'Review and enrich the draft in the document editor.'
-            : 'Taslagi dokuman editorunde gozden gecir ve genislet.',
-          actionKind: 'navigate',
-          targetUrl: `/documents/${documentRow.id}`,
-          initialStatus: 'pending',
-        },
-        {
-          stepKey: 'request_document_revision',
-          title: context.session.language === 'en' ? 'Prepare revision follow-up' : 'Revizyon takibini hazirla',
-          description: context.session.language === 'en'
-            ? 'Ask Nova to refine this draft further when needed.'
-            : 'Gerekirse bu taslagi Nova ile bir adim daha olgunlastir.',
-          actionKind: 'prompt',
-          promptText: context.session.language === 'en'
-            ? `Refine the document draft "${title}" with the next revision step.`
-            : `"${title}" dokuman taslagini bir sonraki revizyon adimiyla gelistir.`,
-          initialStatus: 'pending',
-        },
-      ],
+      steps: documentWorkflowSteps,
     }, context)
 
     await upsertLongTermMemoryProfile({
@@ -2681,6 +3171,22 @@ async function executeCreateDocumentDraft(input: any, context: ToolContext): Pro
       },
       companyWorkspaceId: workspaceId,
       confidenceScore: 0.74,
+    }, context)
+
+    await recordLearningSignal({
+      signalSource: 'workflow',
+      signalKey: 'workflow-start:document_draft',
+      signalLabel: context.session.language === 'en'
+        ? `Document flow started for ${title}`
+        : `${title} icin dokuman akisi baslatildi`,
+      outcome: 'neutral',
+      confidenceScore: 0.72,
+      companyWorkspaceId: workspaceId,
+      payload: {
+        action: 'create_document_draft',
+        document_id: documentRow.id,
+        document_type: documentType,
+      },
     }, context)
 
     return {
@@ -2852,6 +3358,9 @@ async function executeTool(toolName: string, input: any, context: ToolContext): 
         break
       case 'search_past_answers':
         result = await executeSearchPastAnswers(input, context)
+        break
+      case 'get_proactive_operations':
+        result = await executeGetProactiveOperations(input, context)
         break
       case 'save_memory_note':
         result = await executeSaveMemoryNote(input, context)
@@ -3171,6 +3680,7 @@ async function saveSolutionQueryRecord(params: {
   supabase: SupabaseClient
   userId: string
   organizationId: string
+  companyWorkspaceId?: string | null
   queryText: string
   answer: string
   sources: any[]
@@ -3195,6 +3705,7 @@ async function saveSolutionQueryRecord(params: {
         response_tokens: params.responseTokens,
         response_metadata: {
           session_id: params.sessionId,
+          company_workspace_id: params.companyWorkspaceId ?? null,
           tools_used: params.toolsUsed,
           language: params.language,
           navigation: params.navigation,
@@ -3483,6 +3994,7 @@ serve(async (req) => {
         supabase,
         userId: user.id,
         organizationId: body.organization_id,
+        companyWorkspaceId: body.company_workspace_id ?? null,
         queryText: userMessage,
         answer: cacheResult.answer,
         sources: cacheResult.sources || [],
@@ -3517,8 +4029,8 @@ serve(async (req) => {
     let systemPrompt = getSystemPrompt(language)
 
     systemPrompt += language === 'tr'
-      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Benzer sorularda search_past_answers ile onceki basarili cevaplari ve kullanicinin gecmisini kontrol et.\n- Kullanici kalici bir tercih, tekrar eden operasyon kalibi veya firma icin uzun omurlu bir not verirse save_memory_note ile hafizaya al.\n- Kullanici \"sirada ne var\", \"ne kaldi\", \"devam edelim\" gibi ifadeler kullanirsa get_active_workflows ile aktif akislarin sonraki adimlarini getir.\n- Kullanici bir adimi tamamladigini soyluyorsa complete_workflow_step ile ilgili adimi kapat ve siradaki adimi sun.\n- Kritik kayit acan islemlerde ilk adimda islemi hemen tamamlama; once bekleyen aksiyon hazirla ve acik kullanici onayi bekle.\n- Kullanici acikca \"onayliyorum\", \"devam et\", \"uygula\" derse confirm_pending_action kullan. \"Iptal et\", \"vazgectim\" derse cancel_pending_action kullan.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi hazirla; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle, workflow ve sonraki adimlari belirt, gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.`
-      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Use search_past_answers to inspect previous successful answers and the user's own history for recurring requests.\n- Use save_memory_note only for durable user preferences, repeated company patterns, or stable operational notes.\n- When the user asks what is next, what remains, or how to continue, use get_active_workflows to retrieve the active operational flow.\n- When the user says a step is done, use complete_workflow_step to close the current step and surface the next one.\n- For critical record-creating operations, do not complete the action immediately on the first turn; prepare a pending action and wait for explicit approval.\n- When the user clearly says approve, go ahead, or proceed, use confirm_pending_action. When the user cancels or declines, use cancel_pending_action.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, prepare the action; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result, mention the workflow and next steps, and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.`
+      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Benzer sorularda search_past_answers ile onceki basarili cevaplari ve kullanicinin gecmisini kontrol et.\n- Kullanici kalici bir tercih, tekrar eden operasyon kalibi veya firma icin uzun omurlu bir not verirse save_memory_note ile hafizaya al.\n- Kullanici \"sirada ne var\", \"ne kaldi\", \"devam edelim\", \"bugun bende ne var\" gibi ifadeler kullanirsa once get_proactive_operations; aktif akis odakliysa get_active_workflows kullan.\n- Kullanici bir adimi tamamladigini soyluyorsa complete_workflow_step ile ilgili adimi kapat ve siradaki adimi sun.\n- Kritik kayit acan islemlerde ilk adimda islemi hemen tamamlama; once bekleyen aksiyon hazirla ve acik kullanici onayi bekle.\n- Kullanici acikca \"onayliyorum\", \"devam et\", \"uygula\" derse confirm_pending_action kullan. \"Iptal et\", \"vazgectim\" derse cancel_pending_action kullan.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi hazirla; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle, workflow ve sonraki adimlari belirt, gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.\n- Ogrenme sinyallerini ve firma hafizasini kullanarak ayni tur operasyonlarda daha iyi takip zinciri oner.`
+      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Use search_past_answers to inspect previous successful answers and the user's own history for recurring requests.\n- Use save_memory_note only for durable user preferences, repeated company patterns, or stable operational notes.\n- When the user asks what is next, what remains, how to continue, or what needs attention today, use get_proactive_operations first; when the request is about an active operational chain, use get_active_workflows.\n- When the user says a step is done, use complete_workflow_step to close the current step and surface the next one.\n- For critical record-creating operations, do not complete the action immediately on the first turn; prepare a pending action and wait for explicit approval.\n- When the user clearly says approve, go ahead, or proceed, use confirm_pending_action. When the user cancels or declines, use cancel_pending_action.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, prepare the action; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result, mention the workflow and next steps, and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.\n- Use learning signals and company memory to suggest better follow-up chains for recurring operational work.`
 
     // Zayıf cache eşleşmesi varsa, Claude'a ipucu olarak ver
     if (cacheResult.isWeakMatch && cacheResult.answer) {
@@ -3532,6 +4044,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
     const FREE_TOOLS = [
       'search_legislation',
       'search_past_answers',
+      'get_proactive_operations',
       'save_memory_note',
       'get_active_workflows',
       'complete_workflow_step',
@@ -3576,10 +4089,11 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
 
     const intentRoutingContext = buildIntentRoutingContext(userMessage, language)
 
-    const [userMemory, storedMemory, longTermProfileMemory, workspaceMemory, activeWorkflowMemory, pendingActionMemory, learnedAnswerContext] = await Promise.all([
+    const [userMemory, storedMemory, longTermProfileMemory, learningSignalContext, workspaceMemory, activeWorkflowMemory, pendingActionMemory, learnedAnswerContext] = await Promise.all([
       buildUserPreferenceContext(toolContext),
       buildStoredMemoryContext(toolContext),
       buildLongTermProfileContext(toolContext),
+      buildLearningSignalContext(toolContext),
       buildActiveWorkspaceContext(toolContext),
       buildActiveWorkflowContext(toolContext),
       buildPendingActionContext(toolContext),
@@ -3600,6 +4114,10 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
 
     if (longTermProfileMemory) {
       systemPrompt += `\n\n${longTermProfileMemory}`
+    }
+
+    if (learningSignalContext) {
+      systemPrompt += `\n\n${learningSignalContext}`
     }
 
     if (workspaceMemory) {
@@ -3787,6 +4305,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       supabase,
       userId: user.id,
       organizationId: body.organization_id,
+      companyWorkspaceId: toolContext.session.company_workspace_id ?? null,
       queryText: userMessage,
       answer: finalAnswer,
       sources,

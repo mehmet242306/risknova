@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import {
+  getNovaProactiveBrief,
   markNovaWorkflowStep,
   type NovaFollowUpAction,
   type NovaWorkflowSummary,
@@ -78,6 +79,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
   const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const proactiveLoadedRef = useRef(false);
   const supabase = createClient();
 
   // Fetch organization_id for authenticated users
@@ -122,6 +124,43 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       ]);
     }
   }, [open, messages.length, isAuthenticated]);
+
+  useEffect(() => {
+    if (!open || !isAuthenticated || !organizationId || proactiveLoadedRef.current) return;
+    if (messages.length !== 1 || messages[0]?.id !== "welcome") return;
+
+    proactiveLoadedRef.current = true;
+    let cancelled = false;
+
+    (async () => {
+      const brief = await getNovaProactiveBrief(locale === "en" ? "en" : "tr");
+      if (cancelled || !brief) return;
+      if (!brief.actions.length && !brief.insights.length && !brief.activeWorkflows.length) return;
+
+      const summaryLines = [
+        brief.summary,
+        ...brief.insights.slice(0, 2).map((item) => `- ${item}`),
+      ].filter(Boolean);
+
+      const proactiveMessage: Message = {
+        id: "proactive-brief",
+        role: "bot",
+        text: summaryLines.join("\n"),
+        workflow: brief.activeWorkflows[0] ?? null,
+        followUpActions: brief.actions,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => {
+        if (prev.some((item) => item.id === "proactive-brief")) return prev;
+        return [...prev, proactiveMessage];
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isAuthenticated, organizationId, locale, messages]);
 
   // Scroll to bottom
   useEffect(() => {

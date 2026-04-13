@@ -278,6 +278,35 @@ Bu sayede Nova:
 - bir aksiyon tamamlandiktan sonra sonraki adimlari `follow_up_actions` olarak dondurebilir
 - kullaniciyi ekranlar arasinda daha aktif yonlendirebilir
 - tekrar eden operasyon kaliplarini uzun donem hafizaya alabilir
+- `nova_learning_signals` ile olumlu / olumsuz operasyon sinyallerini toplayabilir
+- benzer akislar icin daha derin takip zincirleri onerebilir
+- `get_proactive_operations` ile acik workflow, yaklasan gorev, egitim, olay ve dokumanlari tek briefing icinde sunabilir
+
+## Son Eklenen Nova V1 Paketleri
+
+Asagidaki yetenekler ilk Nova paketlerinde sisteme eklenmistir:
+
+- sahte public bilgi katmani kaldirildi, tek ajan kimligi `Nova` olarak netlestirildi
+- operasyon tool'lari eklendi:
+  - `create_training_plan`
+  - `create_planner_task`
+  - `create_incident_draft`
+  - `create_document_draft`
+- onayli aksiyon akisi eklendi:
+  - `confirm_pending_action`
+  - `cancel_pending_action`
+- kalici hafiza katmanlari eklendi:
+  - `nova_memories`
+  - `nova_memory_profiles`
+  - `nova_learning_signals`
+  - `nova_feedback`
+- is akisi ve takip katmani eklendi:
+  - `nova_workflow_runs`
+  - `nova_workflow_steps`
+- proaktif brief eklendi:
+  - kullanici Nova'yi actiginda aktif workflow'lari, yaklasan gorevleri ve siradaki adimlari gorebilir
+
+Bu durum Nova'yi klasik sohbet arayuzunden cikarip, takip yapan ve dogru anda eylem onerisi sunan bir operasyon ajani seviyesine tasimistir.
 
 ## Dil ve Global Destek
 

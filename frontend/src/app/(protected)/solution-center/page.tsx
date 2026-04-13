@@ -9,7 +9,9 @@ import { createClient } from "@/lib/supabase/client";
 import { downloadDocument, type DocumentBlock } from "@/lib/document-generator";
 import { useI18n } from "@/lib/i18n";
 import {
+  getNovaProactiveBrief,
   markNovaWorkflowStep,
+  type NovaProactiveBrief,
   type NovaFollowUpAction,
   type NovaWorkflowSummary,
 } from "@/lib/supabase/nova-workflows";
@@ -641,7 +643,19 @@ const novaActionQuestions = [
   "Is kazasi bildirimi kac gun icinde yapilmali?",
 ];
 
-function WelcomeScreen({ onQuickQuestion }: { onQuickQuestion: (q: string) => void }) {
+function WelcomeScreen({
+  onQuickQuestion,
+  proactiveBrief,
+  loadingProactive,
+  onFollowUpNavigate,
+  onFollowUpPrompt,
+}: {
+  onQuickQuestion: (q: string) => void;
+  proactiveBrief: NovaProactiveBrief | null;
+  loadingProactive: boolean;
+  onFollowUpNavigate: (action: NovaFollowUpAction) => void;
+  onFollowUpPrompt: (action: NovaFollowUpAction) => void;
+}) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4 py-12">
       <div className="text-center">
@@ -674,6 +688,60 @@ function WelcomeScreen({ onQuickQuestion }: { onQuickQuestion: (q: string) => vo
         ))}
       </div>
 
+      {(loadingProactive || proactiveBrief) && (
+        <div className="w-full max-w-4xl rounded-3xl border border-primary/15 bg-card/80 p-5 shadow-[var(--shadow-card)]">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                  Nova Brief
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">
+                  Bugun sizin icin neye odaklanmaliyiz?
+                </h3>
+                <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                  {loadingProactive
+                    ? "Nova aktif akislarinizi ve takip bekleyen operasyonlari tarıyor..."
+                    : proactiveBrief?.summary}
+                </p>
+              </div>
+              {proactiveBrief?.actions?.length ? (
+                <Badge variant="success">{proactiveBrief.actions.length} takip adimi</Badge>
+              ) : null}
+            </div>
+
+            {!!proactiveBrief?.insights?.length && (
+              <div className="grid gap-2 md:grid-cols-3">
+                {proactiveBrief.insights.map((insight) => (
+                  <div
+                    key={insight}
+                    className="rounded-2xl border border-border bg-secondary/30 px-4 py-3 text-xs leading-6 text-muted-foreground"
+                  >
+                    {insight}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!!proactiveBrief?.activeWorkflows?.length && (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {proactiveBrief.activeWorkflows.slice(0, 2).map((workflow) => (
+                  <WorkflowCard key={workflow.id} workflow={workflow} />
+                ))}
+              </div>
+            )}
+
+            {!!proactiveBrief?.actions?.length && (
+              <FollowUpActionsCard
+                actions={proactiveBrief.actions}
+                onNavigate={onFollowUpNavigate}
+                onPrompt={onFollowUpPrompt}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid w-full max-w-3xl gap-2 sm:grid-cols-2">
         {novaActionQuestions.map((q) => (
           <button
@@ -701,8 +769,11 @@ export default function SolutionCenterPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [proactiveBrief, setProactiveBrief] = useState<NovaProactiveBrief | null>(null);
+  const [loadingProactive, setLoadingProactive] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const proactiveLocaleRef = useRef<string | null>(null);
 
   // Fetch organization_id from user_profiles
   useEffect(() => {
@@ -715,6 +786,25 @@ export default function SolutionCenterPage() {
       if (profile?.organization_id) setOrganizationId(profile.organization_id);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!organizationId || messages.length > 0 || proactiveLocaleRef.current === locale) return;
+
+    let cancelled = false;
+    setLoadingProactive(true);
+
+    (async () => {
+      const brief = await getNovaProactiveBrief(locale === "en" ? "en" : "tr");
+      if (cancelled) return;
+      setProactiveBrief(brief);
+      proactiveLocaleRef.current = locale;
+      setLoadingProactive(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, locale, messages.length]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -947,7 +1037,13 @@ export default function SolutionCenterPage() {
             <div ref={messagesEndRef} />
           </div>
         ) : (
-          <WelcomeScreen onQuickQuestion={sendMessage} />
+          <WelcomeScreen
+            onQuickQuestion={sendMessage}
+            proactiveBrief={proactiveBrief}
+            loadingProactive={loadingProactive}
+            onFollowUpNavigate={handleFollowUpNavigate}
+            onFollowUpPrompt={handleFollowUpPrompt}
+          />
         )}
       </div>
 
