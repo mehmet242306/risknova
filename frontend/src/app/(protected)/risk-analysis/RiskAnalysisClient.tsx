@@ -2372,15 +2372,16 @@ JSON formatında döndür:
 
           <div className="space-y-5">
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-foreground">Firma / Kurum</label>
-              <select value={selectedCompanyId} onChange={(e) => { setSelectedCompanyId(e.target.value); setSelectedLocation(""); setSelectedDepartment(""); setSetupMessage(""); setSetupMessageType(""); }} className={selectCls}>
+              <label className="text-sm font-semibold text-foreground">Firma / Kurum <span className="text-red-500">*</span></label>
+              <select value={selectedCompanyId} onChange={(e) => { setSelectedCompanyId(e.target.value); setSelectedLocation(""); setSelectedDepartment(""); setSetupMessage(""); setSetupMessageType(""); }} className={selectCls + (!selectedCompanyId ? " !border-amber-400/60 !shadow-[0_0_0_3px_rgba(245,158,11,0.15)]" : "")}>
                 <option value="">Firma / kurum seç</option>
                 {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {!selectedCompanyId && <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Analiz için firma seçimi zorunludur</p>}
             </div>
 
             <div className="flex flex-col gap-3">
-              <label className="text-sm font-medium text-foreground">Analiz Yöntemi</label>
+              <label className="text-sm font-semibold text-foreground">Analiz Yöntemi <span className="text-red-500">*</span></label>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                 {METHOD_CATALOG.map((m) => {
                   const selected = method === m.id;
@@ -2450,18 +2451,20 @@ JSON formatında döndür:
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">Lokasyon / Çalışma Alanı</label>
-                <select value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)} className={selectCls}>
+                <label className="text-sm font-semibold text-foreground">Lokasyon / Çalışma Alanı <span className="text-red-500">*</span></label>
+                <select value={selectedLocation} onChange={(e) => setSelectedLocation(e.target.value)} className={selectCls + (selectedCompanyId && !selectedLocation ? " !border-amber-400/60 !shadow-[0_0_0_3px_rgba(245,158,11,0.15)]" : "")}>
                   <option value="">Lokasyon seç</option>
                   {(selectedCompany?.locations ?? []).map((loc) => <option key={loc} value={loc}>{loc}</option>)}
                 </select>
+                {selectedCompanyId && !selectedLocation && <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Lokasyon seçimi zorunludur</p>}
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground">Bölüm / Birim</label>
-                <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className={selectCls}>
+                <label className="text-sm font-semibold text-foreground">Bölüm / Birim <span className="text-red-500">*</span></label>
+                <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className={selectCls + (selectedCompanyId && !selectedDepartment ? " !border-amber-400/60 !shadow-[0_0_0_3px_rgba(245,158,11,0.15)]" : "")}>
                   <option value="">Bölüm seç</option>
                   {(selectedCompany?.departments ?? []).map((d) => <option key={d} value={d}>{d}</option>)}
                 </select>
+                {selectedCompanyId && !selectedDepartment && <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Bölüm seçimi zorunludur</p>}
               </div>
             </div>
           </div>
@@ -2478,7 +2481,7 @@ JSON formatında döndür:
             </div>
           )}
 
-          <div className="mt-4"><Link href="/companies"><Button type="button" variant="outline">Firma Yapısını Düzenle</Button></Link></div>
+          <div className="mt-4"><Link href="/companies"><Button type="button" variant="outline" className="h-10 rounded-xl px-5 text-sm font-semibold">Firma Yapısını Düzenle</Button></Link></div>
 
           {setupMessage && <StatusAlert tone={setupMessageType === "success" ? "success" : "danger"} className="mt-5">{setupMessage}</StatusAlert>}
         </div>
