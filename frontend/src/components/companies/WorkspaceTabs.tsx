@@ -157,7 +157,7 @@ export function StructureTab({ company, upd }: { company: CompanyRecord; upd: (p
         <section className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <PremiumIconBadge icon={MapPin} tone="amber" size="sm" />
+              <PremiumIconBadge icon={MapPin} tone="amber" size="md" />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Lokasyonlar</h3>
                 <p className="text-[11px] text-muted-foreground">Firmanın fiziksel yerleşkeleri</p>
@@ -199,7 +199,7 @@ export function StructureTab({ company, upd }: { company: CompanyRecord; upd: (p
         <section className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <PremiumIconBadge icon={Building2} tone="cobalt" size="sm" />
+              <PremiumIconBadge icon={Building2} tone="cobalt" size="md" />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Bölümler</h3>
                 <p className="text-[11px] text-muted-foreground">Organizasyonel birimler</p>
