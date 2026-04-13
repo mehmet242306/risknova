@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         message: payload.message,
         organization_id: auth.organizationId,
-        session_id: payload.session_id ?? null,
+        ...(payload.session_id ? { session_id: payload.session_id } : {}),
         language: payload.language,
         history: payload.history,
       }),
