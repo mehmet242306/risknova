@@ -943,6 +943,8 @@ function AnalysisDetailPanel({ analysis, onClose, company }: { analysis: FullAss
         criticalCount: allFindings.filter((f) => f.severity === "critical" || f.severity === "high").length,
         dofCandidateCount: 0,
         date: fmtDate(analysis.assessmentDate),
+        shareQrDataUrl: qrDataUrl || undefined,
+        shareUrl: shareUrl || undefined,
       };
       if (format === "pdf") exportRiskAnalysisPDF(exportData);
       else if (format === "word") await exportRiskAnalysisWord(exportData);

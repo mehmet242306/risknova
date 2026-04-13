@@ -99,6 +99,8 @@ export type RiskAnalysisExportData = {
   criticalCount: number;
   dofCandidateCount: number;
   date: string;
+  shareQrDataUrl?: string;
+  shareUrl?: string;
 };
 
 /* ================================================================== */
@@ -404,7 +406,18 @@ function generateHTML(data: RiskAnalysisExportData): string {
   <h2>SATIR BAZLI RİSK TESPİTLERİ</h2>
   ${rowSections}
 
-  <div style="margin-top:32px;padding-top:12px;border-top:2px solid #B8860B;font-size:9px;color:#999;text-align:center;">
+  ${data.shareQrDataUrl ? `
+  <div style="margin-top:32px;padding:20px;border:1px solid #E5E7EB;border-radius:12px;display:flex;align-items:center;gap:20px;">
+    <img src="${data.shareQrDataUrl}" alt="QR" width="100" height="100" style="border:1px solid #E5E7EB;border-radius:8px;" />
+    <div>
+      <p style="margin:0;font-size:11px;font-weight:700;color:#1A1A2E;">Dijital Rapor Erişimi</p>
+      <p style="margin:4px 0 0;font-size:10px;color:#666;">Bu QR kodu tarayarak raporun dijital versiyonuna ulaşabilirsiniz.</p>
+      ${data.shareUrl ? `<p style="margin:6px 0 0;font-size:9px;color:#B8860B;word-break:break-all;">${data.shareUrl}</p>` : ""}
+    </div>
+  </div>
+  ` : ""}
+
+  <div style="margin-top:24px;padding-top:12px;border-top:2px solid #B8860B;font-size:9px;color:#999;text-align:center;">
     Bu rapor RiskNova İSG Platformu tarafından ${now} tarihinde oluşturulmuştur.<br/>
     Rapor içeriği ${data.methodLabel} yöntemi ile değerlendirilmiştir.
   </div>
@@ -676,6 +689,38 @@ export async function exportRiskAnalysisWord(data: RiskAnalysisExportData) {
           }));
         }
       }
+    }
+  }
+
+  // ── QR Kod (varsa) ──
+  if (data.shareQrDataUrl) {
+    const qrParsed = parseDataUrl(data.shareQrDataUrl);
+    children.push(new Paragraph({ spacing: { before: 400 } }));
+    children.push(new Paragraph({
+      children: [
+        new TextRun({ text: "Dijital Rapor Erişimi", bold: true, size: 20, font: "Segoe UI", color: DARK_HEX }),
+      ],
+    }));
+    children.push(new Paragraph({
+      children: [
+        new TextRun({ text: "Bu QR kodu tarayarak raporun dijital versiyonuna ulaşabilirsiniz.", size: 18, font: "Segoe UI", color: "666666" }),
+      ],
+      spacing: { after: 100 },
+    }));
+    if (qrParsed) {
+      children.push(new Paragraph({
+        children: [
+          new ImageRun({ data: qrParsed.buffer, transformation: { width: 120, height: 120 }, type: qrParsed.ext }),
+        ],
+      }));
+    }
+    if (data.shareUrl) {
+      children.push(new Paragraph({
+        children: [
+          new TextRun({ text: data.shareUrl, size: 16, font: "Segoe UI", color: GOLD_HEX }),
+        ],
+        spacing: { after: 100 },
+      }));
     }
   }
 
