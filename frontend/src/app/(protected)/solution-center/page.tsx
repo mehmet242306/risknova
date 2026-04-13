@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { downloadDocument, type DocumentBlock } from "@/lib/document-generator";
 import { useI18n } from "@/lib/i18n";
-import { getNovaRuntimeErrorMessage, getNovaUiCopy } from "@/lib/nova-ui";
+import { getNovaUiCopy, resolveNovaRuntimeErrorMessage } from "@/lib/nova-ui";
 import {
   getNovaProactiveBrief,
   markNovaWorkflowStep,
@@ -899,7 +899,7 @@ export default function SolutionCenterPage() {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: getNovaRuntimeErrorMessage(locale, err),
+        content: await resolveNovaRuntimeErrorMessage(locale, err),
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMsg]);

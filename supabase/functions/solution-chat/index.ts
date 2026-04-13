@@ -37,11 +37,15 @@ const ALLOWED_ORIGINS = (Deno.env.get('APP_ORIGIN') ?? '')
   .map((value) => value.trim())
   .filter(Boolean)
 
+const LOCAL_DEV_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i
+
 function buildCorsHeaders(req: Request) {
   const requestOrigin = req.headers.get('origin') ?? ''
   const allowedOrigin = ALLOWED_ORIGINS.includes(requestOrigin)
     ? requestOrigin
-    : (ALLOWED_ORIGINS[0] ?? '')
+    : (LOCAL_DEV_ORIGIN_PATTERN.test(requestOrigin)
+      ? requestOrigin
+      : (ALLOWED_ORIGINS[0] ?? requestOrigin))
 
   return {
     'Access-Control-Allow-Origin': allowedOrigin,
@@ -49,6 +53,41 @@ function buildCorsHeaders(req: Request) {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Vary': 'Origin',
   }
+}
+
+async function jsonErrorResponse(req: Request, options: {
+  status: number
+  error: string
+  message: string
+  details?: Record<string, unknown>
+  userId?: string | null
+  organizationId?: string | null
+}) {
+  await logEdgeErrorEvent({
+    level: options.status >= 500 ? 'error' : 'warn',
+    source: 'solution-chat',
+    endpoint: '/functions/v1/solution-chat',
+    message: options.message,
+    context: {
+      status: options.status,
+      code: options.error,
+      ...(options.details ?? {}),
+    },
+    userId: options.userId ?? null,
+    organizationId: options.organizationId ?? null,
+  })
+
+  return new Response(
+    JSON.stringify({
+      error: options.error,
+      message: options.message,
+      ...(options.details ?? {}),
+    }),
+    {
+      status: options.status,
+      headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' },
+    },
+  )
 }
 
 const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
@@ -2057,7 +2096,7 @@ async function executeSaveMemoryNote(input: any, context: ToolContext): Promise<
     return {
       success: true,
       data: {
-        memory_id: resultRow.id,
+        memory_id: resultRow?.id ?? null,
         title,
         memory_type: memoryType,
         summary: context.session.language === 'en'
@@ -4072,7 +4111,7 @@ async function requestClaude(
   anthropic: Anthropic,
   payload: Parameters<Anthropic['messages']['create']>[0],
   operationName: string,
-) {
+): Promise<any | null> {
   const resilientResponse = await executeWithResilience({
     serviceKey: 'anthropic.api.solution_chat',
     displayName: 'Anthropic Solution Chat',
@@ -4345,13 +4384,14 @@ serve(async (req) => {
     const body: ChatRequest = await req.json()
     const parsedBody = chatRequestSchema.safeParse(body)
     if (!parsedBody.success) {
-      return new Response(
-        JSON.stringify({
-          error: 'Gecersiz istek verisi',
-          details: parsedBody.error.flatten(),
-        }),
-        { status: 400, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
-      )
+      return await jsonErrorResponse(req, {
+        status: 400,
+        error: 'invalid_request',
+        message: 'Gecersiz istek verisi',
+        details: {
+          validation: parsedBody.error.flatten(),
+        },
+      })
     }
 
     const userMessage = parsedBody.data.message
@@ -4364,6 +4404,14 @@ serve(async (req) => {
     const operationalLanguage = getOperationalLanguage(answerLanguage)
 
     if (!userMessage || userMessage.trim().length === 0) {
+      return await jsonErrorResponse(req, {
+        status: 400,
+        error: 'empty_message',
+        message: 'Mesaj bos olamaz',
+      })
+    }
+
+    if (!userMessage || userMessage.trim().length === 0) {
       return new Response(
         JSON.stringify({ error: 'Mesaj boş olamaz' }),
         { status: 400, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
@@ -4371,6 +4419,14 @@ serve(async (req) => {
     }
 
     const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return await jsonErrorResponse(req, {
+        status: 401,
+        error: 'missing_auth',
+        message: 'Yetkilendirme gerekli',
+      })
+    }
+
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: 'Yetkilendirme gerekli' }),
@@ -4398,6 +4454,17 @@ serve(async (req) => {
     )
 
     if (authError || !user) {
+      return await jsonErrorResponse(req, {
+        status: 401,
+        error: 'auth_failed',
+        message: 'Kullanici dogrulanamadi',
+        details: {
+          auth_error: authError?.message ?? null,
+        },
+      })
+    }
+
+    if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Kullanıcı doğrulanamadı' }),
         { status: 401, headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
@@ -4406,6 +4473,20 @@ serve(async (req) => {
 
     // Subscription kontrolü
     const subCheck = await checkSubscriptionLimit(user.id, 'message', supabase)
+
+    if (!subCheck.allowed) {
+      return await jsonErrorResponse(req, {
+        status: 429,
+        error: 'subscription_limit',
+        message: subCheck.message || 'Aylik mesaj limitiniz doldu',
+        details: {
+          plan_key: subCheck.plan_key ?? null,
+          remaining: subCheck.remaining ?? null,
+        },
+        userId: user.id,
+        organizationId: body.organization_id ?? null,
+      })
+    }
 
     if (!subCheck.allowed) {
       return new Response(
@@ -4448,6 +4529,20 @@ serve(async (req) => {
     }
 
     const aiRateRow = Array.isArray(aiRateData) ? aiRateData[0] : aiRateData
+    if (aiRateRow && aiRateRow.allowed !== true) {
+      return await jsonErrorResponse(req, {
+        status: 429,
+        error: 'rate_limit_exceeded',
+        message: 'Gunluk AI limitiniz doldu. Lutfen daha sonra tekrar deneyin.',
+        details: {
+          remaining: Number(aiRateRow.remaining ?? 0),
+          reset_at: aiRateRow.reset_at ?? null,
+        },
+        userId: user.id,
+        organizationId: body.organization_id ?? null,
+      })
+    }
+
     if (aiRateRow && aiRateRow.allowed !== true) {
       return new Response(
         JSON.stringify({
@@ -4721,7 +4816,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
         // TÜM tool_result bloklarını TEK user mesajında gönder
         messages.push({
           role: 'user',
-          content: toolResults.map(tr => ({
+          content: toolResults.map((tr: { tool_use_id: string; result: ToolResult }) => ({
             type: 'tool_result',
             tool_use_id: tr.tool_use_id,
             content: JSON.stringify(tr.result)
@@ -4759,7 +4854,6 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
           finalAnswer = operationalLanguage === 'tr'
             ? 'Nova AI servisi gecici olarak kullanilamiyor. Elle devam edebilir veya daha sonra tekrar deneyebilirsiniz.'
             : 'Nova AI is temporarily unavailable. Please continue manually or try again later.'
-          break
         }
 
         totalInputTokens += fallbackResponse.usage.input_tokens
@@ -4864,6 +4958,16 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
   } catch (error: any) {
     console.error('Nova error:', error)
     if (isRecoverableNovaInfraError(error)) {
+      await logEdgeErrorEvent({
+        level: 'warn',
+        source: 'solution-chat',
+        endpoint: '/functions/v1/solution-chat',
+        message: error?.message ?? 'Recoverable Nova infrastructure error',
+        context: {
+          feature: 'solution_chat',
+          recoverable: true,
+        },
+      })
       const fallback = getRecoverableNovaFallback(requestedLanguage)
       return new Response(
         JSON.stringify({

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
-import { getNovaRuntimeErrorMessage, getNovaUiCopy } from "@/lib/nova-ui";
+import { getNovaUiCopy, resolveNovaRuntimeErrorMessage } from "@/lib/nova-ui";
 import {
   getNovaProactiveBrief,
   markNovaWorkflowStep,
@@ -238,7 +238,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       });
 
       if (error) {
-        throw new Error(error.message || ui.widget.unavailable);
+        throw error;
       }
 
       // Preserve session
@@ -279,10 +279,11 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
 
       setMessages((prev) => [...prev, botMsg]);
     } catch (err: unknown) {
+      const errorText = await resolveNovaRuntimeErrorMessage(locale, err);
       const errorMsg: Message = {
         id: crypto.randomUUID(),
         role: "bot",
-        text: getNovaRuntimeErrorMessage(locale, err),
+        text: errorText,
         suggestions: authenticatedWelcomeActions.slice(0, 2),
         timestamp: new Date(),
         isError: true,

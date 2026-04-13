@@ -225,3 +225,68 @@ export function getNovaRuntimeErrorMessage(locale?: string | null, error?: unkno
     ? "Nova servisi son sunucu guncellemeleri uygulanirken gecici olarak hazir degil. Lutfen biraz sonra tekrar deneyin."
     : "Nova bu istegi su anda tamamlayamadi. Lutfen biraz sonra tekrar deneyin.";
 }
+
+type NovaRuntimeErrorContext = {
+  status?: number;
+  message?: string | null;
+  error?: string | null;
+};
+
+async function readNovaRuntimeErrorContext(error?: unknown): Promise<NovaRuntimeErrorContext | null> {
+  if (!error || typeof error !== "object" || !("context" in error)) {
+    return null;
+  }
+
+  const response = (error as { context?: Response }).context;
+  if (!response || typeof response.status !== "number") {
+    return null;
+  }
+
+  const result: NovaRuntimeErrorContext = { status: response.status };
+
+  try {
+    const payload = await response.clone().json();
+    if (payload && typeof payload === "object") {
+      result.message =
+        typeof payload.message === "string"
+          ? payload.message
+          : typeof payload.error === "string"
+            ? payload.error
+            : null;
+      result.error = typeof payload.error === "string" ? payload.error : null;
+    }
+  } catch {
+    // Ignore non-JSON bodies and fall back to generic handling.
+  }
+
+  return result;
+}
+
+export async function resolveNovaRuntimeErrorMessage(locale?: string | null, error?: unknown): Promise<string> {
+  const language = getNovaUiLanguage(locale);
+  const details = await readNovaRuntimeErrorContext(error);
+
+  if (!details) {
+    return getNovaRuntimeErrorMessage(locale, error);
+  }
+
+  if (details.status === 401 || details.status === 403) {
+    return language === "en"
+      ? "Nova could not verify your session. Please sign out, sign in again, and retry."
+      : "Nova oturumunuzu dogrulayamadi. Lutfen cikis yapip tekrar girin ve yeniden deneyin.";
+  }
+
+  if (details.status === 429) {
+    return details.message || (
+      language === "en"
+        ? "Nova usage limit has been reached for now. Please try again later."
+        : "Nova kullanim limiti su an icin doldu. Lutfen daha sonra tekrar deneyin."
+    );
+  }
+
+  if (details.message) {
+    return details.message;
+  }
+
+  return getNovaRuntimeErrorMessage(locale, error);
+}
