@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { MapPin, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PremiumIconBadge } from "@/components/ui/premium-icon-badge";
 import { DOCUMENT_GROUPS } from "@/lib/document-groups";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -155,7 +157,7 @@ export function StructureTab({ company, upd }: { company: CompanyRecord; upd: (p
         <section className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 text-lg shadow-sm dark:from-amber-500/20 dark:to-amber-500/5">📍</div>
+              <PremiumIconBadge icon={MapPin} tone="amber" size="sm" />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Lokasyonlar</h3>
                 <p className="text-[11px] text-muted-foreground">Firmanın fiziksel yerleşkeleri</p>
@@ -197,7 +199,7 @@ export function StructureTab({ company, upd }: { company: CompanyRecord; upd: (p
         <section className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500/15 to-blue-500/5 text-lg shadow-sm dark:from-blue-500/20 dark:to-blue-500/5">🏢</div>
+              <PremiumIconBadge icon={Building2} tone="cobalt" size="sm" />
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Bölümler</h3>
                 <p className="text-[11px] text-muted-foreground">Organizasyonel birimler</p>
