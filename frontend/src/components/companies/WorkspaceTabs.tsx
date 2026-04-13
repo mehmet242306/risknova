@@ -607,14 +607,14 @@ export function RiskTab({ company }: { company: CompanyRecord }) {
                       </div>
                     </div>
                     {/* İşlem butonları */}
-                    <div className="flex items-center gap-1.5 ml-4">
+                    <div className="flex items-center gap-1 ml-4">
                       {a.status !== "archived" && (
-                        <button type="button" className="rounded-xl p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" onClick={() => handleArchive(a.id)} title="Arşivle">
-                          <Archive size={16} />
+                        <button type="button" className="rounded-xl p-2.5 text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20 transition-colors" onClick={() => handleArchive(a.id)} title="Arşivle">
+                          <Archive size={18} strokeWidth={2} />
                         </button>
                       )}
-                      <Link href={`/risk-analysis?companyId=${company.id}&loadId=${a.id}`} className="rounded-xl p-2 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors" title="Düzenle">
-                        <Pencil size={16} />
+                      <Link href={`/risk-analysis?companyId=${company.id}&loadId=${a.id}`} className="rounded-xl p-2.5 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors" title="Düzenle">
+                        <Pencil size={18} strokeWidth={2} />
                       </Link>
                       {confirmDeleteId === a.id ? (
                         <div className="flex items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-50 px-3 py-1.5 dark:border-red-600/40 dark:bg-red-950/30">
@@ -623,13 +623,13 @@ export function RiskTab({ company }: { company: CompanyRecord }) {
                           <button type="button" className="rounded-lg px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary" onClick={() => setConfirmDeleteId(null)}>Hayır</button>
                         </div>
                       ) : (
-                        <button type="button" className="rounded-xl p-2 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors" onClick={() => setConfirmDeleteId(a.id)} title="Sil">
-                          <Trash2 size={16} />
+                        <button type="button" className="rounded-xl p-2.5 text-red-500 hover:bg-red-50 hover:text-red-600 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors" onClick={() => setConfirmDeleteId(a.id)} title="Sil">
+                          <Trash2 size={18} strokeWidth={2} />
                         </button>
                       )}
                       {/* Chevron */}
-                      <div role="button" tabIndex={0} onClick={() => openAnalysisDetail(a.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openAnalysisDetail(a.id); }} className="cursor-pointer rounded-xl p-2 text-muted-foreground hover:bg-secondary transition-colors">
-                        <ChevronDown size={16} className={`transition-transform ${isSelected ? "rotate-180" : ""}`} />
+                      <div role="button" tabIndex={0} onClick={() => openAnalysisDetail(a.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openAnalysisDetail(a.id); }} className="cursor-pointer rounded-xl p-2.5 text-foreground/60 hover:bg-secondary hover:text-foreground transition-colors">
+                        <ChevronDown size={18} strokeWidth={2} className={`transition-transform ${isSelected ? "rotate-180" : ""}`} />
                       </div>
                     </div>
                   </div>

@@ -263,8 +263,8 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
             <Button variant="outline" size="sm" onClick={() => setTab("organization")}>Davet Et</Button>
           </div>
         </div>
-        {/* Mini stat cards — 48px height */}
-        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {/* Mini stat cards — premium */}
+        <div className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-6">
           {[
             { l: "\u00C7al\u0131\u015Fan", v: company.employeeCount, warn: false },
             { l: "Lokasyon", v: lc, warn: false },
@@ -273,9 +273,9 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
             { l: "Geciken", v: company.overdueActions, warn: company.overdueActions > 0 },
             { l: "Olgunluk", v: `%${company.maturityScore}`, warn: false },
           ].map((s) => (
-            <div key={s.l} className="flex h-12 flex-col justify-center rounded-lg border border-border bg-secondary/50 px-2.5 text-center">
-              <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{s.l}</p>
-              <p className={`text-sm font-semibold tabular-nums ${s.warn ? "text-danger" : "text-foreground"}`}>{s.v}</p>
+            <div key={s.l} className="flex h-14 flex-col justify-center rounded-[1.1rem] border border-border/60 bg-card px-3 text-center shadow-sm transition-shadow hover:shadow-[var(--shadow-card)]">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{s.l}</p>
+              <p className={`mt-0.5 text-lg font-bold tabular-nums ${s.warn ? "text-danger" : "text-foreground"}`}>{s.v}</p>
             </div>
           ))}
         </div>
