@@ -231,6 +231,43 @@ const NOVA_TOOLS = [
     }
   },
   {
+    name: 'search_past_answers',
+    description: 'Nova ve onceki ogrenme kayitlarinda benzer cevaplari arar. Tekrar eden sorularda, kullanicinin gecmis cozumlerini hatirlamada ve kurumsal kaliplari bulmada kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Aranacak gecmis soru veya konu' },
+        scope: {
+          type: 'string',
+          enum: ['user', 'global'],
+          default: 'user',
+          description: 'Yalnizca kullanicinin gecmisi veya genel ogrenme havuzu'
+        },
+        max_results: { type: 'integer', description: 'Maksimum sonuc sayisi', default: 5 }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'save_memory_note',
+    description: 'Nova icin kalici hafiza notu kaydeder. Yalnizca kullanicinin acikca belirttigi kalici tercihleri, tekrar eden firma kaliplarini veya operasyon notlarini kaydetmek icin kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Kisa hafiza basligi' },
+        memory_text: { type: 'string', description: 'Kaydedilecek hafiza notu' },
+        memory_type: {
+          type: 'string',
+          enum: ['user_preference', 'company_pattern', 'working_style', 'operational_note'],
+          default: 'operational_note'
+        },
+        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' },
+        confidence_score: { type: 'number', description: '0 ile 1 arasinda guven skoru', default: 0.8 }
+      },
+      required: ['title', 'memory_text']
+    }
+  },
+  {
     name: 'navigate_to_page',
     description: 'Kullaniciyi platform icinde bir sayfaya yonlendirir. Kullanici "ac", "goster", "git", "yonlendir" gibi eylem komutlari verdiginde kullan. ONEMLI URL YAPISI: Bu platformda firma yonetimi query param tab sistemiyle calisir (/companies/[id]?tab=slug). Personel, ekip, planlama, takip, arsiv gibi sayfalar BAGIMSIZ DEGIL, aktif firmanin alt tab\'larindadir. Kullanici "personel listesi" derse company_personnel kullan. "Ekip" derse company_people kullan. "Risk ve saha" derse company_risk kullan. "Son risk analizi" derse latest_risk_assessment kullan (ayri /risk-analysis sayfasina gider). "Firma sayfasi" derse active_company kullan (aktif firmanin overview\'una gider). Tek bir personelin detayi icin personnel_detail + record_id kullan. Bagimsiz sayfalar: dashboard, notifications, settings, profile, reports, calendar, incidents, documents, training.',
     input_schema: {
@@ -612,6 +649,42 @@ async function buildUserPreferenceContext(context: ToolContext): Promise<string>
   ].filter(Boolean).join('\n')
 }
 
+async function buildStoredMemoryContext(context: ToolContext): Promise<string> {
+  const workspaceId = await getActiveWorkspaceId(context)
+
+  let query = context.supabase
+    .from('nova_memories')
+    .select('id, title, memory_text, memory_type, company_workspace_id, confidence_score, language')
+    .eq('user_id', context.user.id)
+    .eq('is_active', true)
+    .order('confidence_score', { ascending: false })
+    .order('last_used_at', { ascending: false })
+    .limit(6)
+
+  if (workspaceId) {
+    query = query.or(`company_workspace_id.is.null,company_workspace_id.eq.${workspaceId}`)
+  } else {
+    query = query.is('company_workspace_id', null)
+  }
+
+  const { data } = await query
+  if (!data || data.length === 0) return ''
+
+  if (context.session.language === 'en') {
+    return [
+      '## STORED NOVA MEMORY',
+      ...data.map((item: any) => `- [${item.memory_type}] ${item.title}: ${item.memory_text}`),
+      'Treat these notes as user and company context. Never use them as a substitute for regulatory verification.',
+    ].join('\n')
+  }
+
+  return [
+    '## KAYITLI NOVA HAFIZASI',
+    ...data.map((item: any) => `- [${item.memory_type}] ${item.title}: ${item.memory_text}`),
+    'Bu notlari kullanici ve firma baglami olarak kullan. Mevzuat dogrulamasinin yerine gecirme.',
+  ].join('\n')
+}
+
 async function buildActiveWorkspaceContext(context: ToolContext): Promise<string> {
   const workspaceId = await getActiveWorkspaceId(context)
   if (!workspaceId) return ''
@@ -738,6 +811,154 @@ function buildNovaDocumentContent(title: string, summary: string, language: stri
         ],
       },
     ],
+  }
+}
+
+async function executeSearchPastAnswers(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const queryText = String(input.query || '').trim()
+    if (!queryText) {
+      return { success: false, error: 'Arama sorgusu gerekli' }
+    }
+
+    const maxResults = Math.max(1, Math.min(8, Number(input.max_results ?? 5)))
+    const likeQuery = `%${queryText}%`
+
+    const [userHistoryRes, globalLearningRes] = await Promise.all([
+      context.supabase
+        .from('solution_queries')
+        .select('id, query_text, ai_response, created_at, is_saved, response_tokens')
+        .eq('user_id', context.user.id)
+        .or(`query_text.ilike.${likeQuery},ai_response.ilike.${likeQuery}`)
+        .order('created_at', { ascending: false })
+        .limit(maxResults),
+      input.scope === 'global'
+        ? context.supabase
+            .from('ai_qa_learning')
+            .select('id, question, answer, answer_sources, usage_count, user_feedback_score, success_rate')
+            .or(`question.ilike.${likeQuery},answer.ilike.${likeQuery}`)
+            .order('success_rate', { ascending: false })
+            .order('usage_count', { ascending: false })
+            .limit(maxResults)
+        : Promise.resolve({ data: [], error: null } as any),
+    ])
+
+    const userMatches = (userHistoryRes.data || []).map((item: any) => ({
+      source: 'user_history',
+      id: item.id,
+      question: item.query_text,
+      answer: item.ai_response,
+      created_at: item.created_at,
+      saved: item.is_saved,
+      response_tokens: item.response_tokens,
+    }))
+
+    const learningMatches = (globalLearningRes.data || []).map((item: any) => ({
+      source: 'learning_pool',
+      id: item.id,
+      question: item.question,
+      answer: item.answer,
+      answer_sources: item.answer_sources,
+      usage_count: item.usage_count,
+      feedback_score: item.user_feedback_score,
+      success_rate: item.success_rate,
+    }))
+
+    return {
+      success: true,
+      data: {
+        query: queryText,
+        user_matches: userMatches,
+        learning_matches: learningMatches,
+        summary: context.session.language === 'en'
+          ? `Found ${userMatches.length} personal history matches and ${learningMatches.length} learned answer matches.`
+          : `${userMatches.length} kisisel gecmis ve ${learningMatches.length} ogrenme havuzu sonucu bulundu.`,
+      },
+    }
+  } catch (err: any) {
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
+async function executeSaveMemoryNote(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const title = String(input.title || '').trim()
+    const memoryText = String(input.memory_text || '').trim()
+    if (!title || !memoryText) {
+      return { success: false, error: 'Hafiza basligi ve icerigi gerekli' }
+    }
+
+    const memoryType = ['user_preference', 'company_pattern', 'working_style', 'operational_note'].includes(input.memory_type)
+      ? input.memory_type
+      : 'operational_note'
+    const workspaceId = await getActiveWorkspaceId(context, input.company_workspace_id || null)
+    const confidenceScore = Math.max(0.3, Math.min(1, Number(input.confidence_score ?? 0.8)))
+
+    const { data: existing } = await context.supabase
+      .from('nova_memories')
+      .select('id')
+      .eq('user_id', context.user.id)
+      .eq('memory_type', memoryType)
+      .eq('title', title)
+      .maybeSingle()
+
+    let resultRow: { id: string } | null = null
+
+    if (existing?.id) {
+      const { data, error } = await context.supabase
+        .from('nova_memories')
+        .update({
+          memory_text: memoryText,
+          confidence_score: confidenceScore,
+          company_workspace_id: workspaceId,
+          language: context.session.language,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+          last_used_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+        .select('id')
+        .single()
+
+      if (error || !data?.id) {
+        return { success: false, error: 'Hafiza notu guncellenemedi.' }
+      }
+      resultRow = data
+    } else {
+      const { data, error } = await context.supabase
+        .from('nova_memories')
+        .insert({
+          user_id: context.user.id,
+          organization_id: context.user.organization_id,
+          company_workspace_id: workspaceId,
+          memory_type: memoryType,
+          title,
+          memory_text: memoryText,
+          language: context.session.language,
+          confidence_score: confidenceScore,
+        })
+        .select('id')
+        .single()
+
+      if (error || !data?.id) {
+        return { success: false, error: 'Hafiza notu kaydedilemedi.' }
+      }
+      resultRow = data
+    }
+
+    return {
+      success: true,
+      data: {
+        memory_id: resultRow.id,
+        title,
+        memory_type: memoryType,
+        summary: context.session.language === 'en'
+          ? `Nova saved the memory note: ${title}`
+          : `Nova hafizaya su notu kaydetti: ${title}`,
+      },
+    }
+  } catch (err: any) {
+    return { success: false, error: `Hata: ${err.message}` }
   }
 }
 
@@ -1260,6 +1481,12 @@ async function executeTool(toolName: string, input: any, context: ToolContext): 
       case 'get_recent_assessments':
         result = await executeGetRecentAssessments(input, context)
         break
+      case 'search_past_answers':
+        result = await executeSearchPastAnswers(input, context)
+        break
+      case 'save_memory_note':
+        result = await executeSaveMemoryNote(input, context)
+        break
       case 'navigate_to_page':
         result = await executeNavigateToPage(input, context)
         break
@@ -1490,6 +1717,53 @@ async function saveToCache(
     })
   } catch (err) {
     console.error('Cache save error:', err)
+  }
+}
+
+async function saveSolutionQueryRecord(params: {
+  supabase: SupabaseClient
+  userId: string
+  organizationId: string
+  queryText: string
+  answer: string
+  sources: any[]
+  responseTokens: number
+  sessionId: string
+  toolsUsed: string[]
+  language: string
+  navigation: any | null
+  cached: boolean
+}): Promise<string | null> {
+  try {
+    const { data, error } = await params.supabase
+      .from('solution_queries')
+      .insert({
+        user_id: params.userId,
+        organization_id: params.organizationId,
+        query_text: params.queryText,
+        ai_response: params.answer,
+        sources_used: params.sources || [],
+        response_tokens: params.responseTokens,
+        response_metadata: {
+          session_id: params.sessionId,
+          tools_used: params.toolsUsed,
+          language: params.language,
+          navigation: params.navigation,
+          cached: params.cached,
+        },
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      console.error('[saveSolutionQueryRecord] insert failed:', error)
+      return null
+    }
+
+    return data?.id || null
+  } catch (err) {
+    console.error('[saveSolutionQueryRecord] unexpected error:', err)
+    return null
   }
 }
 
@@ -1750,6 +2024,21 @@ serve(async (req) => {
         supabase
       )
 
+      const queryId = await saveSolutionQueryRecord({
+        supabase,
+        userId: user.id,
+        organizationId: body.organization_id,
+        queryText: userMessage,
+        answer: cacheResult.answer,
+        sources: cacheResult.sources || [],
+        responseTokens: 0,
+        sessionId,
+        toolsUsed: ['cache_hit'],
+        language,
+        navigation: null,
+        cached: true,
+      })
+
       return new Response(
         JSON.stringify({
           type: 'cache_hit',
@@ -1757,6 +2046,7 @@ serve(async (req) => {
           sources: cacheResult.sources || [],
           similarity: cacheResult.similarity,
           session_id: sessionId,
+          query_id: queryId,
           cached: true
         }),
         { headers: { ...buildCorsHeaders(req), 'Content-Type': 'application/json' } }
@@ -1770,8 +2060,8 @@ serve(async (req) => {
     let systemPrompt = getSystemPrompt(language)
 
     systemPrompt += language === 'tr'
-      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi dogrudan yap; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle ve gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.`
-      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, execute the action directly; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.`
+      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Benzer sorularda search_past_answers ile onceki basarili cevaplari ve kullanicinin gecmisini kontrol et.\n- Kullanici kalici bir tercih, tekrar eden operasyon kalibi veya firma icin uzun omurlu bir not verirse save_memory_note ile hafizaya al.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi dogrudan yap; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle ve gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.`
+      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Use search_past_answers to inspect previous successful answers and the user's own history for recurring requests.\n- Use save_memory_note only for durable user preferences, repeated company patterns, or stable operational notes.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, execute the action directly; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.`
 
     // Zayıf cache eşleşmesi varsa, Claude'a ipucu olarak ver
     if (cacheResult.isWeakMatch && cacheResult.answer) {
@@ -1785,6 +2075,7 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
     const FREE_TOOLS = [
       'search_legislation',
       'search_past_answers',
+      'save_memory_note',
       'navigate_to_page',
       'create_training_plan',
       'create_planner_task',
@@ -1822,13 +2113,18 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       }
     }
 
-    const [userMemory, workspaceMemory] = await Promise.all([
+    const [userMemory, storedMemory, workspaceMemory] = await Promise.all([
       buildUserPreferenceContext(toolContext),
+      buildStoredMemoryContext(toolContext),
       buildActiveWorkspaceContext(toolContext),
     ])
 
     if (userMemory) {
       systemPrompt += `\n\n${userMemory}`
+    }
+
+    if (storedMemory) {
+      systemPrompt += `\n\n${storedMemory}`
     }
 
     if (workspaceMemory) {
@@ -1997,14 +2293,31 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
     // STEP 4: Response
     // ========================================================================
 
+    const navigation = extractNavigation(toolsUsed, messages)
+    const queryId = await saveSolutionQueryRecord({
+      supabase,
+      userId: user.id,
+      organizationId: body.organization_id,
+      queryText: userMessage,
+      answer: finalAnswer,
+      sources,
+      responseTokens: totalOutputTokens,
+      sessionId,
+      toolsUsed,
+      language,
+      navigation,
+      cached: false,
+    })
+
     return new Response(
       JSON.stringify({
         type: 'response',
         answer: finalAnswer,
         sources: sources,
-        navigation: extractNavigation(toolsUsed, messages),
+        navigation,
         tools_used: toolsUsed,
         session_id: sessionId,
+        query_id: queryId,
         iterations: iterations,
         tokens: { input: totalInputTokens, output: totalOutputTokens },
         cached: false,

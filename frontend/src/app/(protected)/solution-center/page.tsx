@@ -533,7 +533,7 @@ function WelcomeScreen({ onQuickQuestion }: { onQuickQuestion: (q: string) => vo
 
 export default function SolutionCenterPage() {
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -605,7 +605,7 @@ export default function SolutionCenterPage() {
         body: {
           message: query,
           organization_id: organizationId,
-          language: "tr",
+          language: locale,
           history,
         },
       });

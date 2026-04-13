@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { useI18n } from "@/lib/i18n";
 import {
   MessageCircle,
   X,
@@ -61,6 +62,7 @@ const publicEntryActions: WidgetAction[] = [
 export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -183,7 +185,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           message: text,
           organization_id: organizationId,
           session_id: sessionId,
-          language: "tr",
+          language: locale,
           history,
         },
       });
