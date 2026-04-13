@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       (await supabase.auth.getSession()).data.session?.access_token ??
       null;
 
-    if (refreshError || !accessToken) {
+    if (!accessToken) {
       return NextResponse.json(
         {
           message:
@@ -56,11 +56,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const anonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+      "";
+
     const response = await fetch(getFunctionUrl(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey,
       },
       body: JSON.stringify({
         message: payload.message,
