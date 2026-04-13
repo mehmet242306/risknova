@@ -107,6 +107,7 @@ export async function listRiskAssessments(companyWorkspaceId?: string): Promise<
   let query = supabase
     .from("risk_assessments")
     .select("id, title, status, method, assessment_date, workplace_name, department_name, location_text, analysis_note, company_workspace_id, participants, item_count, overall_risk_level, created_at, updated_at")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (companyWorkspaceId) {
