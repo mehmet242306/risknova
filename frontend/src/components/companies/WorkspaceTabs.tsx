@@ -296,15 +296,16 @@ export function RiskTab({ company }: { company: CompanyRecord }) {
         if (assessmentIds.length > 0) {
           const { data: findings } = await supabase
             .from("risk_assessment_findings")
-            .select("category, severity")
-            .in("assessment_id", assessmentIds);
+            .select("category, category_key, severity")
+            .in("assessment_id", assessmentIds)
+            .is("deleted_at", null);
 
           if (findings) {
             const stats: Record<string, CategoryStats> = {};
             for (const cat of RISK_CATEGORIES) stats[cat.key] = { key: cat.key, total: 0, critical: 0, high: 0, medium: 0, low: 0 };
 
             for (const f of findings) {
-              const catKey = mapCategoryToKey(f.category);
+              const catKey = (f as Record<string, string>).category_key || mapCategoryToKey(f.category);
               if (!stats[catKey]) stats[catKey] = { key: catKey, total: 0, critical: 0, high: 0, medium: 0, low: 0 };
               stats[catKey].total++;
               if (f.severity === "critical") stats[catKey].critical++;

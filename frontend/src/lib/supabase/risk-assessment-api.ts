@@ -408,15 +408,16 @@ export async function saveRiskAnalysis(input: SaveRiskAnalysisInput): Promise<st
       // Create findings
       const findingsToInsert = row.findings
         .map((f, fi) => {
-          const dbImageId = localToDbImageId.get(f.imageId);
-          if (!dbImageId) return null;
+          const dbImageId = localToDbImageId.get(f.imageId) ?? null;
           return {
             assessment_id: assessmentId,
             row_id: dbRow.id,
             image_id: dbImageId,
             organization_id: auth.orgId,
+            company_workspace_id: input.companyWorkspaceId || null,
             title: f.title,
             category: f.category,
+            category_key: mapCategoryToKey(f.category),
             severity: f.severity,
             confidence: f.confidence,
             is_manual: f.isManual,
