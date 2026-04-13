@@ -40,6 +40,7 @@ interface ChatMessage {
   queryId?: string;
   timestamp: Date;
   saved?: boolean;
+  feedback?: "positive" | "negative" | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -269,10 +270,12 @@ function DocumentDownloadCard({ doc }: { doc: DocumentBlock }) {
 function MessageBubble({
   message,
   onToggleSave,
+  onFeedback,
   onNavigate,
 }: {
   message: ChatMessage;
   onToggleSave?: (id: string) => void;
+  onFeedback?: (id: string, feedback: "positive" | "negative") => void;
   onNavigate: (url: string) => void;
 }) {
   const [showSources, setShowSources] = useState(false);
@@ -363,6 +366,62 @@ function MessageBubble({
         {/* Actions */}
         {!isUser && (
           <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onFeedback?.(message.id, "positive")}
+              disabled={!message.queryId || message.feedback === "positive"}
+              className={cn(
+                "flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-colors",
+                message.feedback === "positive"
+                  ? "text-emerald-600"
+                  : "text-muted-foreground hover:text-foreground",
+                !message.queryId && "cursor-not-allowed opacity-50",
+              )}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill={message.feedback === "positive" ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M7 10v12" />
+                <path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3 3 0 0 1 3 3.88Z" />
+              </svg>
+              Yararlı
+            </button>
+            <button
+              type="button"
+              onClick={() => onFeedback?.(message.id, "negative")}
+              disabled={!message.queryId || message.feedback === "negative"}
+              className={cn(
+                "flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-colors",
+                message.feedback === "negative"
+                  ? "text-rose-600"
+                  : "text-muted-foreground hover:text-foreground",
+                !message.queryId && "cursor-not-allowed opacity-50",
+              )}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill={message.feedback === "negative" ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M17 14V2" />
+                <path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3 3 0 0 1-3-3.88Z" />
+              </svg>
+              Eksik
+            </button>
             <button
               type="button"
               onClick={() => onToggleSave?.(message.id)}
@@ -650,6 +709,7 @@ export default function SolutionCenterPage() {
         queryId: queryId,
         timestamp: new Date(),
         saved: false,
+        feedback: null,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -682,6 +742,26 @@ export default function SolutionCenterPage() {
 
     setMessages((prev) =>
       prev.map((m) => (m.id === messageId ? { ...m, saved: newSaved } : m)),
+    );
+  }
+
+  async function rateMessage(messageId: string, feedback: "positive" | "negative") {
+    const msg = messages.find((m) => m.id === messageId);
+    if (!msg?.queryId) return;
+
+    const supabase = createClient();
+    if (!supabase) return;
+
+    const { error } = await supabase.rpc("record_nova_feedback", {
+      p_query_id: msg.queryId,
+      p_feedback: feedback,
+      p_comment: null,
+    });
+
+    if (error) return;
+
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, feedback } : m)),
     );
   }
 
@@ -727,6 +807,7 @@ export default function SolutionCenterPage() {
                 key={msg.id}
                 message={msg}
                 onToggleSave={toggleSave}
+                onFeedback={rateMessage}
                 onNavigate={(url) => router.push(url)}
               />
             ))}

@@ -206,6 +206,12 @@ Onerilen yeni tablolar:
 - `nova_feedback`
 - `nova_action_runs`
 
+Ilk uygulama fazinda bunun hafifletilmis karsiliklari:
+
+- `nova_memories`
+- `nova_feedback`
+- `nova_action_runs`
+
 Kurallar:
 
 - mevzuat / hukuk bilgisi buraya kaydedilmez
@@ -297,6 +303,8 @@ Ama tam model bagimsiz calisma hedefi ilk faz icin gercekci degildir.
 - kullanici / firma / oturum hafizasi
 - feedback kaydi
 - memory retrieval
+- olumlu geri bildirimlerden ogrenme havuzunu guclendirme
+- aktif dil ve niyet icin daha akilli yonlendirme
 
 ### Faz 4 - RAG 2.0
 

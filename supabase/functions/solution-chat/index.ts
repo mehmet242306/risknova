@@ -194,6 +194,86 @@ function getSystemPrompt(language: string): string {
   return language === 'tr' ? NOVA_SYSTEM_PROMPT_TR : NOVA_SYSTEM_PROMPT_EN
 }
 
+function detectMessageLanguage(text: string, fallback: 'tr' | 'en' = 'tr'): 'tr' | 'en' {
+  const lower = text.toLowerCase()
+
+  if (/\b(answer in english|respond in english|english please)\b/.test(lower)) return 'en'
+  if (/\b(turkce cevapla|turkce yaz|türkçe cevapla|türkçe yaz)\b/.test(lower)) return 'tr'
+
+  const trSignals = [
+    've', 'ile', 'icin', 'nasil', 'nedir', 'hangi', 'egitim', 'eğitim', 'risk', 'mevzuat',
+    'gorev', 'görev', 'olay', 'dokuman', 'doküman', 'planla', 'yap', 'goster', 'hazirla',
+  ]
+  const enSignals = [
+    'and', 'with', 'how', 'what', 'which', 'training', 'incident', 'document', 'schedule',
+    'plan', 'show', 'create', 'prepare', 'risk', 'regulation', 'compliance',
+  ]
+
+  const trScore =
+    trSignals.reduce((sum, token) => sum + (lower.includes(token) ? 1 : 0), 0) +
+    ((/[çğıöşü]/i.test(text) ? 2 : 0))
+  const enScore =
+    enSignals.reduce((sum, token) => sum + (lower.includes(token) ? 1 : 0), 0)
+
+  if (enScore >= trScore + 2) return 'en'
+  if (trScore > enScore) return 'tr'
+  return fallback
+}
+
+function resolveConversationLanguage(
+  message: string,
+  requestedLanguage?: string,
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+): 'tr' | 'en' {
+  const requested = requestedLanguage === 'en' ? 'en' : 'tr'
+  const recentContext = history?.slice(-4).map((item) => item.content).join(' ') ?? ''
+  return detectMessageLanguage(`${recentContext}\n${message}`, requested)
+}
+
+function detectNovaIntent(message: string): 'regulation' | 'training' | 'planning' | 'incident' | 'document' | 'navigation' | 'analysis' | 'general' {
+  const lower = message.toLowerCase()
+
+  if (/(mevzuat|yonetmelik|yönetmelik|kanun|madde|regulation|law|article|legal)/.test(lower)) return 'regulation'
+  if (/(egitim|eğitim|training|sertifika|certificate)/.test(lower)) return 'training'
+  if (/(ramak kala|is kazasi|iş kazası|incident|near miss|occupational disease|olay)/.test(lower)) return 'incident'
+  if (/(dokuman|doküman|procedure|prosedur|prosedür|report|rapor|form|tutanak|document)/.test(lower)) return 'document'
+  if (/(planla|takvim|gorev|görev|schedule|planner|task|kurul)/.test(lower)) return 'planning'
+  if (/(ac|aç|gotur|götür|show|open|navigate|go to)/.test(lower)) return 'navigation'
+  if (/(analiz|analysis|degerlendir|değerlendir|ozetle|özetle|risk)/.test(lower)) return 'analysis'
+  return 'general'
+}
+
+function buildIntentRoutingContext(message: string, language: string): string {
+  const intent = detectNovaIntent(message)
+
+  if (language === 'en') {
+    const hints: Record<string, string> = {
+      regulation: 'Intent: regulation-first. Prioritize search_legislation and source-backed interpretation.',
+      training: 'Intent: training operation. If the request opens a record, prepare the action and wait for approval.',
+      planning: 'Intent: planning operation. Use planner/task tools and ask only for critical missing fields.',
+      incident: 'Intent: incident workflow. Prefer creating a controlled draft instead of assuming facts.',
+      document: 'Intent: document workflow. Prefer draft creation and operational guidance.',
+      navigation: 'Intent: navigation. Route the user directly when the destination is clear.',
+      analysis: 'Intent: analysis. Combine company context, recent data, and legislation when needed.',
+      general: 'Intent: mixed/general. Answer clearly and choose tools conservatively.',
+    }
+    return `## INTENT ROUTING\n${hints[intent]}`
+  }
+
+  const hints: Record<string, string> = {
+    regulation: 'Niyet: mevzuat-oncelikli. search_legislation ve kaynakli yorumlama kullan.',
+    training: 'Niyet: egitim operasyonu. Kayit acilacaksa islemi once hazirla, sonra onay bekle.',
+    planning: 'Niyet: planlama operasyonu. Planner/gorev toollarini kullan, sadece kritik eksik alanlari sor.',
+    incident: 'Niyet: olay akisi. Varsayim yapma, kontrollu taslak olustur.',
+    document: 'Niyet: dokuman akisi. Taslak olusturma ve operasyon yonlendirmesini one al.',
+    navigation: 'Niyet: yonlendirme. Hedef netse kullaniciyi dogrudan ilgili sayfaya gotur.',
+    analysis: 'Niyet: analiz. Firma baglami, son veriler ve gerekiyorsa mevzuati birlestir.',
+    general: 'Niyet: genel/karma. Net cevap ver, toollari ihtiyatli sec.',
+  }
+
+  return `## NIYET YONLENDIRMESI\n${hints[intent]}`
+}
+
 // ============================================================================
 // TOOL DEFINITIONS
 // ============================================================================
@@ -702,6 +782,17 @@ async function buildStoredMemoryContext(context: ToolContext): Promise<string> {
   const { data } = await query
   if (!data || data.length === 0) return ''
 
+  const memoryIds = data.map((item: any) => item.id).filter(Boolean)
+  if (memoryIds.length > 0) {
+    void context.supabase
+      .from('nova_memories')
+      .update({
+        last_used_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', memoryIds)
+  }
+
   if (context.session.language === 'en') {
     return [
       '## STORED NOVA MEMORY',
@@ -715,6 +806,41 @@ async function buildStoredMemoryContext(context: ToolContext): Promise<string> {
     ...data.map((item: any) => `- [${item.memory_type}] ${item.title}: ${item.memory_text}`),
     'Bu notlari kullanici ve firma baglami olarak kullan. Mevzuat dogrulamasinin yerine gecirme.',
   ].join('\n')
+}
+
+async function buildLearnedAnswerContext(queryText: string, context: ToolContext): Promise<string> {
+  try {
+    if (!queryText || queryText.trim().length < 8) return ''
+
+    const { data, error } = await context.supabase.rpc('search_qa_cache', {
+      query_text: queryText,
+      similarity_threshold: 0.08,
+      max_results: 2,
+    })
+
+    if (error || !Array.isArray(data) || data.length === 0) {
+      return ''
+    }
+
+    const filtered = data.filter((item: any) => Number(item.similarity ?? 0) >= 0.08)
+    if (filtered.length === 0) return ''
+
+    if (context.session.language === 'en') {
+      return [
+        '## LEARNED ANSWER PATTERNS',
+        ...filtered.map((item: any) => `- Similar Q: ${item.question}\n  Prior answer: ${String(item.answer || '').slice(0, 320)}\n  Reuse count: ${item.usage_count ?? 0}`),
+        'Use these as retrieval hints, not as authoritative regulatory sources.',
+      ].join('\n')
+    }
+
+    return [
+      '## OGRENILMIS CEVAP KALIPLARI',
+      ...filtered.map((item: any) => `- Benzer soru: ${item.question}\n  Onceki cevap: ${String(item.answer || '').slice(0, 320)}\n  Tekrar kullanimi: ${item.usage_count ?? 0}`),
+      'Bunlari retrieval ipucu olarak kullan, baglayici mevzuat kaynagi yerine koyma.',
+    ].join('\n')
+  } catch (_err) {
+    return ''
+  }
 }
 
 async function buildActiveWorkspaceContext(context: ToolContext): Promise<string> {
@@ -2280,7 +2406,11 @@ serve(async (req) => {
     }
 
     const userMessage = parsedBody.data.message
-    const language = parsedBody.data.language || 'tr'
+    const language = resolveConversationLanguage(
+      userMessage,
+      parsedBody.data.language,
+      parsedBody.data.history,
+    )
 
     if (!userMessage || userMessage.trim().length === 0) {
       return new Response(
@@ -2505,12 +2635,19 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       }
     }
 
-    const [userMemory, storedMemory, workspaceMemory, pendingActionMemory] = await Promise.all([
+    const intentRoutingContext = buildIntentRoutingContext(userMessage, language)
+
+    const [userMemory, storedMemory, workspaceMemory, pendingActionMemory, learnedAnswerContext] = await Promise.all([
       buildUserPreferenceContext(toolContext),
       buildStoredMemoryContext(toolContext),
       buildActiveWorkspaceContext(toolContext),
       buildPendingActionContext(toolContext),
+      buildLearnedAnswerContext(userMessage, toolContext),
     ])
+
+    if (intentRoutingContext) {
+      systemPrompt += `\n\n${intentRoutingContext}`
+    }
 
     if (userMemory) {
       systemPrompt += `\n\n${userMemory}`
@@ -2526,6 +2663,10 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
 
     if (pendingActionMemory) {
       systemPrompt += `\n\n${pendingActionMemory}`
+    }
+
+    if (learnedAnswerContext) {
+      systemPrompt += `\n\n${learnedAnswerContext}`
     }
 
     // Tool Use Loop
