@@ -94,6 +94,13 @@ const ISG_TASK_CATEGORY_EGITIM = '9b722ae5-0a72-48c8-9d1f-836e1a114b8a'
 const ISG_TASK_CATEGORY_PERIYODIK_KONTROL = '5656072d-c601-453d-a3c6-fa40e5a624e6'
 const ISG_TASK_CATEGORY_ISG_KURUL = '7e4dda4c-d0c0-4e61-adce-eba783e43085'
 
+const ACTION_LABELS: Record<string, { tr: string; en: string }> = {
+  create_training_plan: { tr: 'egitim plani', en: 'training plan' },
+  create_planner_task: { tr: 'planner gorevi', en: 'planner task' },
+  create_incident_draft: { tr: 'olay taslagi', en: 'incident draft' },
+  create_document_draft: { tr: 'dokuman taslagi', en: 'document draft' },
+}
+
 const chatRequestSchema = z.object({
   message: z.string().trim().min(1).max(4000),
   session_id: z.string().uuid().optional(),
@@ -314,7 +321,8 @@ const NOVA_TOOLS = [
         trainer_name: { type: 'string', description: 'Egitmen adi (opsiyonel)' },
         location: { type: 'string', description: 'Lokasyon (opsiyonel)' },
         notes: { type: 'string', description: 'Ek notlar (opsiyonel)' },
-        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' }
+        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' },
+        confirmed: { type: 'boolean', description: 'Yalnizca kullanici acikca onay verdiyse true gonder' }
       },
       required: ['title', 'training_date']
     }
@@ -341,7 +349,8 @@ const NOVA_TOOLS = [
           enum: ['genel', 'egitim', 'isg_kurul', 'periyodik_kontrol'],
           default: 'genel'
         },
-        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' }
+        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' },
+        confirmed: { type: 'boolean', description: 'Yalnizca kullanici acikca onay verdiyse true gonder' }
       },
       required: ['title', 'start_date']
     }
@@ -371,7 +380,8 @@ const NOVA_TOOLS = [
           description: 'On degerlendirme siddeti (opsiyonel)'
         },
         dof_required: { type: 'boolean', default: false },
-        ishikawa_required: { type: 'boolean', default: false }
+        ishikawa_required: { type: 'boolean', default: false },
+        confirmed: { type: 'boolean', description: 'Yalnizca kullanici acikca onay verdiyse true gonder' }
       },
       required: ['incident_type']
     }
@@ -389,9 +399,31 @@ const NOVA_TOOLS = [
           default: 'custom'
         },
         summary: { type: 'string', description: 'Taslak kapsam veya amac ozeti' },
-        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' }
+        company_workspace_id: { type: 'string', description: 'Firma workspace ID (opsiyonel)' },
+        confirmed: { type: 'boolean', description: 'Yalnizca kullanici acikca onay verdiyse true gonder' }
       },
       required: ['title']
+    }
+  },
+  {
+    name: 'confirm_pending_action',
+    description: 'Nova tarafindan hazirlanmis bekleyen bir kritik aksiyonu onaylayip gerceklestirir. Kullanici evet, onayliyorum, devam et gibi acik onay verdiginde kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action_id: { type: 'string', description: 'Opsiyonel bekleyen aksiyon ID' }
+      }
+    }
+  },
+  {
+    name: 'cancel_pending_action',
+    description: 'Bekleyen bir kritik aksiyonu iptal eder. Kullanici iptal et, vazgectim, uygulama gibi komutlar verdiginde kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action_id: { type: 'string', description: 'Opsiyonel bekleyen aksiyon ID' },
+        reason: { type: 'string', description: 'Iptal nedeni (opsiyonel)' }
+      }
     }
   }
 ]
@@ -962,6 +994,267 @@ async function executeSaveMemoryNote(input: any, context: ToolContext): Promise<
   }
 }
 
+function getActionLabel(actionName: string, language: string) {
+  const labels = ACTION_LABELS[actionName] || { tr: 'kritik islem', en: 'critical action' }
+  return language === 'en' ? labels.en : labels.tr
+}
+
+async function buildPendingActionContext(context: ToolContext): Promise<string> {
+  try {
+    const nowIso = new Date().toISOString()
+    const { data } = await context.supabase
+      .from('nova_action_runs')
+      .select('id, action_name, action_title, action_summary, expires_at')
+      .eq('user_id', context.user.id)
+      .eq('status', 'pending')
+      .gt('expires_at', nowIso)
+      .order('created_at', { ascending: false })
+      .limit(2)
+
+    if (!data?.length) return ''
+
+    if (context.session.language === 'en') {
+      return [
+        'Open pending Nova actions:',
+        ...data.map((item: any) => `- ${item.action_title}: ${item.action_summary || getActionLabel(item.action_name, 'en')}. If the user approves, use confirm_pending_action. If the user declines, use cancel_pending_action.`),
+      ].join('\n')
+    }
+
+    return [
+      'Nova icin bekleyen onayli islemler:',
+      ...data.map((item: any) => `- ${item.action_title}: ${item.action_summary || getActionLabel(item.action_name, 'tr')}. Kullanici onay verirse confirm_pending_action, vazgecerse cancel_pending_action kullan.`),
+    ].join('\n')
+  } catch (_err) {
+    return ''
+  }
+}
+
+async function queueActionConfirmation(params: {
+  actionName: string
+  actionTitle: string
+  actionSummary: string
+  actionPayload: Record<string, unknown>
+  companyWorkspaceId?: string | null
+}, context: ToolContext): Promise<ToolResult> {
+  try {
+    const nowIso = new Date().toISOString()
+    const basePayload = {
+      ...params.actionPayload,
+      company_workspace_id: params.companyWorkspaceId ?? params.actionPayload.company_workspace_id ?? null,
+    }
+
+    const { data: existing } = await context.supabase
+      .from('nova_action_runs')
+      .select('id')
+      .eq('user_id', context.user.id)
+      .eq('session_id', context.session.id)
+      .eq('status', 'pending')
+      .eq('action_name', params.actionName)
+      .eq('action_title', params.actionTitle)
+      .gt('expires_at', nowIso)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    let actionId: string | null = existing?.[0]?.id ?? null
+
+    if (actionId) {
+      const { error } = await context.supabase
+        .from('nova_action_runs')
+        .update({
+          action_summary: params.actionSummary,
+          action_payload: basePayload,
+          company_workspace_id: params.companyWorkspaceId ?? null,
+          updated_at: nowIso,
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        })
+        .eq('id', actionId)
+
+      if (error) {
+        return { success: false, error: 'Onay bekleyen islem guncellenemedi.' }
+      }
+    } else {
+      const { data, error } = await context.supabase
+        .from('nova_action_runs')
+        .insert({
+          user_id: context.user.id,
+          organization_id: context.user.organization_id,
+          company_workspace_id: params.companyWorkspaceId ?? null,
+          session_id: context.session.id,
+          action_name: params.actionName,
+          action_title: params.actionTitle,
+          action_summary: params.actionSummary,
+          action_payload: basePayload,
+          language: context.session.language,
+        })
+        .select('id')
+        .single()
+
+      if (error || !data?.id) {
+        return { success: false, error: 'Onay bekleyen islem kaydedilemedi.' }
+      }
+
+      actionId = data.id
+    }
+
+    const confirmationText = context.session.language === 'en'
+      ? `${params.actionTitle} is ready. I am waiting for your approval before I execute it.`
+      : `${params.actionTitle} hazir. Uygulamadan once onayinizi bekliyorum.`
+
+    return {
+      success: true,
+      data: {
+        requires_confirmation: true,
+        action_run_id: actionId,
+        action_name: params.actionName,
+        action_title: params.actionTitle,
+        action_summary: params.actionSummary,
+        summary: confirmationText,
+        confirmation_prompt: context.session.language === 'en'
+          ? 'If you approve, say "approve it" or "go ahead".'
+          : 'Onay veriyorsan "onayliyorum" veya "devam et" yazabilirsin.',
+      },
+    }
+  } catch (err: any) {
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
+async function findPendingAction(actionId: string | null, context: ToolContext) {
+  const nowIso = new Date().toISOString()
+  let query = context.supabase
+    .from('nova_action_runs')
+    .select('id, action_name, action_title, action_summary, action_payload, company_workspace_id, status, expires_at')
+    .eq('user_id', context.user.id)
+    .eq('status', 'pending')
+    .gt('expires_at', nowIso)
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (actionId) {
+    query = query.eq('id', actionId)
+  }
+
+  const { data } = await query
+  return data?.[0] ?? null
+}
+
+async function updateActionRunStatus(actionId: string, patch: Record<string, unknown>, context: ToolContext) {
+  await context.supabase
+    .from('nova_action_runs')
+    .update({
+      ...patch,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', actionId)
+}
+
+async function executeConfirmedPendingAction(actionRun: any, context: ToolContext): Promise<ToolResult> {
+  const payload = {
+    ...(actionRun.action_payload && typeof actionRun.action_payload === 'object' ? actionRun.action_payload : {}),
+    confirmed: true,
+    company_workspace_id: actionRun.company_workspace_id ?? actionRun.action_payload?.company_workspace_id ?? null,
+  }
+
+  let result: ToolResult
+  switch (actionRun.action_name) {
+    case 'create_training_plan':
+      result = await executeCreateTrainingPlan(payload, context)
+      break
+    case 'create_planner_task':
+      result = await executeCreatePlannerTask(payload, context)
+      break
+    case 'create_incident_draft':
+      result = await executeCreateIncidentDraft(payload, context)
+      break
+    case 'create_document_draft':
+      result = await executeCreateDocumentDraft(payload, context)
+      break
+    default:
+      return { success: false, error: 'Desteklenmeyen bekleyen aksiyon.' }
+  }
+
+  if (result.success) {
+    await updateActionRunStatus(actionRun.id, {
+      status: 'completed',
+      confirmed_at: new Date().toISOString(),
+      executed_at: new Date().toISOString(),
+      result_snapshot: result.data || null,
+    }, context)
+  } else {
+    await updateActionRunStatus(actionRun.id, {
+      status: 'failed',
+      confirmed_at: new Date().toISOString(),
+      result_snapshot: { error: result.error ?? 'Execution failed' },
+    }, context)
+  }
+
+  return {
+    ...result,
+    data: {
+      ...(result.data || {}),
+      action_run_id: actionRun.id,
+    },
+  }
+}
+
+async function executeConfirmPendingAction(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const actionId = typeof input.action_id === 'string' ? input.action_id : null
+    const actionRun = await findPendingAction(actionId, context)
+
+    if (!actionRun?.id) {
+      return {
+        success: false,
+        error: context.session.language === 'en'
+          ? 'There is no pending Nova action waiting for approval.'
+          : 'Onay bekleyen bir Nova islemi bulunamadi.',
+      }
+    }
+
+    return await executeConfirmedPendingAction(actionRun, context)
+  } catch (err: any) {
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
+async function executeCancelPendingAction(input: any, context: ToolContext): Promise<ToolResult> {
+  try {
+    const actionId = typeof input.action_id === 'string' ? input.action_id : null
+    const actionRun = await findPendingAction(actionId, context)
+
+    if (!actionRun?.id) {
+      return {
+        success: false,
+        error: context.session.language === 'en'
+          ? 'There is no pending Nova action to cancel.'
+          : 'Iptal edilecek bekleyen bir Nova islemi bulunamadi.',
+      }
+    }
+
+    await updateActionRunStatus(actionRun.id, {
+      status: 'cancelled',
+      cancelled_at: new Date().toISOString(),
+      result_snapshot: {
+        cancelled_reason: typeof input.reason === 'string' ? input.reason : null,
+      },
+    }, context)
+
+    return {
+      success: true,
+      data: {
+        action_run_id: actionRun.id,
+        action_name: actionRun.action_name,
+        action_title: actionRun.action_title,
+        summary: context.session.language === 'en'
+          ? `${actionRun.action_title} was cancelled.`
+          : `${actionRun.action_title} iptal edildi.`,
+      },
+    }
+  } catch (err: any) {
+    return { success: false, error: `Hata: ${err.message}` }
+  }
+}
+
 async function executeCreateTrainingPlan(input: any, context: ToolContext): Promise<ToolResult> {
   try {
     const title = String(input.title || '').trim()
@@ -1006,6 +1299,27 @@ async function executeCreateTrainingPlan(input: any, context: ToolContext): Prom
     const notes = String(input.notes || '').trim()
     const trainerName = String(input.trainer_name || '').trim()
     const location = String(input.location || '').trim()
+
+    if (input.confirmed !== true) {
+      return await queueActionConfirmation({
+        actionName: 'create_training_plan',
+        actionTitle: context.session.language === 'en' ? `Training plan: ${title}` : `Egitim plani: ${title}`,
+        actionSummary: context.session.language === 'en'
+          ? `${title} will be planned for ${trainingDate}${workspace.display_name ? ` for ${workspace.display_name}` : ''}.`
+          : `${title}, ${trainingDate} tarihine${workspace.display_name ? ` ${workspace.display_name} icin` : ''} planlanacak.`,
+        actionPayload: {
+          title,
+          training_type: trainingType,
+          training_date: trainingDate,
+          duration_hours: durationHours,
+          trainer_name: trainerName || null,
+          location: location || null,
+          notes: notes || null,
+          company_workspace_id: workspaceId,
+        },
+        companyWorkspaceId: workspaceId,
+      }, context)
+    }
 
     const { data: trainingRow, error: trainingError } = await context.supabase
       .from('company_trainings')
@@ -1127,6 +1441,28 @@ async function executeCreatePlannerTask(input: any, context: ToolContext): Promi
       : 'none'
     const reminderDays = Math.max(0, Math.min(365, Number(input.reminder_days ?? 7)))
 
+    if (input.confirmed !== true) {
+      return await queueActionConfirmation({
+        actionName: 'create_planner_task',
+        actionTitle: context.session.language === 'en' ? `Planner task: ${title}` : `Planner gorevi: ${title}`,
+        actionSummary: context.session.language === 'en'
+          ? `${title} will be planned for ${startDate}${workspace.display_name ? ` in ${workspace.display_name}` : ''}.`
+          : `${title}, ${startDate} icin${workspace.display_name ? ` ${workspace.display_name} firmasinda` : ''} planlanacak.`,
+        actionPayload: {
+          title,
+          start_date: startDate,
+          end_date: endDate,
+          description: String(input.description || '').trim() || null,
+          location: String(input.location || '').trim() || null,
+          recurrence,
+          reminder_days: reminderDays,
+          category_hint: categoryHint,
+          company_workspace_id: workspaceId,
+        },
+        companyWorkspaceId: workspaceId,
+      }, context)
+    }
+
     const { data: taskRow, error: taskError } = await context.supabase
       .from('isg_tasks')
       .insert({
@@ -1224,6 +1560,37 @@ async function executeCreateIncidentDraft(input: any, context: ToolContext): Pro
       payload.severity_level = input.severity_level
     }
 
+    if (input.confirmed !== true) {
+      const incidentLabel = incidentType === 'work_accident'
+        ? (context.session.language === 'en' ? 'work accident' : 'is kazasi')
+        : incidentType === 'near_miss'
+          ? (context.session.language === 'en' ? 'near miss' : 'ramak kala')
+          : (context.session.language === 'en' ? 'occupational disease' : 'meslek hastaligi')
+
+      return await queueActionConfirmation({
+        actionName: 'create_incident_draft',
+        actionTitle: context.session.language === 'en' ? `Incident draft: ${incidentLabel}` : `Olay taslagi: ${incidentLabel}`,
+        actionSummary: context.session.language === 'en'
+          ? `${incidentLabel} draft will be created${workspace.display_name ? ` for ${workspace.display_name}` : ''}.`
+          : `${incidentLabel} taslagi${workspace.display_name ? ` ${workspace.display_name} icin` : ''} olusturulacak.`,
+        actionPayload: {
+          incident_type: incidentType,
+          company_workspace_id: workspaceId,
+          incident_date: payload.incident_date ?? null,
+          incident_time: payload.incident_time ?? null,
+          incident_location: payload.incident_location ?? null,
+          incident_department: payload.incident_department ?? null,
+          general_activity: payload.general_activity ?? null,
+          tool_used: payload.tool_used ?? null,
+          description: payload.description ?? null,
+          severity_level: payload.severity_level ?? null,
+          dof_required: payload.dof_required ?? false,
+          ishikawa_required: payload.ishikawa_required ?? false,
+        },
+        companyWorkspaceId: workspaceId,
+      }, context)
+    }
+
     const { data: incidentRow, error: incidentError } = await context.supabase
       .from('incidents')
       .insert(payload)
@@ -1282,6 +1649,23 @@ async function executeCreateDocumentDraft(input: any, context: ToolContext): Pro
 
     const profileId = await getUserProfileId(context)
     const workspaceId = await getActiveWorkspaceId(context, input.company_workspace_id || null)
+
+    if (input.confirmed !== true) {
+      return await queueActionConfirmation({
+        actionName: 'create_document_draft',
+        actionTitle: context.session.language === 'en' ? `Document draft: ${title}` : `Dokuman taslagi: ${title}`,
+        actionSummary: context.session.language === 'en'
+          ? `${title} document draft will be created${summary ? ` with scope: ${summary}` : ''}.`
+          : `${title} dokuman taslagi${summary ? `, kapsam: ${summary}` : ''} ile olusturulacak.`,
+        actionPayload: {
+          title,
+          document_type: documentType,
+          summary: summary || null,
+          company_workspace_id: workspaceId,
+        },
+        companyWorkspaceId: workspaceId,
+      }, context)
+    }
 
     const { data: documentRow, error: documentError } = await context.supabase
       .from('editor_documents')
@@ -1486,6 +1870,12 @@ async function executeTool(toolName: string, input: any, context: ToolContext): 
         break
       case 'save_memory_note':
         result = await executeSaveMemoryNote(input, context)
+        break
+      case 'confirm_pending_action':
+        result = await executeConfirmPendingAction(input, context)
+        break
+      case 'cancel_pending_action':
+        result = await executeCancelPendingAction(input, context)
         break
       case 'navigate_to_page':
         result = await executeNavigateToPage(input, context)
@@ -2060,8 +2450,8 @@ serve(async (req) => {
     let systemPrompt = getSystemPrompt(language)
 
     systemPrompt += language === 'tr'
-      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Benzer sorularda search_past_answers ile onceki basarili cevaplari ve kullanicinin gecmisini kontrol et.\n- Kullanici kalici bir tercih, tekrar eden operasyon kalibi veya firma icin uzun omurlu bir not verirse save_memory_note ile hafizaya al.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi dogrudan yap; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle ve gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.`
-      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Use search_past_answers to inspect previous successful answers and the user's own history for recurring requests.\n- Use save_memory_note only for durable user preferences, repeated company patterns, or stable operational notes.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, execute the action directly; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.`
+      ? `\n\n## NOVA AKSIYON MODU\nNova yalnizca bilgi veren bir asistan degil, kontrollu bir operasyon ajanidir.\n- Kullanici planla, gorev olustur, olay baslat, dokuman taslagi hazirla, takvime ekle, baslat veya yonlendir gibi bir is istediginde uygun tool'u kullan.\n- Egitim planlama taleplerinde create_training_plan; genel gorevlerde create_planner_task; yeni olaylarda create_incident_draft; editor taslaklarinda create_document_draft kullan.\n- Benzer sorularda search_past_answers ile onceki basarili cevaplari ve kullanicinin gecmisini kontrol et.\n- Kullanici kalici bir tercih, tekrar eden operasyon kalibi veya firma icin uzun omurlu bir not verirse save_memory_note ile hafizaya al.\n- Kritik kayit acan islemlerde ilk adimda islemi hemen tamamlama; once bekleyen aksiyon hazirla ve acik kullanici onayi bekle.\n- Kullanici acikca \"onayliyorum\", \"devam et\", \"uygula\" derse confirm_pending_action kullan. \"Iptal et\", \"vazgectim\" derse cancel_pending_action kullan.\n- Kullanici tarihi dogal dilde soylese bile tool'a YYYY-MM-DD formatinda aktar.\n- Bilgi yeterliyse islemi hazirla; kritik eksik varsa sadece kisa ve net ek bilgi sor.\n- Islem tamamlandiginda sonucu ozetle ve gerekiyorsa kullaniciyi ilgili sayfaya yonlendir.\n- Mevzuat yorumunda mutlaka arama tool'lariyla dogrula; tercih ve operasyon bilgisini hafizada tut ama mevzuati ezberden uydurma.`
+      : `\n\n## NOVA ACTION MODE\nNova is not just an informational assistant; it is a controlled operations agent.\n- When the user asks to plan, create tasks, start incidents, draft documents, schedule, start, or navigate, use the most appropriate tool.\n- Use create_training_plan for training scheduling, create_planner_task for general tasks, create_incident_draft for incidents, and create_document_draft for editor drafts.\n- Use search_past_answers to inspect previous successful answers and the user's own history for recurring requests.\n- Use save_memory_note only for durable user preferences, repeated company patterns, or stable operational notes.\n- For critical record-creating operations, do not complete the action immediately on the first turn; prepare a pending action and wait for explicit approval.\n- When the user clearly says approve, go ahead, or proceed, use confirm_pending_action. When the user cancels or declines, use cancel_pending_action.\n- Convert natural language dates into YYYY-MM-DD before calling tools.\n- If the information is sufficient, prepare the action; only ask a short follow-up when a critical field is missing.\n- After completing an action, summarize the result and guide the user to the relevant page when useful.\n- Use tools to verify legislation; keep operational preferences in memory, but never invent regulatory content from memory.`
 
     // Zayıf cache eşleşmesi varsa, Claude'a ipucu olarak ver
     if (cacheResult.isWeakMatch && cacheResult.answer) {
@@ -2076,6 +2466,8 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       'search_legislation',
       'search_past_answers',
       'save_memory_note',
+      'confirm_pending_action',
+      'cancel_pending_action',
       'navigate_to_page',
       'create_training_plan',
       'create_planner_task',
@@ -2113,10 +2505,11 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
       }
     }
 
-    const [userMemory, storedMemory, workspaceMemory] = await Promise.all([
+    const [userMemory, storedMemory, workspaceMemory, pendingActionMemory] = await Promise.all([
       buildUserPreferenceContext(toolContext),
       buildStoredMemoryContext(toolContext),
       buildActiveWorkspaceContext(toolContext),
+      buildPendingActionContext(toolContext),
     ])
 
     if (userMemory) {
@@ -2129,6 +2522,10 @@ Bu referansı kullanabilirsin ama mutlaka güncel tool sonuçlarıyla doğrula.`
 
     if (workspaceMemory) {
       systemPrompt += `\n\n${workspaceMemory}`
+    }
+
+    if (pendingActionMemory) {
+      systemPrompt += `\n\n${pendingActionMemory}`
     }
 
     // Tool Use Loop
