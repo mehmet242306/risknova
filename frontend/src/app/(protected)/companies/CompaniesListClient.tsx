@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Building2 } from "lucide-react";
+import { PremiumIconBadge } from "@/components/ui/premium-icon-badge";
+import type { PremiumIconTone } from "@/components/ui/premium-icon-badge";
 import { defaultCompanyDirectory, loadCompanyDirectory, saveCompanyDirectory, type CompanyRecord } from "@/lib/company-directory";
 import { getOverallRiskState } from "@/lib/workplace-status";
 import { fetchCompaniesFromSupabase, fetchArchivedFromSupabase, fetchDeletedFromSupabase, createCompanyInSupabase, archiveCompanyInSupabase, restoreCompanyInSupabase, deleteCompanyInSupabase, permanentDeleteFromSupabase } from "@/lib/supabase/company-api";
@@ -148,52 +151,57 @@ export function CompaniesListClient() {
           <div className="grid gap-4 xl:grid-cols-2">{filtered.map(co => {
             const risk = getOverallRiskState(co), lc = co.locations.filter(Boolean).length, dc = co.departments.filter(Boolean).length;
             return (
-              <div key={co.id} className="overflow-hidden rounded-xl border border-border bg-card shadow-[var(--shadow-soft)] transition-shadow hover:shadow-[var(--shadow-card)]">
-                <div className="p-4 pb-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 flex-1 items-start gap-2.5">
-                      {/* Logo / initials */}
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border bg-secondary text-xs font-bold text-muted-foreground">
-                        {co.logo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={co.logo_url} alt={co.name} className="h-full w-full object-contain p-1" />
-                        ) : (
-                          <span>{(co.shortName || co.name).slice(0, 2).toUpperCase()}</span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <Link href={`/companies/${co.id}`} className="block truncate text-base font-semibold text-foreground hover:text-primary transition-colors">{co.name}</Link>
-                        <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{co.kind}{co.sector ? ` · ${co.sector}` : ""}{co.address ? ` · ${co.address}` : ""}</p>
+              <div key={co.id} className="overflow-hidden rounded-[1.7rem] border border-border/80 bg-card shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-[var(--gold)]/30 hover:shadow-[var(--shadow-elevated)]">
+                {/* ── Premium Header ── */}
+                <div className={`relative overflow-hidden p-5 pb-4 ${co.hazardClass === "Çok Tehlikeli" ? "bg-gradient-to-br from-orange-500/8 via-transparent to-transparent dark:from-orange-500/12" : co.hazardClass === "Tehlikeli" ? "bg-gradient-to-br from-amber-500/8 via-transparent to-transparent dark:from-amber-500/12" : co.hazardClass === "Az Tehlikeli" ? "bg-gradient-to-br from-emerald-500/8 via-transparent to-transparent dark:from-emerald-500/12" : "bg-gradient-to-br from-blue-500/6 via-transparent to-transparent dark:from-blue-500/10"}`}>
+                  <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/20 blur-2xl dark:bg-white/5" />
+                  <div className="relative flex items-start justify-between gap-4">
+                    <div className="flex min-w-0 flex-1 items-start gap-4">
+                      {/* Logo / initials — premium */}
+                      {co.logo_url ? (
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border/60 bg-white shadow-sm dark:bg-white/10">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={co.logo_url} alt={co.name} className="h-full w-full object-contain p-1.5" />
+                        </div>
+                      ) : (
+                        <PremiumIconBadge icon={Building2} tone={(co.hazardClass === "Çok Tehlikeli" ? "orange" : co.hazardClass === "Tehlikeli" ? "amber" : co.hazardClass === "Az Tehlikeli" ? "emerald" : "cobalt") as PremiumIconTone} size="lg" />
+                      )}
+                      <div className="min-w-0 flex-1 pt-0.5">
+                        <Link href={`/companies/${co.id}`} className="block truncate text-lg font-semibold text-foreground transition-colors hover:text-primary">{co.name}</Link>
+                        <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">{co.kind}{co.sector ? ` · ${co.sector}` : ""}{co.address ? ` · ${co.address}` : ""}</p>
                       </div>
                     </div>
-                    <Badge variant={rBV(risk.label)} className="shrink-0 text-[10px]">{risk.label}{risk.score !== null ? ` ${risk.score}` : ""}</Badge>
+                    <Badge variant={rBV(risk.label)} className="mt-1 shrink-0 text-[10px]">{risk.label}{risk.score !== null ? ` ${risk.score}` : ""}</Badge>
                   </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-px border-y border-border bg-border sm:grid-cols-6">
+                {/* ── Metrics Grid ── */}
+                <div className="grid grid-cols-3 gap-px border-y border-border/60 bg-border/60 sm:grid-cols-6">
                   {[{ l: "Tehlike", badge: true, h: co.hazardClass }, { l: "Çalışan", v: co.employeeCount }, { l: "Aksiyon", v: co.openActions }, { l: "Geciken", v: co.overdueActions, warn: co.overdueActions > 0 }, { l: "Lokasyon", v: lc }, { l: "Bölüm", v: dc }].map((m) => (
-                    <div key={m.l} className="bg-card px-3 py-2">
-                      <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{m.l}</p>
+                    <div key={m.l} className="bg-card px-3.5 py-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.l}</p>
                       {"badge" in m && m.badge ? (
-                        <div className="mt-0.5">{m.h ? <Badge variant={hBV(m.h)} className="text-[9px]">{m.h}</Badge> : <span className="text-xs text-muted-foreground">{"—"}</span>}</div>
+                        <div className="mt-1">{m.h ? <Badge variant={hBV(m.h)} className="text-[10px]">{m.h}</Badge> : <span className="text-sm text-muted-foreground">{"—"}</span>}</div>
                       ) : (
-                        <p className={`mt-0.5 text-sm font-semibold tabular-nums ${"warn" in m && m.warn ? "text-danger" : "text-foreground"}`}>{m.v}</p>
+                        <p className={`mt-1 text-base font-bold tabular-nums ${"warn" in m && m.warn ? "text-danger" : "text-foreground"}`}>{m.v}</p>
                       )}
                     </div>
                   ))}
                 </div>
-                <div className="px-4 pt-2.5">
-                  <div className="flex flex-wrap items-center gap-4 text-xs">
-                    <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">Kapsam <span className="inline-block h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${Math.min(co.completionRate, 100)}%` }} /></span> <span className="font-semibold text-foreground">%{co.completionRate}</span></span>
-                    <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">Olgunluk <span className="inline-block h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-accent" style={{ width: `${Math.min(co.maturityScore, 100)}%` }} /></span> <span className="font-semibold text-foreground">%{co.maturityScore}</span></span>
-                    {co.naceCode && <span className="min-w-0 truncate text-muted-foreground">NACE: <span className="font-semibold text-foreground">{co.naceCode}</span></span>}
+                {/* ── Progress & NACE ── */}
+                <div className="px-5 pt-3.5">
+                  <div className="flex flex-wrap items-center gap-5 text-xs">
+                    <span className="flex min-w-0 items-center gap-2 text-muted-foreground">Kapsam <span className="inline-block h-2 w-20 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(co.completionRate, 100)}%` }} /></span> <span className="font-bold text-foreground">%{co.completionRate}</span></span>
+                    <span className="flex min-w-0 items-center gap-2 text-muted-foreground">Olgunluk <span className="inline-block h-2 w-20 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-accent transition-all" style={{ width: `${Math.min(co.maturityScore, 100)}%` }} /></span> <span className="font-bold text-foreground">%{co.maturityScore}</span></span>
+                    {co.naceCode && <span className="min-w-0 truncate text-muted-foreground">NACE: <span className="font-bold text-foreground">{co.naceCode}</span></span>}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 px-4 pb-3.5 pt-2.5">
-                  <Link href={`/companies/${co.id}`} className="inline-flex h-8 shrink-0 items-center rounded-lg bg-primary px-3.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors">{"Çalışma Alanı"}</Link>
-                  <Link href="/risk-analysis" className="inline-flex h-8 shrink-0 items-center rounded-lg border border-border bg-card px-3 text-xs font-medium text-foreground hover:bg-secondary transition-colors">Risk Analizi</Link>
-                  <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
-                    <button type="button" onClick={() => { setCaId(co.id); setCdId(null); setDct(""); }} className="inline-flex h-7 items-center rounded-md border border-warning/30 bg-warning/10 px-2 text-[11px] font-medium text-warning hover:bg-warning/20 transition-colors">{"Arşivle"}</button>
-                    <button type="button" onClick={() => { setCdId(co.id); setCaId(null); setDct(""); }} className="inline-flex h-7 items-center rounded-md border border-danger/30 bg-danger/10 px-2 text-[11px] font-medium text-danger hover:bg-danger/20 transition-colors">Sil</button>
+                {/* ── Actions ── */}
+                <div className="flex flex-wrap items-center gap-2.5 px-5 pb-4 pt-3.5">
+                  <Link href={`/companies/${co.id}`} className="inline-flex h-9 shrink-0 items-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover">{"Çalışma Alanı"}</Link>
+                  <Link href="/risk-analysis" className="inline-flex h-9 shrink-0 items-center rounded-xl border border-border bg-card px-3.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary">Risk Analizi</Link>
+                  <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => { setCaId(co.id); setCdId(null); setDct(""); }} className="inline-flex h-8 items-center rounded-xl border border-warning/30 bg-warning/10 px-3 text-[11px] font-semibold text-warning transition-colors hover:bg-warning/20">{"Arşivle"}</button>
+                    <button type="button" onClick={() => { setCdId(co.id); setCaId(null); setDct(""); }} className="inline-flex h-8 items-center rounded-xl border border-danger/30 bg-danger/10 px-3 text-[11px] font-semibold text-danger transition-colors hover:bg-danger/20">Sil</button>
                   </div>
                 </div>
                 {caId === co.id && <div className="mx-4 mb-3.5 rounded-lg border border-warning/30 bg-warning/5 p-3.5"><p className="text-sm font-semibold text-foreground">{`“${co.name}” arşive alınsın mı?`}</p><p className="mt-1 text-sm text-muted-foreground">{"Firma aktif listeden ayrılacak."}</p><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" onClick={() => void doArchive(co.id)}>Onayla</Button><Button variant="outline" size="sm" onClick={() => setCaId(null)}>{"Vazgeç"}</Button></div></div>}
