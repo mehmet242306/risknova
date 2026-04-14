@@ -696,15 +696,15 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
-          { key: "total",       label: "Toplam",        color: "text-foreground",                                    bg: "bg-secondary/50" },
-          { key: "planned",     label: "Planlandı",     color: "text-blue-600 dark:text-blue-400",                  bg: "bg-blue-50 dark:bg-blue-900/20" },
-          { key: "in_progress", label: "Devam Ediyor",  color: "text-amber-600 dark:text-amber-400",               bg: "bg-amber-50 dark:bg-amber-900/20" },
-          { key: "completed",   label: "Tamamlandı",    color: "text-green-600 dark:text-green-400",               bg: "bg-green-50 dark:bg-green-900/20" },
-          { key: "overdue",     label: "Gecikmiş",      color: "text-red-600 dark:text-red-400",                   bg: "bg-red-50 dark:bg-red-900/20" },
+          { key: "total",       label: "Toplam",        color: "text-foreground",                                    bg: "bg-gradient-to-br from-secondary/50 to-transparent" },
+          { key: "planned",     label: "Planlandı",     color: "text-blue-600 dark:text-blue-400",                  bg: "bg-gradient-to-br from-blue-500/8 to-transparent dark:from-blue-500/12" },
+          { key: "in_progress", label: "Devam Ediyor",  color: "text-amber-600 dark:text-amber-400",               bg: "bg-gradient-to-br from-amber-500/8 to-transparent dark:from-amber-500/12" },
+          { key: "completed",   label: "Tamamlandı",    color: "text-green-600 dark:text-green-400",               bg: "bg-gradient-to-br from-green-500/8 to-transparent dark:from-green-500/12" },
+          { key: "overdue",     label: "Gecikmiş",      color: "text-red-600 dark:text-red-400",                   bg: "bg-gradient-to-br from-red-500/8 to-transparent dark:from-red-500/12" },
         ].map(({ key, label, color, bg }) => (
-          <div key={key} className={`rounded-2xl border border-border ${bg} px-4 py-3`}>
-            <div className={`text-2xl font-bold ${color}`}>{stats[key as keyof typeof stats]}</div>
-            <div className="text-xs text-muted-foreground">{label}</div>
+          <div key={key} className={`rounded-[1.25rem] border border-border/60 ${bg} px-5 py-4 shadow-sm`}>
+            <div className={`text-3xl font-bold ${color}`}>{stats[key as keyof typeof stats]}</div>
+            <div className="mt-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">{label}</div>
           </div>
         ))}
       </div>
@@ -715,10 +715,10 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
         <select
           value={filterCategoryId}
           onChange={(e) => setFilterCategoryId(e.target.value)}
-          className="h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 dark:bg-slate-800 dark:text-white dark:border-slate-600 [&>option]:bg-white [&>option]:text-foreground dark:[&>option]:bg-slate-800 dark:[&>option]:text-white"
+          className="h-11 rounded-xl border border-border/60 bg-card px-4 text-sm font-semibold text-foreground shadow-sm transition-all focus:outline-none focus:border-[var(--gold)]/40 focus:shadow-md dark:bg-slate-800 dark:text-white dark:border-slate-600 [&>option]:bg-white [&>option]:text-foreground dark:[&>option]:bg-slate-800 dark:[&>option]:text-white"
         >
           <option value="all">Tüm Kategoriler</option>
-          {categories.map((c) => (
+          {categories.filter((c) => c.name !== "Diğer").map((c) => (
             <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
           ))}
         </select>
@@ -727,7 +727,7 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 dark:bg-slate-800 dark:text-white dark:border-slate-600 [&>option]:bg-white [&>option]:text-foreground dark:[&>option]:bg-slate-800 dark:[&>option]:text-white"
+          className="h-11 rounded-xl border border-border/60 bg-card px-4 text-sm font-semibold text-foreground shadow-sm transition-all focus:outline-none focus:border-[var(--gold)]/40 focus:shadow-md dark:bg-slate-800 dark:text-white dark:border-slate-600 [&>option]:bg-white [&>option]:text-foreground dark:[&>option]:bg-slate-800 dark:[&>option]:text-white"
         >
           <option value="all">Tüm Durumlar</option>
           {Object.entries(STATUS_LABELS).map(([v, l]) => (
@@ -740,7 +740,7 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
           <select
             value={filterCompanyId}
             onChange={(e) => setFilterCompanyId(e.target.value)}
-            className="h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 dark:bg-slate-800 dark:text-white dark:border-slate-600 [&>option]:bg-white [&>option]:text-foreground dark:[&>option]:bg-slate-800 dark:[&>option]:text-white"
+            className="h-11 rounded-xl border border-border/60 bg-card px-4 text-sm font-semibold text-foreground shadow-sm transition-all focus:outline-none focus:border-[var(--gold)]/40 focus:shadow-md dark:bg-slate-800 dark:text-white dark:border-slate-600 [&>option]:bg-white [&>option]:text-foreground dark:[&>option]:bg-slate-800 dark:[&>option]:text-white"
           >
             <option value="all">Tüm Firmalar</option>
             {companies.map((c) => (
@@ -749,15 +749,15 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
           </select>
         )}
 
-        <div className="ml-auto flex gap-1 rounded-xl border border-border bg-secondary/50 p-1">
+        <div className="ml-auto flex rounded-xl border border-border/60 bg-secondary/20 p-1 shadow-sm">
           {(["month", "list"] as CalendarView[]).map((v) => (
             <button
               key={v}
               type="button"
               onClick={() => setView(v)}
               className={[
-                "rounded-lg px-3 py-1.5 text-xs font-medium transition",
-                view === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                "rounded-[0.6rem] px-4 py-2 text-sm font-semibold transition-all",
+                view === v ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
               ].join(" ")}
             >
               {v === "month" ? "Takvim" : "Liste"}
