@@ -1,5 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import { Phone, Mail, Pencil, Trash2, UserPlus, Users, Plus, Shield } from "lucide-react";
+import { PremiumIconBadge } from "@/components/ui/premium-icon-badge";
 import { createClient } from "@/lib/supabase/client";
 
 /* ── Types ── */
@@ -164,82 +166,63 @@ function MemberCard({
 
   return (
     <div
-      className={`group relative rounded-xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md ${
+      className={`group relative overflow-hidden rounded-[1.5rem] border bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-elevated)] ${
         !member.is_active ? "opacity-60" : ""
       } ${
         status === "expired"
-          ? "border-red-300 dark:border-red-800"
+          ? "border-red-300/60 dark:border-red-800/60"
           : status === "expiring"
-          ? "border-amber-300 dark:border-amber-800"
-          : "border-border"
+          ? "border-amber-300/60 dark:border-amber-800/60"
+          : "border-border/80 hover:border-[var(--gold)]/30"
       }`}
     >
-      {/* Category color strip */}
+      {/* Category gradient header */}
       {category && (
-        <div
-          className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
-          style={{ backgroundColor: category.color }}
-        />
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${category.color}, ${category.color}60)` }} />
       )}
 
-      <div className="pl-1">
+      <div>
         {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              {category && <span className="text-base leading-none">{category.icon}</span>}
-              <p className="text-sm font-semibold text-foreground truncate">{member.full_name}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg" style={{ backgroundColor: category ? `${category.color}15` : undefined }}>
+              {category?.icon || "👤"}
             </div>
-            {member.title && (
-              <p className="mt-0.5 text-xs text-muted-foreground truncate">{member.title}</p>
-            )}
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="text-base font-semibold text-foreground truncate">{member.full_name}</p>
+              {member.title && (
+                <p className="mt-0.5 text-sm text-muted-foreground truncate">{member.title}</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              type="button"
-              onClick={() => onEdit(member)}
-              className="rounded-lg p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
-              title="Düzenle"
-            >
-              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
+            <button type="button" onClick={() => onEdit(member)} className="rounded-xl p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Düzenle">
+              <Pencil size={15} strokeWidth={2} />
             </button>
             {confirmDelete ? (
               <>
-                <button type="button" onClick={() => onDelete(member.id)} className="rounded-lg px-2 py-1 text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200">Sil</button>
-                <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-lg px-2 py-1 text-[10px] font-medium bg-secondary text-muted-foreground hover:bg-secondary/80">İptal</button>
+                <button type="button" onClick={() => onDelete(member.id)} className="rounded-xl px-2.5 py-1 text-[11px] font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200">Sil</button>
+                <button type="button" onClick={() => setConfirmDelete(false)} className="rounded-xl px-2.5 py-1 text-[11px] font-medium bg-secondary text-muted-foreground hover:bg-secondary/80">İptal</button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="rounded-lg p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-                title="Sil"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+              <button type="button" onClick={() => setConfirmDelete(true)} className="rounded-xl p-2 text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors" title="Sil">
+                <Trash2 size={15} strokeWidth={2} />
               </button>
             )}
           </div>
         </div>
 
         {/* Contact info */}
-        <div className="mt-2.5 space-y-1">
+        <div className="mt-3 space-y-1.5">
           {member.phone && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-              </svg>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Phone size={14} className="shrink-0 text-emerald-500" />
               <span>{member.phone}</span>
             </div>
           )}
           {member.email && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Mail size={14} className="shrink-0 text-blue-500" />
               <span className="truncate">{member.email}</span>
             </div>
           )}
@@ -591,14 +574,17 @@ export function TeamManagementTab({
   return (
     <div className="space-y-5">
       {/* ── Header bar ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-5 py-4 shadow-[var(--shadow-soft)]">
-        <div>
-          <h2 className="section-title text-base">Ekip Yönetimi</h2>
-          {companyName && <p className="mt-0.5 text-xs text-muted-foreground">{companyName}</p>}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.7rem] border border-border/80 bg-card px-6 py-5 shadow-[var(--shadow-card)]">
+        <div className="flex items-center gap-3">
+          <PremiumIconBadge icon={Users} tone="cobalt" size="md" />
+          <div>
+            <h2 className="text-base font-bold text-foreground">Ekip Yönetimi</h2>
+            {companyName && <p className="mt-0.5 text-sm text-muted-foreground">{companyName}</p>}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Stats */}
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary/30 px-3 py-1.5 text-xs">
+          <div className="flex items-center gap-4 rounded-xl border border-border/60 bg-secondary/20 px-4 py-2 text-sm">
             <span className="text-muted-foreground">Toplam: <strong className="text-foreground">{totalMembers}</strong></span>
             <span className="text-muted-foreground">Aktif: <strong className="text-foreground">{activeMembers}</strong></span>
           </div>
@@ -616,24 +602,24 @@ export function TeamManagementTab({
             <button
               type="button"
               onClick={() => { setBulkMode(true); setBulkSelected(new Set()); }}
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-secondary transition-colors"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-card px-5 text-sm font-semibold text-foreground shadow-sm transition-all hover:bg-secondary hover:shadow-md"
             >
-              Personelden Ekle
+              <UserPlus size={16} /> Personelden Ekle
             </button>
           )}
           <button
             type="button"
             onClick={() => openAdd()}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--gold)] px-5 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 hover:shadow-lg"
           >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            <Plus size={16} strokeWidth={2.5} />
             Üye Ekle
           </button>
         </div>
       </div>
 
       {/* ── Yatay kategori filtreleri ── */}
-      <div className="flex items-center gap-2 overflow-x-auto rounded-xl border border-border bg-card px-3 py-2.5 shadow-[var(--shadow-soft)]">
+      <div className="flex items-center gap-2 overflow-x-auto rounded-[1.5rem] border border-border/80 bg-card px-4 py-3 shadow-[var(--shadow-card)]">
         <button
           type="button"
           onClick={() => setSelectedCategoryId("all")}
@@ -682,40 +668,41 @@ export function TeamManagementTab({
       {/* ── Üye listesi ── */}
       <div className="space-y-6">
         {members.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center shadow-[var(--shadow-soft)]">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-2xl">👥</div>
-            <p className="text-sm font-medium text-foreground">Henüz ekip üyesi yok</p>
-            <p className="mt-1 text-xs text-muted-foreground">İSG ekibini oluşturmak için üye ekleyin.</p>
+          <div className="flex flex-col items-center gap-4 rounded-[1.7rem] border-2 border-dashed border-border/50 bg-card/50 p-12 text-center">
+            <PremiumIconBadge icon={Users} tone="gold" size="lg" />
+            <div>
+              <p className="text-base font-semibold text-foreground">Henüz ekip üyesi yok</p>
+              <p className="mt-1 text-sm text-muted-foreground">İSG ekibini oluşturmak için üye ekleyin.</p>
+            </div>
             <button
               type="button"
               onClick={() => openAdd()}
-              className="mt-4 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
+              className="mt-2 inline-flex h-10 items-center gap-2 rounded-xl bg-[var(--gold)] px-6 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 hover:shadow-lg"
             >
-              İlk Üyeyi Ekle
+              <Plus size={16} strokeWidth={2.5} /> İlk Üyeyi Ekle
             </button>
           </div>
         ) : (
           <>
             {grouped.map(({ category, members: catMembers }) => (
               <div key={category.id}>
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: category.color }} />
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {category.icon} {category.name}
-                    </h3>
-                    <span className="text-xs text-muted-foreground">({catMembers.length})</span>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl text-base" style={{ backgroundColor: `${category.color}15` }}>
+                      {category.icon}
+                    </div>
+                    <h3 className="text-base font-bold text-foreground">{category.name}</h3>
+                    <span className="rounded-full px-2 py-0.5 text-xs font-bold" style={{ backgroundColor: `${category.color}15`, color: category.color }}>{catMembers.length}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => openAdd(category.id)}
-                    className="flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-secondary transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 px-3 py-1.5 text-xs font-semibold text-muted-foreground shadow-sm transition-all hover:bg-secondary hover:text-foreground hover:shadow-md"
                   >
-                    <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                    Ekle
+                    <Plus size={14} /> Ekle
                   </button>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2">
                   {catMembers.map((m) => (
                     <MemberCard
                       key={m.id}
