@@ -790,11 +790,11 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
           <div className="mt-4 border-t border-border/60 pt-3">
             <p className="px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Hızlı Ekle</p>
             <div className="mt-2 space-y-1">
-              {categories.filter((c) => c.is_default).slice(0, 5).map((c) => (
+              {categories.map((c) => (
                 <button
                   key={`add-${c.id}`}
                   type="button"
-                  onClick={() => { setFilterCategoryId(c.id); setModalDate(new Date().toISOString().split("T")[0]); setModalTask(null); }}
+                  onClick={() => { setModalDate(new Date().toISOString().split("T")[0]); setModalTask(null); }}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: c.color }} />
