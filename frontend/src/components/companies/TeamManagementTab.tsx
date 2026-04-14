@@ -618,55 +618,59 @@ export function TeamManagementTab({
         </div>
       </div>
 
-      {/* ── Yatay kategori filtreleri ── */}
-      <div className="flex items-center gap-2 overflow-x-auto rounded-[1.5rem] border border-border/80 bg-card px-4 py-3 shadow-[var(--shadow-card)]">
-        <button
-          type="button"
-          onClick={() => setSelectedCategoryId("all")}
-          className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-            selectedCategoryId === "all"
-              ? "bg-primary text-primary-foreground"
-              : "bg-secondary text-foreground hover:bg-secondary/80"
-          }`}
-        >
-          Tümü
-          <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px]">{members.length}</span>
-        </button>
-
-        {categories.map((cat) => {
-          const count = members.filter((m) => m.category_id === cat.id).length;
-          const active = selectedCategoryId === cat.id;
-          return (
+      {/* ── Sol panel (kategoriler) + Sağ içerik (üyeler) ── */}
+      <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
+        {/* Sol: Kategori navigasyonu */}
+        <aside className="rounded-[1.5rem] border border-border/80 bg-card p-4 shadow-[var(--shadow-card)] lg:sticky lg:top-24 lg:self-start">
+          <p className="mb-3 px-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Kategoriler</p>
+          <nav className="space-y-1">
             <button
-              key={cat.id}
               type="button"
-              onClick={() => setSelectedCategoryId(active ? "all" : cat.id)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                active
-                  ? "text-white"
-                  : "bg-secondary text-foreground hover:bg-secondary/80"
+              onClick={() => setSelectedCategoryId("all")}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition-all ${
+                selectedCategoryId === "all"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-foreground hover:bg-secondary"
               }`}
-              style={active ? { backgroundColor: cat.color } : undefined}
             >
-              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: active ? "#fff" : cat.color }} />
-              {cat.name}
-              {count > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/20" : "bg-muted"}`}>{count}</span>}
+              <span className="flex items-center gap-2"><Shield size={15} /> Tümü</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${selectedCategoryId === "all" ? "bg-white/20" : "bg-muted"}`}>{members.length}</span>
             </button>
-          );
-        })}
 
-        <button
-          type="button"
-          onClick={() => { setCatOpen(true); }}
-          className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary transition-colors"
-        >
-          <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          Kategori Ekle
-        </button>
-      </div>
+            {categories.map((cat) => {
+              const count = members.filter((m) => m.category_id === cat.id).length;
+              const active = selectedCategoryId === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategoryId(active ? "all" : cat.id)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                    active ? "text-white shadow-sm" : "text-foreground hover:bg-secondary"
+                  }`}
+                  style={active ? { backgroundColor: cat.color } : undefined}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <span className="text-base leading-none">{cat.icon}</span>
+                    <span className="truncate">{cat.name}</span>
+                  </span>
+                  {count > 0 && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${active ? "bg-white/20" : "bg-muted"}`}>{count}</span>}
+                </button>
+              );
+            })}
 
-      {/* ── Üye listesi ── */}
-      <div className="space-y-6">
+            <button
+              type="button"
+              onClick={() => { setCatOpen(true); }}
+              className="flex w-full items-center gap-2 rounded-xl border border-dashed border-border/50 px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Plus size={14} /> Kategori Ekle
+            </button>
+          </nav>
+        </aside>
+
+        {/* Sağ: Üye listesi */}
+        <div className="space-y-6">
         {members.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-[1.7rem] border-2 border-dashed border-border/50 bg-card/50 p-12 text-center">
             <PremiumIconBadge icon={Users} tone="gold" size="lg" />
@@ -738,6 +742,7 @@ export function TeamManagementTab({
             )}
           </>
         )}
+        </div>
       </div>
 
       {/* ── Add member modal ── */}
