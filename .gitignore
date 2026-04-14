@@ -72,3 +72,10 @@ generated/
 backups/*
 !backups/backup_log.md
 !backups/.gitkeep
+
+# Claude Code worktrees (local only)
+.claude/worktrees/
+frontend/.claude/
+frontend/.codex-tsc-check.txt
+*.v17-backup
+*.v12-backup

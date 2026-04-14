@@ -120,6 +120,16 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
     return () => { document.title = original; };
   }, [company?.name]);
 
+  // URL slug normalization — UUID ile geldiyse slug'a yönlendir
+  useEffect(() => {
+    if (!company?.slug) return;
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname;
+    if (path.startsWith("/companies/") && !path.includes(company.slug)) {
+      window.history.replaceState({}, "", `/workspace/${company.slug}${window.location.search}`);
+    }
+  }, [company?.slug]);
+
   const upd = useCallback((patch: Partial<CompanyRecord>) => { setCompany((p) => (p ? { ...p, ...patch } : p)); }, []);
 
   const save = useCallback(async () => {
