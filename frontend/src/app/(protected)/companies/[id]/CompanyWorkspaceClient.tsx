@@ -237,6 +237,90 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
     })();
   }, [company]);
 
+  // ── Son Aktivite (Recent Activity) — firma bazlı canlı ──
+  type Activity = { id: string; actorName: string; actorRole: string; description: string; when: string };
+  const [activities, setActivities] = useState<Activity[]>([]);
+  useEffect(() => {
+    if (!company) return;
+    (async () => {
+      const supabase = createBrowserSupabaseClient();
+      if (!supabase) return;
+
+      // Paralel olarak birkaç tabloyu sorgula — bu firmaya ait kayıtlar
+      const [riskRes, taskRes, trainRes, docRes, committeeRes, incidentRes] = await Promise.all([
+        supabase.from("risk_assessments").select("id, title, updated_at, updated_by, created_at, created_by").eq("company_workspace_id", company.id).is("deleted_at", null).order("updated_at", { ascending: false }).limit(3),
+        supabase.from("isg_tasks").select("id, title, updated_at, updated_by, created_at, created_by, status").eq("company_workspace_id", company.id).order("updated_at", { ascending: false }).limit(3),
+        supabase.from("company_trainings").select("id, title, updated_at, updated_by, created_at, created_by").eq("company_workspace_id", company.id).order("updated_at", { ascending: false }).limit(3),
+        supabase.from("editor_documents").select("id, title, updated_at, updated_by, created_at, created_by").eq("company_workspace_id", company.id).order("updated_at", { ascending: false }).limit(3),
+        supabase.from("company_committee_meetings").select("id, topic, updated_at, updated_by, created_at, created_by").eq("company_workspace_id", company.id).order("updated_at", { ascending: false }).limit(2),
+        supabase.from("incidents").select("id, title, updated_at, updated_by, created_at, created_by").eq("company_workspace_id", company.id).order("updated_at", { ascending: false }).limit(2),
+      ]);
+
+      type RawActivity = { id: string; title: string; verb: string; user_id: string | null; ts: string };
+      const raw: RawActivity[] = [];
+
+      (riskRes.data ?? []).forEach((r: Record<string, unknown>) => {
+        const isNew = r.updated_at === r.created_at;
+        raw.push({ id: `risk-${r.id}`, title: (r.title as string) || "Risk analizi", verb: isNew ? "risk analizi oluşturdu" : "risk analizini güncelledi", user_id: (r.updated_by as string) || (r.created_by as string) || null, ts: r.updated_at as string });
+      });
+      (taskRes.data ?? []).forEach((r: Record<string, unknown>) => {
+        const isNew = r.updated_at === r.created_at;
+        raw.push({ id: `task-${r.id}`, title: (r.title as string) || "Görev", verb: isNew ? "ajandaya görev ekledi" : "görevi güncelledi", user_id: (r.updated_by as string) || (r.created_by as string) || null, ts: r.updated_at as string });
+      });
+      (trainRes.data ?? []).forEach((r: Record<string, unknown>) => {
+        const isNew = r.updated_at === r.created_at;
+        raw.push({ id: `train-${r.id}`, title: (r.title as string) || "Eğitim", verb: isNew ? "eğitim planladı" : "eğitim kaydını güncelledi", user_id: (r.updated_by as string) || (r.created_by as string) || null, ts: r.updated_at as string });
+      });
+      (docRes.data ?? []).forEach((r: Record<string, unknown>) => {
+        const isNew = r.updated_at === r.created_at;
+        raw.push({ id: `doc-${r.id}`, title: (r.title as string) || "Doküman", verb: isNew ? "yeni doküman hazırladı" : "dokümanı güncelledi", user_id: (r.updated_by as string) || (r.created_by as string) || null, ts: r.updated_at as string });
+      });
+      (committeeRes.data ?? []).forEach((r: Record<string, unknown>) => {
+        raw.push({ id: `com-${r.id}`, title: (r.topic as string) || "Kurul toplantısı", verb: "kurul toplantısı kaydetti", user_id: (r.updated_by as string) || (r.created_by as string) || null, ts: r.updated_at as string });
+      });
+      (incidentRes.data ?? []).forEach((r: Record<string, unknown>) => {
+        raw.push({ id: `inc-${r.id}`, title: (r.title as string) || "Olay kaydı", verb: "olay kaydı oluşturdu", user_id: (r.updated_by as string) || (r.created_by as string) || null, ts: r.updated_at as string });
+      });
+
+      // Tarihe göre sırala ve ilk 6'yı al
+      raw.sort((a, b) => (b.ts || "").localeCompare(a.ts || ""));
+      const top = raw.slice(0, 6);
+
+      // Kullanıcı isimlerini çek
+      const userIds = [...new Set(top.map((r) => r.user_id).filter(Boolean))] as string[];
+      let userMap: Record<string, { name: string; role: string }> = {};
+      if (userIds.length > 0) {
+        const { data: users } = await supabase.from("user_profiles").select("auth_user_id, full_name, role").in("auth_user_id", userIds);
+        if (users) {
+          userMap = Object.fromEntries(users.map((u: Record<string, string>) => [u.auth_user_id, { name: u.full_name || "Kullanıcı", role: u.role || "Üye" }]));
+        }
+      }
+
+      // Relatif zaman
+      function relativeTime(iso: string): string {
+        const now = Date.now();
+        const then = new Date(iso).getTime();
+        const diff = Math.max(0, now - then);
+        const min = Math.floor(diff / 60000);
+        if (min < 1) return "az önce";
+        if (min < 60) return `${min} dk önce`;
+        const h = Math.floor(min / 60);
+        if (h < 24) return `${h} saat önce`;
+        const d = Math.floor(h / 24);
+        if (d < 7) return `${d} gün önce`;
+        return new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "short" });
+      }
+
+      setActivities(top.map((r) => ({
+        id: r.id,
+        actorName: r.user_id ? (userMap[r.user_id]?.name ?? "Kullanıcı") : "Sistem",
+        actorRole: r.user_id ? (userMap[r.user_id]?.role ?? "Üye") : "Otomatik",
+        description: `${r.verb}: ${r.title}`,
+        when: relativeTime(r.ts),
+      })));
+    })();
+  }, [company]);
+
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -460,24 +544,27 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
             )}
           </div>
 
-          <div className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]">
-            <h3 className="section-title text-sm">Son Aktivite</h3>
-            <div className="mt-3 space-y-2.5">
-              {[
-                { a: "Mehmet Y.", r: "\u0130SG Uzman\u0131", d: "Risk analizi g\u00FCncellendi", t: "2 saat \u00F6nce" },
-                { a: "Ay\u015Fe K.", r: "\u0130\u015Fveren Vekili", d: "Acil durum plan\u0131 onayland\u0131", t: "D\u00FCn" },
-                { a: "Sistem", r: "Otomatik", d: "Periyodik kontrol hat\u0131rlatmas\u0131", t: "2 g\u00FCn \u00F6nce" },
-              ].map((act, i) => (
-                <div key={i} className="rounded-lg border border-border bg-secondary/30 p-2.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-foreground">{act.a}</p>
-                    <span className="text-[10px] text-muted-foreground">{act.t}</span>
+          <div className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
+            <h3 className="text-sm font-bold text-foreground">Son Aktivite</h3>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">Bu firmada yapılan son değişiklikler.</p>
+            {activities.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {activities.map((act) => (
+                  <div key={act.id} className="rounded-xl border border-border/60 bg-secondary/20 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate text-xs font-bold text-foreground">{act.actorName}</p>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{act.when}</span>
+                    </div>
+                    <p className="text-[10px] font-medium text-muted-foreground">{act.actorRole}</p>
+                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-foreground">{act.description}</p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">{act.r}</p>
-                  <p className="mt-0.5 text-xs text-foreground">{act.d}</p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl border border-dashed border-border/60 p-3 text-center text-[11px] text-muted-foreground">
+                Henüz aktivite kaydı yok.
+              </p>
+            )}
           </div>
 
           <CompanyManagementActions companyName={company.name} onArchiveConfirm={() => void doArchive()} onDeleteConfirm={() => void doDelete()} />
