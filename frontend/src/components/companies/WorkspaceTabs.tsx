@@ -1234,36 +1234,36 @@ export function TrackingTab({ company }: { company: CompanyRecord }) {
 
   return (
     <div className="space-y-5">
-      {/* Özet Metrikleri */}
-      <Sec title="Takip ve Metrikler" desc="İSG süreç takibi — eğitim, kontrol, aksiyon ve sağlık gözetimi.">
+      {/* Özet Metrikleri — Premium */}
+      <Sec icon={ListTodo} tone="cobalt" title="Takip ve Metrikler" desc="İSG süreç takibi — eğitim, kontrol, aksiyon ve sağlık gözetimi.">
         {loading ? (
           <div className="flex justify-center py-6"><div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
         ) : (
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
             {[
-              { l: "Tamamlanan Eğitim", v: summary?.completedTrainingCount ?? 0, warn: false },
-              { l: "Yaklaşan Eğitim", v: summary?.expiringTrainingCount ?? 0, warn: (summary?.expiringTrainingCount ?? 0) > 0 },
-              { l: "Periyodik Kontrol", v: summary?.periodicControlCount ?? 0, warn: false },
-              { l: "Geciken Kontrol", v: summary?.overduePeriodicControlCount ?? 0, warn: (summary?.overduePeriodicControlCount ?? 0) > 0 },
-              { l: "Açık Aksiyon", v: summary?.openActionCount ?? 0, warn: (summary?.openActionCount ?? 0) > 0 },
-              { l: "Yaklaşan Muayene", v: summary?.healthExamsDueCount ?? 0, warn: (summary?.healthExamsDueCount ?? 0) > 0 },
+              { l: "Tamamlanan Eğitim", v: summary?.completedTrainingCount ?? 0, color: "from-emerald-500/8 to-transparent dark:from-emerald-500/12", text: "text-emerald-600 dark:text-emerald-400", warn: false },
+              { l: "Yaklaşan Eğitim",   v: summary?.expiringTrainingCount ?? 0,  color: "from-amber-500/8 to-transparent dark:from-amber-500/12",   text: (summary?.expiringTrainingCount ?? 0) > 0 ? "text-amber-600 dark:text-amber-400" : "text-foreground", warn: (summary?.expiringTrainingCount ?? 0) > 0 },
+              { l: "Periyodik Kontrol", v: summary?.periodicControlCount ?? 0,   color: "from-blue-500/8 to-transparent dark:from-blue-500/12",     text: "text-blue-600 dark:text-blue-400", warn: false },
+              { l: "Geciken Kontrol",   v: summary?.overduePeriodicControlCount ?? 0, color: "from-red-500/8 to-transparent dark:from-red-500/12",  text: (summary?.overduePeriodicControlCount ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-foreground", warn: (summary?.overduePeriodicControlCount ?? 0) > 0 },
+              { l: "Açık Aksiyon",      v: summary?.openActionCount ?? 0,        color: "from-orange-500/8 to-transparent dark:from-orange-500/12", text: (summary?.openActionCount ?? 0) > 0 ? "text-orange-600 dark:text-orange-400" : "text-foreground", warn: (summary?.openActionCount ?? 0) > 0 },
+              { l: "Yaklaşan Muayene",  v: summary?.healthExamsDueCount ?? 0,    color: "from-violet-500/8 to-transparent dark:from-violet-500/12", text: (summary?.healthExamsDueCount ?? 0) > 0 ? "text-violet-600 dark:text-violet-400" : "text-foreground", warn: (summary?.healthExamsDueCount ?? 0) > 0 },
             ].map((m) => (
-              <div key={m.l} className="rounded-lg border border-border p-3 text-center">
-                <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">{m.l}</p>
-                <p className={`mt-1 text-xl font-bold tabular-nums ${m.warn ? "text-red-500" : "text-foreground"}`}>{m.v}</p>
+              <div key={m.l} className={`rounded-[1.25rem] border border-border/60 bg-gradient-to-br ${m.color} p-4 text-center shadow-sm transition-all hover:shadow-md`}>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{m.l}</p>
+                <p className={`mt-1.5 text-3xl font-bold tabular-nums ${m.text}`}>{m.v}</p>
               </div>
             ))}
           </div>
         )}
       </Sec>
 
-      {/* Sekme Seçici */}
-      <div className="flex items-center gap-2 overflow-x-auto">
+      {/* Sekme Seçici — Segmented control */}
+      <div className="flex flex-wrap rounded-[1.25rem] border border-border/60 bg-secondary/20 p-1 shadow-sm">
         {SECTIONS.map((s) => (
           <button key={s.k} type="button" onClick={() => setSection(s.k)}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${section === s.k ? "bg-primary text-primary-foreground" : "border border-border text-muted-foreground hover:text-foreground hover:bg-secondary"}`}>
+            className={`inline-flex flex-1 min-w-[140px] h-10 items-center justify-center gap-2 rounded-[0.8rem] px-4 text-sm font-semibold transition-all ${section === s.k ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}>
             {s.l}
-            {s.count > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${section === s.k ? "bg-white/20" : "bg-secondary"}`}>{s.count}</span>}
+            {s.count > 0 && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${section === s.k ? "bg-white/20" : "bg-muted"}`}>{s.count}</span>}
           </button>
         ))}
       </div>
