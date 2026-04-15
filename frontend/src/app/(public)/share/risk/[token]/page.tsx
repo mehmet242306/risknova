@@ -46,7 +46,7 @@ export default async function SharedRiskAnalysisPage({ params }: Props) {
     .eq("assessment_id", assessment.id)
     .order("sort_order");
 
-  let imageUrls: Record<string, string> = {};
+  const imageUrls: Record<string, string> = {};
   if (images && images.length > 0) {
     const paths = images.map((i) => i.storage_path);
     const { data: signedUrls } = await supabase.storage
