@@ -69,6 +69,22 @@ export type TrackingSummary = {
   healthExamsDueCount: number;
 };
 
+export type OrganizationTrackingSummary = {
+  companyCount: number;
+  openActionCount: number;
+  expiringTrainingCount: number;
+  overduePeriodicControlCount: number;
+  upcomingCommitteeCount: number;
+  healthExamsDueCount: number;
+  topCompanies: Array<{
+    id: string;
+    name: string;
+    openActions: number;
+    expiringTrainings: number;
+    overdueControls: number;
+  }>;
+};
+
 /* ================================================================== */
 /* SUMMARY METRICS                                                     */
 /* ================================================================== */
@@ -99,6 +115,160 @@ export async function getTrackingSummary(companyWorkspaceId: string): Promise<Tr
   const healthExamsDueCount = (healthExams.data ?? []).filter((h) => h.next_exam_date && h.next_exam_date <= in30Days).length;
 
   return { completedTrainingCount, expiringTrainingCount, periodicControlCount, overduePeriodicControlCount, openActionCount, healthExamsDueCount };
+}
+
+/**
+ * Tum organizasyondaki firmalar icin tek cagride takip rollup'i.
+ * Dashboard widget'i icin — company_workspaces'dan org ID'yi cozup her alt tabloyu
+ * bu firmalar'a gore filtreler, sonuclari agrege eder. RLS zaten org izolasyonunu saglar.
+ */
+export async function getOrganizationTrackingSummary(): Promise<OrganizationTrackingSummary> {
+  const empty: OrganizationTrackingSummary = {
+    companyCount: 0,
+    openActionCount: 0,
+    expiringTrainingCount: 0,
+    overduePeriodicControlCount: 0,
+    upcomingCommitteeCount: 0,
+    healthExamsDueCount: 0,
+    topCompanies: [],
+  };
+
+  const supabase = createClient();
+  if (!supabase) return empty;
+
+  const auth = await resolveOrganizationId();
+  if (!auth) return empty;
+
+  const { data: workspaces, error: wsErr } = await supabase
+    .from("company_workspaces")
+    .select("id, display_name, company_identity_id")
+    .eq("organization_id", auth.orgId)
+    .is("deleted_at", null);
+
+  if (wsErr) {
+    console.warn("[tracking-api] getOrganizationTrackingSummary workspaces:", wsErr.message);
+    return empty;
+  }
+
+  const wsList = workspaces ?? [];
+  if (wsList.length === 0) return empty;
+
+  const wsIds = wsList.map((w) => w.id);
+  const identityIds = wsList
+    .map((w) => w.company_identity_id)
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+
+  const today = new Date().toISOString().split("T")[0];
+  const in30Days = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+
+  const [assessments, trainings, controls, meetings, healthExams] = await Promise.all([
+    supabase
+      .from("risk_assessments")
+      .select("id, company_workspace_id")
+      .in("company_workspace_id", wsIds),
+    supabase
+      .from("company_trainings")
+      .select("status, training_date, company_workspace_id")
+      .in("company_workspace_id", wsIds),
+    supabase
+      .from("company_periodic_controls")
+      .select("next_inspection_date, company_workspace_id")
+      .in("company_workspace_id", wsIds),
+    supabase
+      .from("company_committee_meetings")
+      .select("status, next_meeting_date, company_workspace_id")
+      .in("company_workspace_id", wsIds),
+    identityIds.length > 0
+      ? supabase
+          .from("personnel_health_exams")
+          .select("next_exam_date, company_identity_id")
+          .in("company_identity_id", identityIds)
+      : Promise.resolve({ data: [] as Array<{ next_exam_date: string | null; company_identity_id: string }> }),
+  ]);
+
+  const assessmentRows = assessments.data ?? [];
+  const assessmentToWorkspace = new Map<string, string>();
+  for (const a of assessmentRows) {
+    if (a.id && a.company_workspace_id) assessmentToWorkspace.set(a.id, a.company_workspace_id);
+  }
+  const assessmentIds = assessmentRows.map((a) => a.id);
+
+  let findings: Array<{ assessment_id: string }> = [];
+  if (assessmentIds.length > 0) {
+    const { data: findingRows } = await supabase
+      .from("risk_assessment_findings")
+      .select("assessment_id, tracking_status")
+      .in("assessment_id", assessmentIds)
+      .in("tracking_status", ["open", "in_progress"]);
+    findings = (findingRows ?? []) as Array<{ assessment_id: string }>;
+  }
+
+  // Per-company rollups
+  type WsStats = { openActions: number; expiringTrainings: number; overdueControls: number };
+  const perCompany = new Map<string, WsStats>();
+  const bump = (wsId: string, key: keyof WsStats) => {
+    const cur = perCompany.get(wsId) ?? { openActions: 0, expiringTrainings: 0, overdueControls: 0 };
+    cur[key] += 1;
+    perCompany.set(wsId, cur);
+  };
+
+  for (const f of findings) {
+    const wsId = assessmentToWorkspace.get(f.assessment_id);
+    if (wsId) bump(wsId, "openActions");
+  }
+  for (const t of trainings.data ?? []) {
+    if (t.status === "planned" && t.training_date && t.training_date <= in30Days) {
+      bump(t.company_workspace_id, "expiringTrainings");
+    }
+  }
+  for (const c of controls.data ?? []) {
+    if (c.next_inspection_date && c.next_inspection_date < today) {
+      bump(c.company_workspace_id, "overdueControls");
+    }
+  }
+
+  const openActionCount = findings.length;
+  const expiringTrainingCount = (trainings.data ?? []).filter(
+    (t) => t.status === "planned" && t.training_date && t.training_date <= in30Days,
+  ).length;
+  const overduePeriodicControlCount = (controls.data ?? []).filter(
+    (c) => c.next_inspection_date && c.next_inspection_date < today,
+  ).length;
+  const upcomingCommitteeCount = (meetings.data ?? []).filter(
+    (m) => m.status === "planned",
+  ).length;
+  const healthExamsDueCount = (healthExams.data ?? []).filter(
+    (h) => h.next_exam_date && h.next_exam_date <= in30Days,
+  ).length;
+
+  const topCompanies = wsList
+    .map((w) => {
+      const stats = perCompany.get(w.id) ?? { openActions: 0, expiringTrainings: 0, overdueControls: 0 };
+      return {
+        id: w.id,
+        name: w.display_name || "Isimsiz firma",
+        openActions: stats.openActions,
+        expiringTrainings: stats.expiringTrainings,
+        overdueControls: stats.overdueControls,
+      };
+    })
+    .filter((c) => c.openActions + c.expiringTrainings + c.overdueControls > 0)
+    .sort(
+      (a, b) =>
+        b.openActions + b.expiringTrainings + b.overdueControls -
+        (a.openActions + a.expiringTrainings + a.overdueControls),
+    )
+    .slice(0, 5);
+
+  return {
+    companyCount: wsList.length,
+    openActionCount,
+    expiringTrainingCount,
+    overduePeriodicControlCount,
+    upcomingCommitteeCount,
+    healthExamsDueCount,
+    topCompanies,
+  };
 }
 
 /* ================================================================== */

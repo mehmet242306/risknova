@@ -22,6 +22,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { PageHeader } from '@/components/ui/page-header';
 import { PremiumIconBadge, type PremiumIconTone } from '@/components/ui/premium-icon-badge';
+import { DashboardTrackingSummary } from '@/components/dashboard/DashboardTrackingSummary';
 
 interface DashboardStats {
   riskCount: number;
@@ -188,6 +189,8 @@ export function DashboardClient() {
           onClick={() => router.push('/tasks')}
         />
       </div>
+
+      <DashboardTrackingSummary />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)]">
         <div className="space-y-4">
