@@ -101,11 +101,11 @@ export async function login(formData: FormData) {
   if (error) {
     const raw = error.message.toLowerCase();
 
-    let message = "Giris basarisiz. Bilgilerini kontrol et.";
+    let message = "Giriş başarısız. Bilgilerini kontrol et.";
     if (raw.includes("email not confirmed")) {
-      message = "E-posta adresini dogrulaman gerekiyor.";
+      message = "E-posta adresini doğrulaman gerekiyor.";
     } else if (raw.includes("invalid login credentials")) {
-      message = "E-posta veya sifre hatali.";
+      message = "E-posta veya şifre hatalı.";
     }
 
     await logSecurityEventWithContext({

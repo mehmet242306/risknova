@@ -37,17 +37,17 @@ export function MfaChallengeClient({
   async function handleVerify() {
     const normalizedCode = code.replace(/\s+/g, "");
     if (!selectedFactorId) {
-      setError("Dogrulama yapilacak bir MFA cihazi secilemedi.");
+      setError("Doğrulama yapılacak bir MFA cihazı seçilemedi.");
       return;
     }
     if (!/^\d{6}$/.test(normalizedCode)) {
-      setError("6 haneli dogrulama kodunu girin.");
+      setError("6 haneli doğrulama kodunu girin.");
       return;
     }
 
     const supabase = createClient();
     if (!supabase) {
-      setError("Kimlik dogrulama servisine baglanilamadi.");
+      setError("Kimlik doğrulama servisine bağlanılamadı.");
       return;
     }
 
@@ -66,7 +66,7 @@ export function MfaChallengeClient({
       router.refresh();
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : "Kod dogrulanamadi. Tekrar deneyin.";
+        err instanceof Error ? err.message : "Kod doğrulanamadı. Tekrar deneyin.";
       setError(message);
     } finally {
       setBusy(false);
@@ -95,8 +95,8 @@ export function MfaChallengeClient({
     <div className="space-y-6">
       <div className="rounded-2xl border border-border bg-secondary/35 p-4">
         <p className="text-sm leading-7 text-muted-foreground">
-          <span className="font-medium text-foreground">{userEmail}</span> hesabi
-          icin ikinci adim dogrulama zorunlu. Authenticator uygulamandaki 6 haneli
+          <span className="font-medium text-foreground">{userEmail}</span> hesabı
+          için ikinci adım doğrulama zorunlu. Authenticator uygulamandaki 6 haneli
           kodu girerek devam edebilirsin.
         </p>
       </div>
@@ -104,7 +104,7 @@ export function MfaChallengeClient({
       {factors.length > 1 ? (
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">
-            Dogrulama cihazi
+            Doğrulama cihazı
           </label>
           <div className="grid gap-2">
             {factors.map((factor) => (
@@ -133,7 +133,7 @@ export function MfaChallengeClient({
 
       <Input
         id="mfa-code"
-        label="Dogrulama Kodu"
+        label="Doğrulama Kodu"
         inputMode="numeric"
         autoComplete="one-time-code"
         value={code}
@@ -143,7 +143,7 @@ export function MfaChallengeClient({
         placeholder="123456"
         hint={
           selectedFactor
-            ? `${selectedFactor.friendlyName} uygulamasindaki mevcut kodu girin.`
+            ? `${selectedFactor.friendlyName} uygulamasındaki mevcut kodu girin.`
             : "Authenticator uygulamandaki mevcut kodu girin."
         }
         error={error ?? undefined}
@@ -157,7 +157,7 @@ export function MfaChallengeClient({
           disabled={busy || code.length !== 6 || !selectedFactorId}
           className="sm:min-w-44"
         >
-          {busy ? "Dogrulaniyor..." : "Devam Et"}
+          {busy ? "Doğrulanıyor..." : "Devam Et"}
         </Button>
         <Button
           type="button"

@@ -440,7 +440,7 @@ export default function ProfileClient() {
   async function handleEmailChange() {
     const supabase = createClient();
     if (!supabase) {
-      setFeedback({ type: "error", msg: "E-posta guncelleme servisine baglanilamadi." });
+      setFeedback({ type: "error", msg: "E-posta güncelleme servisine bağlanılamadı." });
       return;
     }
 
@@ -448,17 +448,17 @@ export default function ProfileClient() {
     const currentEmail = (authUser?.email ?? profile?.email ?? "").trim().toLowerCase();
 
     if (!nextEmail) {
-      setFeedback({ type: "error", msg: "Yeni e-posta adresi bos birakilamaz." });
+      setFeedback({ type: "error", msg: "Yeni e-posta adresi boş bırakılamaz." });
       return;
     }
 
     if (!isValidEmail(nextEmail)) {
-      setFeedback({ type: "error", msg: "Gecerli bir e-posta adresi girin." });
+      setFeedback({ type: "error", msg: "Geçerli bir e-posta adresi girin." });
       return;
     }
 
     if (nextEmail === currentEmail) {
-      setFeedback({ type: "error", msg: "Yeni e-posta mevcut adresle ayni olamaz." });
+      setFeedback({ type: "error", msg: "Yeni e-posta mevcut adresle aynı olamaz." });
       return;
     }
 
@@ -477,10 +477,10 @@ export default function ProfileClient() {
 
       setFeedback({
         type: "success",
-        msg: `${nextEmail} adresine onay baglantisi gonderildi. Maili acip degisikligi tamamlayin.`,
+        msg: `${nextEmail} adresine onay bağlantısı gönderildi. Maili açıp değişikliği tamamlayın.`,
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "E-posta degisikligi baslatilamadi.";
+      const msg = err instanceof Error ? err.message : "E-posta değişikliği başlatılamadı.";
       setFeedback({ type: "error", msg });
     } finally {
       setEmailUpdating(false);
@@ -533,7 +533,7 @@ export default function ProfileClient() {
   async function handleMfaEnroll() {
     const supabase = createClient();
     if (!supabase) {
-      setFeedback({ type: "error", msg: "Iki adimli dogrulama servisine baglanilamadi." });
+      setFeedback({ type: "error", msg: "İki adımlı doğrulama servisine bağlanılamadı." });
       return;
     }
 
@@ -548,7 +548,7 @@ export default function ProfileClient() {
       });
 
       if (error) throw error;
-      if (!data?.totp) throw new Error("TOTP kurulum verisi alinamadi.");
+      if (!data?.totp) throw new Error("TOTP kurulum verisi alınamadı.");
 
       const qrImageSrc = await buildMfaQrImageSrc(data.totp.uri, data.totp.qr_code);
 
@@ -561,9 +561,9 @@ export default function ProfileClient() {
       });
       setMfaCode("");
       await loadMfaState(supabase);
-      setFeedback({ type: "success", msg: "Kurulum olusturuldu. Simdi kodu dogrulayarak 2FA'yi etkinlestirin." });
+      setFeedback({ type: "success", msg: "Kurulum oluşturuldu. Şimdi kodu doğrulayarak 2FA'yi etkinleştirin." });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Iki adimli dogrulama baslatilamadi.";
+      const msg = err instanceof Error ? err.message : "İki adımlı doğrulama başlatılamadı.";
       setFeedback({ type: "error", msg });
     } finally {
       setMfaBusy(false);
@@ -575,13 +575,13 @@ export default function ProfileClient() {
 
     const code = mfaCode.replace(/\s+/g, "");
     if (!/^\d{6}$/.test(code)) {
-      setFeedback({ type: "error", msg: "Dogrulama kodu 6 haneli olmali." });
+      setFeedback({ type: "error", msg: "Doğrulama kodu 6 haneli olmalı." });
       return;
     }
 
     const supabase = createClient();
     if (!supabase) {
-      setFeedback({ type: "error", msg: "Iki adimli dogrulama servisine baglanilamadi." });
+      setFeedback({ type: "error", msg: "İki adımlı doğrulama servisine bağlanılamadı." });
       return;
     }
 
@@ -600,9 +600,9 @@ export default function ProfileClient() {
       setMfaCode("");
       setMfaFriendlyName("");
       await loadMfaState(supabase);
-      setFeedback({ type: "success", msg: "Iki adimli dogrulama etkinlestirildi." });
+      setFeedback({ type: "success", msg: "İki adımlı doğrulama etkinleştirildi." });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Dogrulama basarisiz.";
+      const msg = err instanceof Error ? err.message : "Doğrulama başarısız.";
       setFeedback({ type: "error", msg });
     } finally {
       setMfaBusy(false);
@@ -636,7 +636,7 @@ export default function ProfileClient() {
   async function handleMfaUnenroll(factorId: string) {
     const supabase = createClient();
     if (!supabase) {
-      setFeedback({ type: "error", msg: "Iki adimli dogrulama servisine baglanilamadi." });
+      setFeedback({ type: "error", msg: "İki adımlı doğrulama servisine bağlanılamadı." });
       return;
     }
 
@@ -648,9 +648,9 @@ export default function ProfileClient() {
       if (error) throw error;
 
       await loadMfaState(supabase);
-      setFeedback({ type: "success", msg: "MFA cihazi kaldirildi." });
+      setFeedback({ type: "success", msg: "MFA cihazı kaldırıldı." });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "MFA cihazi kaldirilamadi.";
+      const msg = err instanceof Error ? err.message : "MFA cihazı kaldırılamadı.";
       setFeedback({ type: "error", msg });
     } finally {
       setMfaBusy(false);
@@ -698,7 +698,7 @@ export default function ProfileClient() {
     try {
       await quickSignOut("/login");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Oturum kapatilamadi.";
+      const msg = err instanceof Error ? err.message : "Oturum kapatılamadı.";
       setFeedback({ type: "error", msg });
       setSigningOut(false);
     }
@@ -710,7 +710,7 @@ export default function ProfileClient() {
 
     const supabase = createClient();
     if (!supabase) {
-      setFeedback({ type: "error", msg: "Oturum servisine baglanilamadi." });
+      setFeedback({ type: "error", msg: "Oturum servisine bağlanılamadı." });
       setSigningOutAll(false);
       return;
     }
@@ -734,7 +734,7 @@ export default function ProfileClient() {
 
       window.location.replace("/login");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Tum cihazlardan cikis yapilamadi.";
+      const msg = err instanceof Error ? err.message : "Tüm cihazlardan çıkış yapılamadı.";
       setFeedback({ type: "error", msg });
       setSigningOutAll(false);
     }
@@ -1134,13 +1134,13 @@ export default function ProfileClient() {
                   disabled={emailUpdating || !pendingEmail.trim()}
                   className={primaryButtonClass}
                 >
-                  {emailUpdating ? "Baglanti Gonderiliyor..." : "Degisikligi Baslat"}
+                  {emailUpdating ? "Bağlantı Gönderiliyor..." : "Değişikliği Başlat"}
                 </button>
               </div>
 
               <div className="rounded-2xl border border-dashed border-border bg-background/60 px-4 py-4 text-sm text-muted-foreground">
-                E-posta degisikligi guvenlik nedeniyle onay gerektirir. Yeni adrese giden baglantiyi acmadan hesap
-                e-postasi degismez.
+                E-posta değişikliği güvenlik nedeniyle onay gerektirir. Yeni adrese giden bağlantıyı açmadan hesap
+                e-postası değişmez.
               </div>
             </div>
           </div>
@@ -1165,7 +1165,7 @@ export default function ProfileClient() {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="En az 12 karakter, buyuk-kucuk harf, rakam ve sembol"
+                  placeholder="En az 12 karakter, büyük-küçük harf, rakam ve sembol"
                   className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
               </div>
@@ -1390,7 +1390,7 @@ export default function ProfileClient() {
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Aktif Oturumlar</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Hesabinizda acik olan oturumlari burada gorebilir ve cikis islemlerini yonetebilirsiniz.
+                  Hesabınızda açık olan oturumları burada görebilir ve çıkış işlemlerini yönetebilirsiniz.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -1400,7 +1400,7 @@ export default function ProfileClient() {
                   disabled={signingOut || signingOutAll}
                   className={secondaryButtonClass}
                 >
-                  {signingOut ? "Kapatiliyor..." : "Bu cihazdan cik"}
+                  {signingOut ? "Kapatılıyor..." : "Bu cihazdan çık"}
                 </button>
                 <button
                   type="button"
@@ -1408,14 +1408,14 @@ export default function ProfileClient() {
                   disabled={signingOutAll || signingOut}
                   className={secondaryButtonClass}
                 >
-                  {signingOutAll ? "Kapatiliyor..." : "Tum cihazlardan cik"}
+                  {signingOutAll ? "Kapatılıyor..." : "Tüm cihazlardan çık"}
                 </button>
               </div>
             </div>
             <div className="space-y-3">
               {sessions.length === 0 && (
                 <div className="rounded-2xl border border-border bg-secondary/30 px-4 py-4 text-sm text-muted-foreground">
-                  Kayitli oturum bulunamadi. Bu cihazdaki oturum aktif gorunuyor olabilir.
+                  Kayıtlı oturum bulunamadı. Bu cihazdaki oturum aktif görünüyor olabilir.
                 </div>
               )}
               {sessions.map((session) => (
@@ -1441,7 +1441,7 @@ export default function ProfileClient() {
                             : "bg-secondary text-muted-foreground",
                         ].join(" ")}
                       >
-                        {session.isCurrent ? "Bu cihaz" : "Diger cihaz"}
+                        {session.isCurrent ? "Bu cihaz" : "Diğer cihaz"}
                       </span>
                       <span className="inline-flex items-center rounded-lg bg-secondary px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                         {session.device_type}
@@ -1450,7 +1450,7 @@ export default function ProfileClient() {
                     <div className="mt-1 text-xs text-muted-foreground">
                       Son aktivite: {formatDate(session.last_active_at)}
                       {session.ip_address ? ` | IP: ${session.ip_address}` : ""}
-                      {session.created_at ? ` | Acilis: ${formatDate(session.created_at)}` : ""}
+                      {session.created_at ? ` | Açılış: ${formatDate(session.created_at)}` : ""}
                     </div>
                   </div>
                   {session.isCurrent && (
