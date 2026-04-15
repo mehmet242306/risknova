@@ -22,6 +22,8 @@ type NovaUiCopy = {
     redirecting: (label: string) => string;
     subtitle: string;
     openAriaLabel: string;
+    minimizeAriaLabel: string;
+    closeAriaLabel: string;
     sourceCount: (count: number) => string;
     navigationTitle: string;
     gotoPage: string;
@@ -79,6 +81,8 @@ const trCopy: NovaUiCopy = {
     redirecting: (label) => `${label} sayfasina yonlendiriliyorsunuz...`,
     subtitle: "AI ISG Asistani",
     openAriaLabel: "Nova asistanini ac",
+    minimizeAriaLabel: "Kucult (konusma korunur)",
+    closeAriaLabel: "Kapat ve konusmayi sifirla",
     sourceCount: (count) => `${count} mevzuat kaynagi`,
     navigationTitle: "Sayfa Yonlendirme",
     gotoPage: "Sayfaya Git",
@@ -149,6 +153,8 @@ const enCopy: NovaUiCopy = {
     redirecting: (label) => `Routing you to ${label}...`,
     subtitle: "AI OHS Assistant",
     openAriaLabel: "Open Nova assistant",
+    minimizeAriaLabel: "Minimize (keep conversation)",
+    closeAriaLabel: "Close and reset conversation",
     sourceCount: (count) => `${count} legislation sources`,
     navigationTitle: "Page Routing",
     gotoPage: "Open Page",

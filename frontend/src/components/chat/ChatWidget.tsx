@@ -14,6 +14,7 @@ import {
 import {
   MessageCircle,
   X,
+  Minus,
   Send,
   Sparkles,
   Bot,
@@ -241,6 +242,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           language: locale,
           access_token: session?.access_token ?? null,
           history,
+          current_page: pathname,
         }),
       });
 
@@ -365,7 +367,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         <div className="fixed bottom-6 right-6 z-50 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_60px_rgba(0,0,0,0.2)]"
           style={{ height: "min(600px, calc(100vh - 6rem))" }}>
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-border bg-[var(--header-bg)] px-4 py-3">
+          <div className="flex items-center justify-between border-b border-border bg-[var(--header-bg-solid)] px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="inline-flex size-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)]">
                 <Sparkles className="size-4 text-white" />
@@ -376,8 +378,27 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setOpen(false)}
-                className="inline-flex size-8 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label={ui.widget.minimizeAriaLabel}
+                title={ui.widget.minimizeAriaLabel}
+                className="inline-flex size-8 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
+              >
+                <Minus className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setMessages([]);
+                  setSessionId(null);
+                  proactiveLoadedRef.current = false;
+                }}
+                aria-label={ui.widget.closeAriaLabel}
+                title={ui.widget.closeAriaLabel}
+                className="inline-flex size-8 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
+              >
                 <X className="size-4" />
               </button>
             </div>
@@ -540,13 +561,6 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
             )}
 
             <div ref={messagesEndRef} />
-          </div>
-
-          {/* Current page indicator */}
-          <div className="border-t border-border bg-muted/50 px-4 py-1.5">
-            <p className="text-[10px] text-muted-foreground">
-              {ui.widget.currentPageLabel}: <span className="font-medium text-foreground">{pathname}</span>
-            </p>
           </div>
 
           {/* Input */}
