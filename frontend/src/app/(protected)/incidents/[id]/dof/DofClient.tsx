@@ -25,7 +25,7 @@ import {
 } from "@/lib/supabase/incident-api";
 import { ArrowLeft, Plus, Trash2, Save, ClipboardCheck, GitBranch, ImagePlus, X, AlertTriangle, Download, FileText, Sparkles } from "lucide-react";
 import { exportDofAsPDF, exportDofAsWord } from "@/lib/dof-export";
-import { generateAISuggestion } from "@/lib/incident-ai";
+import { requestCorrectiveActions, requestIshikawaAnalysis } from "@/lib/incidents/ai-client";
 
 type ActionItem = { action: string; assignedTo: string; deadline: string; done: boolean };
 
@@ -63,6 +63,8 @@ export function DofClient() {
   const [ishikawa, setIshikawa] = useState<IshikawaRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // DÖF state
   const [rootCause, setRootCause] = useState("");
@@ -192,20 +194,86 @@ export function DofClient() {
     setPendingStatus(null);
   }
 
-  function applyAISuggestion() {
+  async function applyAISuggestion() {
     if (!incident) return;
-    const suggestion = generateAISuggestion(incident);
 
-    // İshikawa
-    setProblemStatement(suggestion.ishikawa.problemStatement);
-    setCauses(suggestion.ishikawa.causes);
-    setRootCauseConclusion(suggestion.ishikawa.rootCauseConclusion);
+    setAiLoading(true);
+    setAiError(null);
 
-    // DÖF
-    setRootCause(suggestion.dof.rootCause);
-    setRootCauseAnalysis(suggestion.dof.rootCauseAnalysis);
-    setCorrectiveActions(suggestion.dof.correctiveActions);
-    setPreventiveActions(suggestion.dof.preventiveActions);
+    try {
+      const narrativeParts = [
+        incident.description,
+        incident.accidentCauseDescription,
+        incident.generalActivity,
+        incident.specificActivity,
+        incident.toolUsed ? `Ekipman: ${incident.toolUsed}` : null,
+      ].filter(Boolean);
+
+      const ishikawaResult = await requestIshikawaAnalysis({
+        incidentType: incident.incidentType,
+        companyWorkspaceId: incident.companyWorkspaceId,
+        location: incident.incidentLocation ?? incident.incidentDepartment ?? "",
+        narrative: narrativeParts.join("\n").trim() || "Olay açıklaması henüz girilmedi.",
+        affectedCount: 1,
+      });
+
+      setProblemStatement(ishikawaResult.analysis_summary);
+      setCauses({
+        man: ishikawaResult.categories.insan,
+        machine: ishikawaResult.categories.makine,
+        method: ishikawaResult.categories.metot,
+        material: ishikawaResult.categories.malzeme,
+        environment: ishikawaResult.categories.cevre,
+        measurement: ishikawaResult.categories.olcum,
+      });
+      setRootCauseConclusion(ishikawaResult.primary_root_cause);
+
+      const rootCauses = [
+        ...ishikawaResult.categories.insan.map((cause) => ({ category: "insan" as const, cause })),
+        ...ishikawaResult.categories.makine.map((cause) => ({ category: "makine" as const, cause })),
+        ...ishikawaResult.categories.metot.map((cause) => ({ category: "metot" as const, cause })),
+        ...ishikawaResult.categories.malzeme.map((cause) => ({ category: "malzeme" as const, cause })),
+        ...ishikawaResult.categories.olcum.map((cause) => ({ category: "olcum" as const, cause })),
+        ...ishikawaResult.categories.cevre.map((cause) => ({ category: "cevre" as const, cause })),
+      ].slice(0, 18);
+
+      if (rootCauses.length > 0) {
+        const dofSuggestions = await requestCorrectiveActions({
+          incidentType: incident.incidentType,
+          companyWorkspaceId: incident.companyWorkspaceId,
+          rootCauses,
+        });
+
+        setRootCause(dofSuggestions[0]?.root_cause || ishikawaResult.primary_root_cause);
+        setRootCauseAnalysis(ishikawaResult.analysis_summary);
+        const toDateInput = (days: number) => {
+          const target = new Date();
+          target.setDate(target.getDate() + days);
+          return target.toISOString().split("T")[0];
+        };
+
+        setCorrectiveActions(
+          dofSuggestions.map((item) => ({
+            action: item.corrective_action,
+            assignedTo: item.suggested_role,
+            deadline: toDateInput(item.suggested_deadline_days),
+            done: false,
+          })),
+        );
+        setPreventiveActions(
+          dofSuggestions.map((item) => ({
+            action: item.preventive_action,
+            assignedTo: item.suggested_role,
+            deadline: toDateInput(item.suggested_deadline_days),
+            done: false,
+          })),
+        );
+      }
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "AI şu an meşgul, manuel doldurabilirsiniz.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   async function handleSave() {
@@ -288,12 +356,17 @@ export function DofClient() {
             <CardDescription>
               6M metoduyla olayın kök nedenlerini sistematik olarak analiz edin.
             </CardDescription>
-            <Button variant="accent" size="sm" onClick={applyAISuggestion}>
+            <Button variant="accent" size="sm" onClick={() => void applyAISuggestion()} disabled={aiLoading}>
               <Sparkles className="mr-1 size-3.5" /> AI ile Doldur
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
+          {aiError && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+              {aiError}
+            </div>
+          )}
           <Textarea
             label="Problem Tanımı"
             value={problemStatement}

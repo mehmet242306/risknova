@@ -42,6 +42,12 @@ export function DashboardClient() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Dashboard açılışında yaklaşan ajanda görevleri için bildirim tarama
+  // (günde bir kez, duplike önlemi var)
+  useEffect(() => {
+    void import("@/lib/supabase/ajanda-sync").then((m) => m.scanUpcomingAjandaTasks({ daysAhead: 7 }));
+  }, []);
+
   useEffect(() => {
     async function load() {
       const supabase = createClient();

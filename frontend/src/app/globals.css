@@ -405,6 +405,15 @@ body,
   transform: scale(1.02);
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ================================================================== */
 /* Glassmorphism                                                       */
 /* ================================================================== */

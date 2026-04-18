@@ -439,6 +439,7 @@ ${content}
     documentsBackParams.set('librarySection', librarySection);
   }
   const documentsBackHref = `/documents${documentsBackParams.toString() ? `?${documentsBackParams.toString()}` : ''}`;
+  const libraryBackHref = `/isg-library?category=${librarySection}`;
 
 
   const group = getGroupByKey(groupKey);
@@ -463,13 +464,18 @@ ${content}
         {/* Left: breadcrumb */}
         <div className="flex items-center gap-2 min-w-0">
           <button
-            onClick={() => router.push(documentsBackHref)}
+            onClick={() => router.push(fromLibrary ? libraryBackHref : documentsBackHref)}
             className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-secondary)] shrink-0"
           >
             <ArrowLeft size={16} />
           </button>
           <nav className="flex items-center gap-1 text-sm text-[var(--text-secondary)] min-w-0">
-            <span className="hover:text-[var(--text-primary)] cursor-pointer shrink-0" onClick={() => router.push(documentsBackHref)}>Dokümanlar</span>
+            <span
+              className="hover:text-[var(--text-primary)] cursor-pointer shrink-0"
+              onClick={() => router.push(fromLibrary ? libraryBackHref : documentsBackHref)}
+            >
+              {fromLibrary ? 'Kütüphaneye Dön' : 'Dokümanlar'}
+            </span>
             <ChevronRight size={12} className="opacity-40 shrink-0" />
             {group && <span className="shrink-0">{group.title}</span>}
             {group && <ChevronRight size={12} className="opacity-40 shrink-0" />}

@@ -3,20 +3,20 @@
   | "Acil Durum"
   | "Denetim"
   | "Aksiyon"
-  | "Egitim"
+  | "E?itim"
   | "Kurul"
   | "Talimat"
-  | "Saglik";
+  | "Sa?l?k";
 
 export type TemplateTarget =
   | "Genel"
-  | "Bakim Merkezi"
+  | "Bak?m Merkezi"
   | "Fabrika"
   | "Ofis"
-  | "Egitim Kurumu"
-  | "Saglik Kurumu";
+  | "E?itim Kurumu"
+  | "Sa?l?k Kurumu";
 
-export type TemplateStatus = "Hazir" | "Uyarlanabilir" | "Gelismekte";
+export type TemplateStatus = "Haz?r" | "Uyarlanabilir" | "Geli?mekte";
 
 export type DocumentTemplate = {
   id: number;
@@ -33,24 +33,24 @@ export type DocumentTemplate = {
 export const documentTemplates: DocumentTemplate[] = [
   {
     id: 1,
-    title: "Risk Degerlendirmesi Ana Sablonu",
+    title: "Risk De?erlendirmesi Ana ?ablonu",
     category: "Risk",
     target: "Genel",
-    status: "Hazir",
-    summary: "Genel isyerleri icin risk degerlendirme omurgasi.",
-    includes: ["Tehlike tanimi", "Risk puanlama", "Kontrol tedbirleri", "Sorumlu ve termin"],
-    recommendedFor: ["Tum sektorler", "Temel risk degerlendirmesi ihtiyaci"],
+    status: "Haz?r",
+    summary: "Genel i?yerleri i?in risk de?erlendirme omurgas?.",
+    includes: ["Tehlike tan?m?", "Risk puanlama", "Kontrol tedbirleri", "Sorumlu ve termin"],
+    recommendedFor: ["T?m sekt?rler", "Temel risk de?erlendirmesi ihtiyac?"],
     aiReady: true,
   },
   {
     id: 2,
-    title: "Acil Durum Eylem Plani Sablonu",
+    title: "Acil Durum Eylem Plan? ?ablonu",
     category: "Acil Durum",
     target: "Genel",
-    status: "Hazir",
-    summary: "Acil durum planinin temel basliklarini iceren sablon.",
-    includes: ["Senaryolar", "Toplanma alani", "Destek ekipleri", "Tahliye mantigi"],
-    recommendedFor: ["Tum kurumlar", "Acil durum plani guncellemesi"],
+    status: "Haz?r",
+    summary: "Acil durum plan?n?n temel ba?l?klar?n? i?eren ?ablon.",
+    includes: ["Senaryolar", "Toplanma alan?", "Destek ekipleri", "Tahliye mant???"],
+    recommendedFor: ["T?m kurumlar", "Acil durum plan? g?ncellemesi"],
     aiReady: true,
   },
   {
@@ -58,76 +58,76 @@ export const documentTemplates: DocumentTemplate[] = [
     title: "Saha Denetim ve Tespit Formu",
     category: "Denetim",
     target: "Genel",
-    status: "Hazir",
-    summary: "Sahada uygunsuzluk ve oneri kaydi icin kullanilir.",
-    includes: ["Bulgu basligi", "Fotograf alani", "Risk seviyesi", "Mevzuat etiketi"],
+    status: "Haz?r",
+    summary: "Sahada uygunsuzluk ve ?neri kayd? i?in kullan?l?r.",
+    includes: ["Bulgu ba?l???", "Foto?raf alan?", "Risk seviyesi", "Mevzuat etiketi"],
     recommendedFor: ["Saha denetimleri", "Aylik ziyaretler"],
     aiReady: true,
   },
   {
     id: 4,
-    title: "DOF / Duzeltici Faaliyet Formu",
+    title: "DOF / D?zeltici Faaliyet Formu",
     category: "Aksiyon",
     target: "Genel",
-    status: "Hazir",
-    summary: "Aksiyon acma ve takip mantigi icin standart form.",
-    includes: ["Kaynak", "Sorumlu", "Termin", "Dogrulama"],
-    recommendedFor: ["Uygunsuzluk yonetimi", "Tatbikat bulgulari", "Denetim eksikleri"],
+    status: "Haz?r",
+    summary: "Aksiyon a?ma ve takip mant??? i?in standart form.",
+    includes: ["Kaynak", "Sorumlu", "Termin", "Do?rulama"],
+    recommendedFor: ["Uygunsuzluk y?netimi", "Tatbikat bulgular?", "Denetim eksikleri"],
     aiReady: true,
   },
   {
     id: 5,
-    title: "Yangin Tatbikat Tutanagi",
+    title: "Yang?n Tatbikat Tutana??",
     category: "Acil Durum",
     target: "Genel",
-    status: "Hazir",
-    summary: "Tatbikat sonu bulgu ve iyilestirme kaydi icin kullanilir.",
-    includes: ["Senaryo", "Katilimci", "Eksikler", "Iyilestirme basliklari"],
-    recommendedFor: ["Yillik tatbikatlar", "Acil durum modulu"],
+    status: "Haz?r",
+    summary: "Tatbikat sonu bulgu ve iyile?tirme kayd? i?in kullan?l?r.",
+    includes: ["Senaryo", "Kat?l?mc?", "Eksikler", "?yile?tirme ba?l?klar?"],
+    recommendedFor: ["Y?ll?k tatbikatlar", "Acil durum mod?l?"],
     aiReady: true,
   },
   {
     id: 6,
-    title: "Bakim Merkezi Ozel Kontrol Formu",
+    title: "Bak?m Merkezi Ozel Kontrol Formu",
     category: "Denetim",
-    target: "Bakim Merkezi",
+    target: "Bak?m Merkezi",
     status: "Uyarlanabilir",
-    summary: "Yasam evleri, mutfak, camasirhane ve ortak alanlara odaklanan kontrol formu.",
-    includes: ["Elektrik", "Yangin", "Davranissal risk", "Bakim alanlari"],
-    recommendedFor: ["Yasam merkezleri", "Rehabilitasyon birimleri"],
+    summary: "Ya?am evleri, mutfak, ?ama??rhane ve ortak alanlara odaklanan kontrol formu.",
+    includes: ["Elektrik", "Yang?n", "Davran??sal risk", "Bak?m alanlar?"],
+    recommendedFor: ["Ya?am merkezleri", "Rehabilitasyon birimleri"],
     aiReady: true,
   },
   {
     id: 7,
-    title: "Fabrika Sicak Is ve Kaynak Kontrol Formu",
+    title: "Fabrika S?cak ?? ve Kaynak Kontrol Formu",
     category: "Denetim",
     target: "Fabrika",
     status: "Uyarlanabilir",
-    summary: "Kaynak, kesim, pres ve uretim risklerine odakli saha formu.",
-    includes: ["KKD", "Makine koruyucu", "Yangin", "Sicak is kontrolu"],
-    recommendedFor: ["Metal", "Imalat", "Atolye"],
+    summary: "Kaynak, kesim, pres ve ?retim risklerine odakl? saha formu.",
+    includes: ["KKD", "Makine koruyucu", "Yang?n", "S?cak i? kontrol?"],
+    recommendedFor: ["Metal", "?malat", "At?lye"],
     aiReady: true,
   },
   {
     id: 8,
-    title: "Kurul Toplanti Tutanagi",
+    title: "Kurul Toplant? Tutana??",
     category: "Kurul",
     target: "Genel",
-    status: "Hazir",
-    summary: "Kurul kararlarinin kaydi ve izlenmesi icin kullanilir.",
-    includes: ["Toplanti basliklari", "Kararlar", "Sorumlular", "Terminler"],
-    recommendedFor: ["Kurul toplantilari", "Aylik degerlendirme"],
+    status: "Haz?r",
+    summary: "Kurul kararlar?n?n kayd? ve izlenmesi i?in kullan?l?r.",
+    includes: ["Toplant? ba?l?klar?", "Kararlar", "Sorumlular", "Terminler"],
+    recommendedFor: ["Kurul toplant?lar?", "Ayl?k de?erlendirme"],
     aiReady: true,
   },
   {
     id: 9,
-    title: "Egitim Katilim Formu",
-    category: "Egitim",
+    title: "E?itim Katilim Formu",
+    category: "E?itim",
     target: "Genel",
-    status: "Hazir",
-    summary: "Egitim katilimi ve imza takibi icin temel form.",
-    includes: ["Katilimci listesi", "Egitim konusu", "Tarih", "Imza alani"],
-    recommendedFor: ["Tum egitimler", "Yillik plan uygulamasi"],
+    status: "Haz?r",
+    summary: "E?itim katilimi ve imza takibi icin temel form.",
+    includes: ["Kat?l?mc? listesi", "E?itim konusu", "Tarih", "?mza alan?"],
+    recommendedFor: ["T?m e?itimler", "Y?ll?k plan uygulamas?"],
     aiReady: false,
   },
   {
@@ -135,21 +135,21 @@ export const documentTemplates: DocumentTemplate[] = [
     title: "Tahliye Talimati",
     category: "Talimat",
     target: "Ofis",
-    status: "Hazir",
-    summary: "Ofis ve idari alanlar icin tahliye adimlarini icerir.",
-    includes: ["Alarm davranisi", "Cikis guzergahi", "Toplanma noktasi", "Sorumlular"],
-    recommendedFor: ["Ofisler", "Idari binalar"],
+    status: "Haz?r",
+    summary: "Ofis ve idari alanlar i?in tahliye ad?mlar?n? i?erir.",
+    includes: ["Alarm davran???", "??k?? g?zergah?", "Toplanma noktas?", "Sorumlular"],
+    recommendedFor: ["Ofisler", "?dari binalar"],
     aiReady: true,
   },
   {
     id: 11,
-    title: "Saglik Gozetimi Yillik Plan Taslagi",
-    category: "Saglik",
+    title: "Sa?l?k Gozetimi Yillik Plan Taslagi",
+    category: "Sa?l?k",
     target: "Genel",
-    status: "Gelismekte",
-    summary: "Saglik yonetimi modulu ile entegre olacak yillik plan taslagi.",
-    includes: ["Muayene takvimi", "Ozel izlem", "Bildirim alanlari"],
-    recommendedFor: ["Isyeri hekimi", "DSP"],
+    status: "Geli?mekte",
+    summary: "Sa?l?k yonetimi modulu ile entegre olacak yillik plan taslagi.",
+    includes: ["Muayene takvimi", "?zel izlem", "Bildirim alanlar?"],
+    recommendedFor: ["??yeri hekimi", "DSP"],
     aiReady: false,
   }
 ];

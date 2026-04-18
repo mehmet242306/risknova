@@ -1280,8 +1280,8 @@ export function RiskAnalysisClient() {
   }, []);
 
   /* ── Analyze ── */
-  /** Gorsel dosyayi base64'e cevir */
-  /** Gorseli max 1600px'e kucultup base64'e cevir (API limitleri icin) */
+  /** G?rsel dosyayi base64'e cevir */
+  /** G?rseli max 1600px'e kucultup base64'e cevir (API limitleri icin) */
   async function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -1928,7 +1928,7 @@ JSON formatında döndür:
       };
     });
 
-    // Gorsel datalarini topla (blob URL -> base64 + annotation overlay)
+    // G?rsel datalarini topla (blob URL -> base64 + annotation overlay)
     const images: ExportImage[] = [];
     for (const result of results) {
       const sourceLine = lineMap.get(result.rowId);
@@ -2641,7 +2641,7 @@ JSON formatında döndür:
                     <div className="flex items-center gap-3 text-white/90">
                       <div className="text-center">
                         <p className="text-lg font-bold">{totalImageCount}</p>
-                        <p className="text-[10px] uppercase tracking-wider text-white/60">Gorsel</p>
+                        <p className="text-[10px] uppercase tracking-wider text-white/60">G?rsel</p>
                       </div>
                       <div className="h-8 w-px bg-white/20" />
                       <div className="text-center">
@@ -2703,7 +2703,7 @@ JSON formatında döndür:
 
                 <input ref={(n) => { fileInputRefs.current[line.id] = n; }} type="file" accept="image/*" multiple className="hidden" onChange={(e: ChangeEvent<HTMLInputElement>) => appendFiles(line.id, e.target.files)} />
 
-                {/* Gorsel ekleme butonu */}
+                {/* G?rsel ekleme butonu */}
                 <div className="mt-4">
                   <Button type="button" onClick={() => fileInputRefs.current[line.id]?.click()} className="h-10 rounded-xl px-5 text-sm font-semibold shadow-sm">
                     <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>

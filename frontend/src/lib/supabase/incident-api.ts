@@ -4,7 +4,7 @@ import { createClient } from "./client";
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export type IncidentType = "work_accident" | "near_miss" | "occupational_disease";
+export type IncidentType = "work_accident" | "near_miss" | "occupational_disease" | "other";
 export type IncidentStatus = "draft" | "reported" | "investigating" | "dof_open" | "closed";
 export type SeverityLevel = "low" | "medium" | "high" | "critical";
 export type DofStatus = "open" | "in_progress" | "completed" | "verified";
@@ -32,6 +32,7 @@ export type IncidentRecord = {
   specificActivity: string | null;
   toolUsed: string | null;
   description: string | null;
+  narrative: string | null;
 
   // Yaralanma
   injuryType: string | null;
@@ -44,6 +45,8 @@ export type IncidentRecord = {
 
   // Tıbbi müdahale
   medicalIntervention: boolean;
+  firstAidProvided: boolean;
+  firstAidNotes: string | null;
   medicalPerson: string | null;
   medicalLocation: string | null;
   medicalCity: string | null;
@@ -79,6 +82,9 @@ export type IncidentRecord = {
   aiSummary: Record<string, unknown> | null;
   dofRequired: boolean;
   ishikawaRequired: boolean;
+  ishikawaData: Record<string, unknown> | null;
+  sgkNotificationDeadline: string | null;
+  sgkNotifiedAt: string | null;
 
   // Meta
   createdAt: string;
@@ -158,8 +164,26 @@ export type IshikawaRecord = {
   measurementCauses: string[];
   rootCauseConclusion: string | null;
   aiSuggestions: Record<string, unknown> | null;
+  sharedWithCompany: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type IshikawaVersion = {
+  id: string;
+  ishikawaId: string;
+  organizationId: string;
+  versionNumber: number;
+  problemStatement: string | null;
+  manCauses: string[];
+  machineCauses: string[];
+  methodCauses: string[];
+  materialCauses: string[];
+  environmentCauses: string[];
+  measurementCauses: string[];
+  rootCauseConclusion: string | null;
+  createdBy: string | null;
+  createdAt: string;
 };
 
 /* ------------------------------------------------------------------ */
@@ -189,6 +213,7 @@ function mapIncidentRow(row: any): IncidentRecord {
     specificActivity: row.specific_activity,
     toolUsed: row.tool_used,
     description: row.description,
+    narrative: row.narrative,
     injuryType: row.injury_type,
     injuryBodyPart: row.injury_body_part,
     injuryCauseEvent: row.injury_cause_event,
@@ -197,6 +222,8 @@ function mapIncidentRow(row: any): IncidentRecord {
     disabilityStatus: row.disability_status,
     daysLost: row.days_lost ?? 0,
     medicalIntervention: row.medical_intervention ?? false,
+    firstAidProvided: row.first_aid_provided ?? false,
+    firstAidNotes: row.first_aid_notes,
     medicalPerson: row.medical_person,
     medicalLocation: row.medical_location,
     medicalCity: row.medical_city,
@@ -224,6 +251,9 @@ function mapIncidentRow(row: any): IncidentRecord {
     aiSummary: row.ai_summary,
     dofRequired: row.dof_required ?? false,
     ishikawaRequired: row.ishikawa_required ?? false,
+    ishikawaData: row.ishikawa_data,
+    sgkNotificationDeadline: row.sgk_notification_deadline,
+    sgkNotifiedAt: row.sgk_notified_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     companyName: row.company_workspaces?.display_name ?? row.company_workspaces?.company_identities?.official_name,
@@ -269,8 +299,29 @@ function mapIshikawaRow(row: any): IshikawaRecord {
     measurementCauses: row.measurement_causes ?? [],
     rootCauseConclusion: row.root_cause_conclusion,
     aiSuggestions: row.ai_suggestions,
+    sharedWithCompany: row.shared_with_company ?? false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapIshikawaVersionRow(row: any): IshikawaVersion {
+  return {
+    id: row.id,
+    ishikawaId: row.ishikawa_id,
+    organizationId: row.organization_id,
+    versionNumber: row.version_number,
+    problemStatement: row.problem_statement,
+    manCauses: row.man_causes ?? [],
+    machineCauses: row.machine_causes ?? [],
+    methodCauses: row.method_causes ?? [],
+    materialCauses: row.material_causes ?? [],
+    environmentCauses: row.environment_causes ?? [],
+    measurementCauses: row.measurement_causes ?? [],
+    rootCauseConclusion: row.root_cause_conclusion,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
   };
 }
 
@@ -298,6 +349,7 @@ function toSnake(record: Partial<IncidentRecord>) {
     generalActivity: "general_activity",
     specificActivity: "specific_activity",
     toolUsed: "tool_used",
+    narrative: "narrative",
     injuryType: "injury_type",
     injuryBodyPart: "injury_body_part",
     injuryCauseEvent: "injury_cause_event",
@@ -306,6 +358,8 @@ function toSnake(record: Partial<IncidentRecord>) {
     disabilityStatus: "disability_status",
     daysLost: "days_lost",
     medicalIntervention: "medical_intervention",
+    firstAidProvided: "first_aid_provided",
+    firstAidNotes: "first_aid_notes",
     medicalPerson: "medical_person",
     medicalLocation: "medical_location",
     medicalCity: "medical_city",
@@ -333,6 +387,9 @@ function toSnake(record: Partial<IncidentRecord>) {
     aiSummary: "ai_summary",
     dofRequired: "dof_required",
     ishikawaRequired: "ishikawa_required",
+    ishikawaData: "ishikawa_data",
+    sgkNotificationDeadline: "sgk_notification_deadline",
+    sgkNotifiedAt: "sgk_notified_at",
   };
   for (const [k, v] of Object.entries(record)) {
     if (v === undefined) continue;
@@ -417,12 +474,31 @@ export async function resolveOrganizationId(): Promise<{ orgId: string; userId: 
   return null;
 }
 
+export class CreateIncidentError extends Error {
+  constructor(message: string, public readonly code: "no_supabase" | "no_auth" | "insert_error", public readonly supabaseError?: unknown) {
+    super(message);
+    this.name = "CreateIncidentError";
+  }
+}
+
 export async function createIncident(record: Partial<IncidentRecord>): Promise<IncidentRecord | null> {
   const supabase = createClient();
-  if (!supabase) return null;
+  if (!supabase) {
+    console.warn("createIncident: Supabase client oluşturulamadı (env eksik olabilir)");
+    throw new CreateIncidentError(
+      "Supabase bağlantısı kurulamadı. Ortam değişkenleri kontrol edilmelidir.",
+      "no_supabase",
+    );
+  }
 
   const auth = await resolveOrganizationId();
-  if (!auth) { console.warn("createIncident: organization_id bulunamadı - giriş yapılmamış olabilir"); return null; }
+  if (!auth) {
+    console.warn("createIncident: organization_id bulunamadı");
+    throw new CreateIncidentError(
+      "Kullanıcı veya organizasyon bilgisi bulunamadı. Lütfen çıkış yapıp tekrar giriş yapın.",
+      "no_auth",
+    );
+  }
 
   record.organizationId = auth.orgId;
 
@@ -435,7 +511,14 @@ export async function createIncident(record: Partial<IncidentRecord>): Promise<I
     .select()
     .single();
 
-  if (error) { console.warn("createIncident:", error.message); return null; }
+  if (error) {
+    console.warn("createIncident insert error:", error);
+    throw new CreateIncidentError(
+      `Veritabanı hatası: ${error.message}${error.hint ? ` (${error.hint})` : ""}`,
+      "insert_error",
+      error,
+    );
+  }
   return mapIncidentRow(data);
 }
 
@@ -534,7 +617,32 @@ export async function createDof(incidentId: string, organizationId: string, reco
     .single();
 
   if (error) { console.warn("createDof error:", error); return null; }
-  return mapDofRow(data);
+  const dofRecord = mapDofRow(data);
+
+  // Otomatik Ajanda sync — DÖF deadline varsa /planner takviminde görünür
+  if (dofRecord?.deadline) {
+    try {
+      const { syncDofDeadline } = await import("@/lib/supabase/ajanda-sync");
+      // Incident kodunu al (opsiyonel)
+      const { data: incidentRow } = await supabase
+        .from("incidents")
+        .select("incident_code, company_workspace_id")
+        .eq("id", incidentId)
+        .maybeSingle();
+      await syncDofDeadline({
+        id: dofRecord.id,
+        deadline: dofRecord.deadline,
+        rootCause: dofRecord.rootCause,
+        incidentCode: incidentRow?.incident_code ?? null,
+        companyWorkspaceId: incidentRow?.company_workspace_id ?? null,
+        assignedTo: dofRecord.assignedTo ?? null,
+      });
+    } catch (syncErr) {
+      console.warn("DOF ajanda sync başarısız (sorun değil):", syncErr);
+    }
+  }
+
+  return dofRecord;
 }
 
 export async function updateDof(id: string, record: Partial<DofRecord>): Promise<boolean> {
@@ -592,6 +700,8 @@ export async function createIshikawa(incidentId: string, organizationId: string,
       material_causes: record?.materialCauses ?? [],
       environment_causes: record?.environmentCauses ?? [],
       measurement_causes: record?.measurementCauses ?? [],
+      root_cause_conclusion: record?.rootCauseConclusion ?? null,
+      ai_suggestions: record?.aiSuggestions ?? null,
     })
     .select()
     .single();
@@ -600,9 +710,41 @@ export async function createIshikawa(incidentId: string, organizationId: string,
   return mapIshikawaRow(data);
 }
 
-export async function updateIshikawa(id: string, record: Partial<IshikawaRecord>): Promise<boolean> {
+export async function updateIshikawa(id: string, record: Partial<IshikawaRecord>, saveVersion = true): Promise<boolean> {
   const supabase = createClient();
   if (!supabase) return false;
+
+  // Düzenlemeden önce mevcut halini versiyon olarak kaydet
+  if (saveVersion) {
+    const { data: current } = await supabase
+      .from("incident_ishikawa")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (current) {
+      const { count } = await supabase
+        .from("ishikawa_versions")
+        .select("*", { count: "exact", head: true })
+        .eq("ishikawa_id", id);
+
+      const auth = await resolveOrganizationId();
+      await supabase.from("ishikawa_versions").insert({
+        ishikawa_id: id,
+        organization_id: current.organization_id,
+        version_number: (count || 0) + 1,
+        problem_statement: current.problem_statement,
+        man_causes: current.man_causes,
+        machine_causes: current.machine_causes,
+        method_causes: current.method_causes,
+        material_causes: current.material_causes,
+        environment_causes: current.environment_causes,
+        measurement_causes: current.measurement_causes,
+        root_cause_conclusion: current.root_cause_conclusion,
+        created_by: auth?.userId ?? null,
+      });
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const update: Record<string, any> = {};
@@ -615,10 +757,57 @@ export async function updateIshikawa(id: string, record: Partial<IshikawaRecord>
   if (record.measurementCauses !== undefined) update.measurement_causes = record.measurementCauses;
   if (record.rootCauseConclusion !== undefined) update.root_cause_conclusion = record.rootCauseConclusion;
   if (record.aiSuggestions !== undefined) update.ai_suggestions = record.aiSuggestions;
+  if (record.sharedWithCompany !== undefined) update.shared_with_company = record.sharedWithCompany;
 
   const { error } = await supabase.from("incident_ishikawa").update(update).eq("id", id);
   if (error) { console.warn("updateIshikawa error:", error); return false; }
   return true;
+}
+
+export async function deleteIshikawa(id: string): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+
+  const { error } = await supabase.from("incident_ishikawa").delete().eq("id", id);
+  if (error) { console.warn("deleteIshikawa error:", error); return false; }
+  return true;
+}
+
+export async function fetchIshikawaVersions(ishikawaId: string): Promise<IshikawaVersion[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("ishikawa_versions")
+    .select("*")
+    .eq("ishikawa_id", ishikawaId)
+    .order("version_number", { ascending: false });
+
+  if (error) { console.warn("fetchIshikawaVersions error:", error); return []; }
+  return (data ?? []).map(mapIshikawaVersionRow);
+}
+
+export async function toggleIshikawaShare(id: string, shared: boolean): Promise<boolean> {
+  return updateIshikawa(id, { sharedWithCompany: shared }, false);
+}
+
+export async function fetchAllIshikawaByOrg(): Promise<(IshikawaRecord & { incidentCode?: string; incidentTitle?: string })[]> {
+  const supabase = createClient();
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from("incident_ishikawa")
+    .select("*, incidents(incident_code, description)")
+    .order("created_at", { ascending: false });
+
+  if (error) { console.warn("fetchAllIshikawaByOrg error:", error); return []; }
+  return (data ?? []).map((row) => ({
+    ...mapIshikawaRow(row),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    incidentCode: (row as any).incidents?.incident_code,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    incidentTitle: (row as any).incidents?.description,
+  }));
 }
 
 /* ------------------------------------------------------------------ */

@@ -27,6 +27,7 @@ const primaryNav = [
   { href: "/dashboard", key: "nav.dashboard" },
   { href: "/companies", key: "nav.companies" },
   { href: "/risk-analysis", key: "nav.riskAnalysis" },
+  { href: "/corrective-actions", key: "nav.correctiveActions" },
   { href: "/incidents", key: "nav.incidents" },
   { href: "/isg-library", key: "nav.library" },
 ];
@@ -36,7 +37,7 @@ type NavItem = { href: string; key: string; adminOnly?: boolean };
 const secondaryNav: NavItem[] = [
   { href: "/score-history", key: "nav.scoreHistory" },
   { href: "/planner", key: "nav.planner" },
-  { href: "/timesheet", key: "nav.timesheet" },
+  // { href: "/timesheet", key: "nav.timesheet" }, // Planner içindeki Puantaj sekmesinde
   { href: "/solution-center", key: "nav.solutionCenter" },
   { href: "/digital-twin", key: "nav.digitalTwin", adminOnly: true },
   { href: "/reports", key: "nav.reports" },
@@ -391,14 +392,14 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
           className="relative z-10"
           style={{ background: "var(--header-bg-solid)", borderBottom: "1px solid var(--header-border)" }}
         >
-          <div className="mx-auto grid h-[92px] w-full max-w-[1480px] grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-4 px-4 sm:px-6 xl:px-8 2xl:px-10">
+          <div className="mx-auto grid h-[92px] w-full max-w-[1480px] grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] items-center gap-4 px-4 sm:px-6 xl:grid-cols-[minmax(340px,1fr)_auto_minmax(340px,1fr)] xl:px-8 2xl:px-10">
             {/* Left: Brand — absolute so it doesn't affect nav centering */}
-            <div className="min-w-0">
+            <div className="min-w-0 justify-self-start">
               <Brand href="/dashboard" inverted />
             </div>
 
             {/* Center: Primary navigation — truly centered in max-w-7xl */}
-            <nav className="hidden min-w-0 items-center justify-center gap-1 lg:flex">
+            <nav className="hidden min-w-0 items-center justify-center gap-1 justify-self-center lg:flex">
               {primaryNav.map((item) => {
                 const act = isActive(pathname, item.href);
                 return (
@@ -422,7 +423,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
             </nav>
 
             {/* Right: Actions — absolute so it doesn't affect nav centering */}
-            <div className="flex items-center justify-end gap-1 sm:gap-1.5">
+            <div className="flex items-center justify-end gap-1 justify-self-end sm:gap-1.5">
               <LanguageSelector variant="dark" />
               <NotificationBell />
               <ThemeToggle />
@@ -446,27 +447,33 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
         {/* ── Secondary navigation bar (centered, sticky with header) ── */}
         {/* Gold ayraç — 1 ile 2 arası (üst üste, boşluksuz) */}
         <div className="hidden md:block relative z-0" style={{ background: "var(--secondary-nav-bg-solid)", borderBottom: "1px solid var(--secondary-nav-border)" }}>
-          <div className="mx-auto flex h-12 w-full max-w-[1480px] items-center justify-center gap-1 overflow-x-auto px-4 sm:px-6 xl:px-8 2xl:px-10">
-            {visibleSecondaryNav.map((item) => {
-              const act = isActive(pathname, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "relative inline-flex shrink-0 items-center rounded-xl px-3 xl:px-4 py-2 text-[13px] xl:text-[14px] font-semibold transition-all duration-200",
-                    act
-                      ? "text-[var(--secondary-nav-active)] bg-[var(--secondary-nav-hover-bg)]"
-                      : "text-[var(--secondary-nav-text)] hover:text-[var(--secondary-nav-hover-text)] hover:bg-[var(--secondary-nav-hover-bg)]",
-                  )}
-                >
-                  {t(item.key)}
-                  {act && (
-                    <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-[var(--secondary-nav-active)]" />
-                  )}
-                </Link>
-              );
-            })}
+          <div className="mx-auto grid h-12 w-full max-w-[1480px] grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] items-center gap-4 px-4 sm:px-6 xl:grid-cols-[minmax(340px,1fr)_auto_minmax(340px,1fr)] xl:px-8 2xl:px-10">
+            <div />
+            <div className="min-w-0 justify-self-center overflow-x-auto">
+              <div className="flex items-center justify-center gap-1">
+                {visibleSecondaryNav.map((item) => {
+                  const act = isActive(pathname, item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={cn(
+                        "relative inline-flex shrink-0 items-center rounded-xl px-3 py-2 text-[13px] font-semibold transition-all duration-200 xl:px-4 xl:text-[14px]",
+                        act
+                          ? "text-[var(--secondary-nav-active)] bg-[var(--secondary-nav-hover-bg)]"
+                          : "text-[var(--secondary-nav-text)] hover:text-[var(--secondary-nav-hover-text)] hover:bg-[var(--secondary-nav-hover-bg)]",
+                      )}
+                    >
+                      {t(item.key)}
+                      {act && (
+                        <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-[var(--secondary-nav-active)]" />
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+            <div />
           </div>
         </div>
       </div>

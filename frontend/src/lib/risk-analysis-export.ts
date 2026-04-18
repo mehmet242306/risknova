@@ -249,7 +249,7 @@ function generateHTML(data: RiskAnalysisExportData): string {
   let globalIdx = 0;
   const rowSections = rows.map((group, gi) => {
 
-    // ── Gorsel bazli gruplama: her gorsel altinda kendi tespitleri ──
+    // ── Görsel bazlı gruplama: her görsel altında kendi tespitleri ──
     const imageGroups = group.images.map((img, imgIdx) => {
       const imgFindings = group.findings.filter((f) => f.imageId === img.imageId);
       return { img, imgIdx, findings: imgFindings };
@@ -826,7 +826,7 @@ export async function exportRiskAnalysisExcel(data: RiskAnalysisExportData) {
       bottom: { style: "medium", color: { argb: GOLD } },
     };
 
-    // ── Gorseller embed (baslik altinda, yan yana) ──
+    // ── Görseller embed (başlık altında, yan yana) ──
     if (group.images.length > 0) {
       const imgRow = ws.addRow([]);
       const imgRowHeight = 120;

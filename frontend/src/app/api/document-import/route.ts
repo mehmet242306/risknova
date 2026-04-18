@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         },
         {
           type: "text",
-          text: `${contextInfo}\n\nGorseldeki ISG dokumanini okuyup profesyonel markdown metnine cevir.`,
+          text: `${contextInfo}\n\nG?rseldeki ?SG dok?man?n? okuyup profesyonel markdown metnine ?evir.`,
         },
       ];
     } else if (isPdf) {

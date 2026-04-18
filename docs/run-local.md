@@ -98,6 +98,15 @@ cd "C:\Users\MEHMET YILDIRIM\risknova-platform\frontend"
 npm.cmd run dev
 ```
 
+Frontend `next dev` lock hatasi veya eski surec takilmasi yasarsaniz:
+
+```powershell
+cd "C:\Users\MEHMET YILDIRIM\risknova-platform\frontend"
+npm.cmd run dev:reset
+```
+
+Bu komut proje klasorune ait eski `next dev` sureclerini kapatmayi dener, `.next\dev\lock` dosyasini temizler ve dev server'i yeniden baslatir.
+
 ## 6. Hizli kontrol
 
 Asagidakiler calisiyorsa local ortam ayaga kalkmistir:
@@ -134,6 +143,7 @@ git status --short
 
 - frontend/.env.local eksik olabilir
 - npm install yapilmamis olabilir
+- `next dev` lock kalmis olabilir, `npm.cmd run dev:reset` kullanin
 
 ### PowerShell script policy hatasi
 

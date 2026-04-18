@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import PlannerClient from "./PlannerClient";
+import PlannerTabsShell from "./PlannerTabsShell";
 
 export const metadata: Metadata = {
-  title: "İSG Planlayıcı | RiskNova",
+  title: "Planlayıcı | RiskNova",
 };
 
 export default function PlannerPage() {
-  return <PlannerClient />;
+  return <PlannerTabsShell />;
 }

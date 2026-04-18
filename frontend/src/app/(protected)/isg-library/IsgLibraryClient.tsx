@@ -1,39 +1,53 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { JSONContent } from "@tiptap/react";
 import {
-  BookOpen,
   Building2,
-  ChevronRight,
+  Check,
+  ChevronDown,
   ClipboardCheck,
+  Download,
+  Eye,
+  FileBadge,
   FileCheck2,
-  FileStack,
+  FilePenLine,
   FileText,
-  FileUp,
   Filter,
   GraduationCap,
   LayoutGrid,
-  LibraryBig,
-  Scale,
+  Link2,
   ScrollText,
   Search,
-  ShieldAlert,
   Siren,
-  Sparkles,
+  Video,
+  X,
+  type LucideIcon,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { PremiumIconBadge, type PremiumIconTone } from "@/components/ui/premium-icon-badge";
-import { DOCUMENT_GROUPS, type DocumentGroup } from "@/lib/document-groups";
+import { Skeleton } from "@/components/ui/skeleton";
+import { DOCUMENT_GROUPS } from "@/lib/document-groups";
+import { getTemplate } from "@/lib/document-templates-p1";
 import { createClient } from "@/lib/supabase/client";
-import { fetchDocuments, type DocumentRecord } from "@/lib/supabase/document-api";
+import { fetchDocuments } from "@/lib/supabase/document-api";
 import { fetchBankQuestions } from "@/lib/supabase/question-bank-api";
-import { fetchMyDecks, fetchOrgDecks, type SlideDeck } from "@/lib/supabase/slide-deck-api";
-import { fetchSurveys, type SurveyRecord } from "@/lib/supabase/survey-api";
+import { fetchOrgDecks, fetchMyDecks } from "@/lib/supabase/slide-deck-api";
+import { fetchSurveys } from "@/lib/supabase/survey-api";
+import {
+  assignLibraryContentToCompany,
+  fetchCompanyLibraryItems,
+  fetchLibraryContents,
+  type CompanyLibraryItemRecord,
+  type LibraryContentRecord,
+} from "@/lib/supabase/isg-library-api";
+import type { DocumentRecord } from "@/lib/supabase/document-api";
+import { cn } from "@/lib/utils";
 
-type BrowseView = "browse" | "history";
-type SectionKey =
+type CategoryKey =
   | "all"
   | "documentation"
   | "education"
@@ -42,88 +56,283 @@ type SectionKey =
   | "emergency"
   | "instructions"
   | "legal";
-type MediaKind = "all" | "form" | "checklist" | "procedure" | "plan" | "visual" | "record";
-type UploadDocType = "law" | "regulation" | "communique" | "guide" | "announcement" | "circular";
+
+type SortKey = "newest" | "oldest" | "az" | "za";
 
 type CompanyOption = {
   id: string;
-  workspace_id: string;
   name: string;
   sector: string;
-  hazard_class: string;
+  hazardClass: string;
   city: string;
 };
 
-type HistoryItem = {
-  id: string;
-  title: string;
-  type: string;
-  source: string;
-  status: string;
-  updatedAt: string;
-  href: string;
+type UserContext = {
+  profileId: string | null;
+  fullName: string;
+  canManageCatalog: boolean;
 };
 
-type LegalDoc = {
+type UnifiedLibraryItem = {
   id: string;
   title: string;
-  doc_type: string;
-  doc_number?: string | null;
-  chunk_count: number;
-  source_url?: string | null;
+  description: string;
+  category: Exclude<CategoryKey, "all">;
+  subcategory: string;
+  contentType: string;
+  tags: string[];
+  sector: string[];
+  createdAt: string;
+  viewHref: string | null;
+  downloadHref: string | null;
+  libraryContentId: string | null;
+  sourceKind: "catalog" | "template" | "survey" | "deck" | "question-bank";
+  templateId?: string | null;
+  usageCount?: number;
 };
 
-const SECTION_META: Array<{
-  key: SectionKey;
+type PreviewState = {
+  title: string;
+  description: string;
+  content: JSONContent | null;
+} | null;
+
+type CategoryDefinition = {
+  key: CategoryKey;
   label: string;
-  icon: React.ElementType;
-  tone: PremiumIconTone;
-}> = [
-  { key: "all", label: "Tüm İçerikler", icon: LayoutGrid, tone: "gold" },
-  { key: "documentation", label: "Dokümantasyon", icon: FileStack, tone: "cobalt" },
-  { key: "education", label: "Eğitim", icon: GraduationCap, tone: "emerald" },
-  { key: "assessment", label: "Sınav ve Anket", icon: ClipboardCheck, tone: "violet" },
-  { key: "forms", label: "Form ve Checklist", icon: FileCheck2, tone: "amber" },
-  { key: "emergency", label: "Acil Durum", icon: Siren, tone: "orange" },
-  { key: "instructions", label: "Talimatlar", icon: ScrollText, tone: "teal" },
-  { key: "legal", label: "Mevzuat ve Rehberler", icon: Scale, tone: "indigo" },
+  icon: LucideIcon;
+  subcategories: string[];
+};
+
+type CustomSubcategoryMap = Partial<Record<Exclude<CategoryKey, "all">, string[]>>;
+
+const CATEGORY_DEFINITIONS: CategoryDefinition[] = [
+  { key: "all", label: "Tümü", icon: LayoutGrid, subcategories: [] },
+  {
+    key: "documentation",
+    label: "Dokümantasyon",
+    icon: FileText,
+    subcategories: DOCUMENT_GROUPS.map((group) => group.title),
+  },
+  {
+    key: "education",
+    label: "Eğitim",
+    icon: GraduationCap,
+    subcategories: ["Temel İSG Eğitimi", "Mesleki Eğitim", "Acil Durum Eğitimi", "Yenileme Eğitimleri"],
+  },
+  {
+    key: "assessment",
+    label: "Sınav ve Anket",
+    icon: ClipboardCheck,
+    subcategories: ["Sınavlar", "Anketler", "Değerlendirme Formları", "Ölçme ve İzleme"],
+  },
+  {
+    key: "forms",
+    label: "Form ve Checklist",
+    icon: FileCheck2,
+    subcategories: ["Günlük Kontroller", "Periyodik Kontroller", "Denetim Formları"],
+  },
+  {
+    key: "emergency",
+    label: "Acil Durum",
+    icon: Siren,
+    subcategories: ["Acil Durum Planları", "Tahliye", "Yangın", "Tatbikat", "Toplanma Alanları"],
+  },
+  {
+    key: "instructions",
+    label: "Talimatlar",
+    icon: ScrollText,
+    subcategories: ["Makine Talimatları", "İş Akışı Talimatları", "KKD Talimatları", "Saha Uygulamaları"],
+  },
 ];
 
-const EDUCATION_GROUPS = new Set(["egitim-dosyasi", "is-giris-oryantasyon", "calisan-temsilcisi", "ilkyardim"]);
-const FORMS_GROUPS = new Set(["kurul-kayitlari", "denetim-kontrol", "personel-ozluk", "periyodik-kontrol", "diger-kayitlar", "yillik-degerlendirme", "arac-makine"]);
-const EMERGENCY_GROUPS = new Set(["acil-durum", "yangin-kimyasal", "kaza-olay"]);
-const INSTRUCTION_GROUPS = new Set(["talimatlar", "prosedurler", "iletisim-yazisma"]);
+const MANAGE_ROLE_CODES = new Set([
+  "super_admin",
+  "platform_admin",
+  "organization_admin",
+  "osgb_manager",
+  "ohs_specialist",
+]);
 
-function classifySection(groupKey: string): Exclude<SectionKey, "all" | "assessment" | "legal"> | "documentation" {
-  if (EDUCATION_GROUPS.has(groupKey)) return "education";
-  if (FORMS_GROUPS.has(groupKey)) return "forms";
-  if (EMERGENCY_GROUPS.has(groupKey)) return "emergency";
-  if (INSTRUCTION_GROUPS.has(groupKey)) return "instructions";
-  return "documentation";
+function createTemplateDescription(groupTitle: string, itemTitle: string) {
+  return `${groupTitle} altında yer alan "${itemTitle}" şablonunu doküman akışı içinde açabilirsiniz.`;
 }
 
-function getMediaKind(group: DocumentGroup): MediaKind {
-  const text = `${group.title} ${group.items.map((item) => item.title).join(" ")}`.toLowerCase();
-  if (text.includes("talimat") || text.includes("prosed")) return "procedure";
-  if (text.includes("kontrol") || text.includes("check")) return "checklist";
-  if (text.includes("plan")) return "plan";
-  if (text.includes("fotograf") || text.includes("gorsel") || text.includes("kroki")) return "visual";
-  if (text.includes("tutanak") || text.includes("kayit") || text.includes("rapor")) return "record";
-  return "form";
+function slugify(value: string) {
+  return value
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ı/g, "i")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-function parseView(value: string | null): BrowseView {
-  return value === "history" ? "history" : "browse";
+function parseCategory(value: string | null): CategoryKey {
+  if (!value) return "all";
+  const normalized = slugify(value);
+  const match = CATEGORY_DEFINITIONS.find(
+    (item) => item.key === normalized || slugify(item.label) === normalized,
+  );
+  return match?.key ?? "all";
 }
 
-function parseSection(value: string | null): SectionKey {
-  return SECTION_META.some((item) => item.key === value) ? (value as SectionKey) : "all";
+function normalizeCategory(value: string | null | undefined): Exclude<CategoryKey, "all"> | null {
+  if (!value) return null;
+  const normalized = slugify(value);
+
+  switch (normalized) {
+    case "documentation":
+    case "dokumantasyon":
+      return "documentation";
+    case "education":
+    case "egitim":
+      return "education";
+    case "assessment":
+    case "sinav-ve-anket":
+    case "sinav-anket":
+      return "assessment";
+    case "forms":
+    case "form-ve-checklist":
+    case "formlar":
+      return "forms";
+    case "emergency":
+    case "acil-durum":
+      return "emergency";
+    case "instructions":
+    case "talimatlar":
+      return "instructions";
+    case "legal":
+    case "mevzuat-ve-rehberler":
+    case "mevzuat-rehberler":
+      return "legal";
+    default:
+      return null;
+  }
 }
 
-function parseMedia(value: string | null): MediaKind {
-  return value === "form" || value === "checklist" || value === "procedure" || value === "plan" || value === "visual" || value === "record"
-    ? value
-    : "all";
+function parseSort(value: string | null): SortKey {
+  if (value === "oldest" || value === "az" || value === "za") return value;
+  return "newest";
+}
+
+function getSubcategoryOptions(category: CategoryKey) {
+  return CATEGORY_DEFINITIONS.find((item) => item.key === category)?.subcategories ?? [];
+}
+
+function parseSubcategory(value: string | null, category: CategoryKey) {
+  if (!value || category === "all") return "";
+  const options = getSubcategoryOptions(category);
+  const normalized = slugify(value);
+  const match = options.find((item) => slugify(item) === normalized);
+  return match ?? "";
+}
+
+function getContentTypeMeta(type: string | null) {
+  const normalized = (type ?? "").toLowerCase();
+
+  if (normalized.includes("video")) return { label: "Video", icon: Video };
+  if (normalized.includes("link")) return { label: "Link", icon: Link2 };
+  if (normalized.includes("doc")) return { label: "DOCX", icon: FileBadge };
+  return { label: (type ?? "PDF").toUpperCase(), icon: FileText };
+}
+
+function buildAddContentHref(category: CategoryKey) {
+  switch (category) {
+    case "education":
+      return "/training/new";
+    case "assessment":
+      return "/training/question-bank";
+    case "legal":
+      return "/settings?tab=mevzuat";
+    default:
+      return "/documents/new";
+  }
+}
+
+function buildDocumentEditorHref(
+  category: CategoryKey,
+  subcategory: string,
+  options?: {
+    mode?: "new" | "custom";
+    companyId?: string;
+    templateId?: string;
+    title?: string;
+  },
+) {
+  const params = new URLSearchParams();
+  const matchingGroup = DOCUMENT_GROUPS.find((group) => group.title === subcategory);
+  const mode = options?.mode ?? "new";
+
+  if (matchingGroup) {
+    params.set("group", matchingGroup.key);
+  }
+
+  if (options?.companyId) {
+    params.set("companyId", options.companyId);
+  }
+
+  if (options?.templateId) {
+    params.set("templateId", options.templateId);
+  }
+
+  params.set("mode", mode);
+  params.set("library", "1");
+  params.set("librarySection", category === "all" ? "documentation" : category);
+
+  const title =
+    options?.title || subcategory || CATEGORY_DEFINITIONS.find((item) => item.key === category)?.label || "Yeni Doküman";
+  params.set("title", mode === "custom" ? `${title} Taslağı` : title);
+
+  return `/documents/new?${params.toString()}`;
+}
+
+function getSubcategoryBadgeMeta(category: CategoryKey) {
+  switch (category) {
+    case "documentation":
+      return {
+        label: "Dosya",
+        className: "border-sky-200 bg-sky-50 text-sky-700",
+      };
+    case "education":
+      return {
+        label: "Eğitim",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      };
+    case "assessment":
+      return {
+        label: "Akış",
+        className: "border-violet-200 bg-violet-50 text-violet-700",
+      };
+    case "forms":
+      return {
+        label: "Form",
+        className: "border-amber-200 bg-amber-50 text-amber-700",
+      };
+    case "emergency":
+      return {
+        label: "Plan",
+        className: "border-red-200 bg-red-50 text-red-700",
+      };
+    case "instructions":
+      return {
+        label: "Talimat",
+        className: "border-teal-200 bg-teal-50 text-teal-700",
+      };
+    case "legal":
+      return {
+        label: "Mevzuat",
+        className: "border-indigo-200 bg-indigo-50 text-indigo-700",
+      };
+    default:
+      return {
+        label: "Kategori",
+        className: "border-slate-200 bg-slate-50 text-slate-700",
+      };
+  }
 }
 
 function formatDate(value: string) {
@@ -134,498 +343,1429 @@ function formatDate(value: string) {
   });
 }
 
+function LibraryGridSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-52 rounded-[2rem]" />
+      <div className="flex gap-3 overflow-x-auto pb-1">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <Skeleton key={index} className="h-11 min-w-32 rounded-full" />
+        ))}
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <Card key={index} className="overflow-hidden border-border/70 bg-card/90">
+            <CardHeader className="space-y-4">
+              <Skeleton className="h-7 w-24 rounded-full" />
+              <Skeleton className="h-7 w-3/4" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-5/6" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-6 w-24 rounded-full" />
+              </div>
+              <Skeleton className="h-11 w-full rounded-2xl" />
+              <Skeleton className="h-11 w-full rounded-2xl" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function EmptyState(props: {
+  title: string;
+  description: string;
+  canManageCatalog: boolean;
+  addHref: string;
+}) {
+  return (
+    <section className="rounded-[2rem] border border-dashed border-[var(--gold)]/30 bg-card/95 px-6 py-12 text-center shadow-[var(--shadow-card)]">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[1.5rem] border border-[var(--gold)]/25 bg-[var(--gold)]/10 text-[var(--gold)]">
+        <LayoutGrid size={28} />
+      </div>
+      <h2 className="mt-5 text-2xl font-semibold text-foreground">{props.title}</h2>
+      <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+        {props.description}
+      </p>
+      {props.canManageCatalog ? (
+        <div className="mt-6">
+          <Link
+            href={props.addHref}
+            className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--primary)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+          >
+            İçerik Ekle
+          </Link>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function IsgLibraryClient() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const initialCompanyId = searchParams.get("companyId") ?? "";
-  const [view, setView] = useState<BrowseView>(() => parseView(searchParams.get("view")));
-  const [section, setSection] = useState<SectionKey>(() => parseSection(searchParams.get("section")));
+
+  const initialCategory = parseCategory(searchParams.get("category") ?? searchParams.get("section"));
+
+  const [category, setCategory] = useState<CategoryKey>(initialCategory);
+  const [subcategory, setSubcategory] = useState(() => parseSubcategory(searchParams.get("subcategory"), initialCategory));
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
-  const [mediaKind, setMediaKind] = useState<MediaKind>(() => parseMedia(searchParams.get("media")));
-  const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState(initialCompanyId);
-  const [userName, setUserName] = useState("Kullanici");
-  const [profileId, setProfileId] = useState<string | null>(null);
-  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
-  const [surveys, setSurveys] = useState<SurveyRecord[]>([]);
-  const [questionCount, setQuestionCount] = useState(0);
-  const [decks, setDecks] = useState<SlideDeck[]>([]);
-  const [legalDocs, setLegalDocs] = useState<LegalDoc[]>([]);
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadType, setUploadType] = useState<UploadDocType>("guide");
-  const [uploadTitle, setUploadTitle] = useState("");
-  const [uploadNumber, setUploadNumber] = useState("");
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState(() => searchParams.get("type") ?? "all");
+  const [sectorFilter, setSectorFilter] = useState(() => searchParams.get("sector") ?? "all");
+  const [sortBy, setSortBy] = useState<SortKey>(() => parseSort(searchParams.get("sort")));
+  const [savedOnly, setSavedOnly] = useState(() => searchParams.get("saved") === "1");
+
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  const [userContext, setUserContext] = useState<UserContext>({
+    profileId: null,
+    fullName: "RiskNova Kullanıcısı",
+    canManageCatalog: false,
+  });
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  const [contents, setContents] = useState<LibraryContentRecord[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [legacyItems, setLegacyItems] = useState<UnifiedLibraryItem[]>([]);
+  const [savedItems, setSavedItems] = useState<CompanyLibraryItemRecord[]>([]);
+
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assigning, setAssigning] = useState(false);
+  const [assignContent, setAssignContent] = useState<LibraryContentRecord | null>(null);
+  const [assignCompanyId, setAssignCompanyId] = useState("");
+  const [assignMessage, setAssignMessage] = useState<string | null>(null);
+  const [importingDocument, setImportingDocument] = useState(false);
+  const [creationCompanyId, setCreationCompanyId] = useState("");
+  const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewState, setPreviewState] = useState<PreviewState>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [customSubcategories, setCustomSubcategories] = useState<CustomSubcategoryMap>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const companyMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    async function loadLibrary() {
+    const params = new URLSearchParams();
+
+    if (category !== "all") params.set("category", category);
+    if (subcategory) params.set("subcategory", slugify(subcategory));
+    if (query.trim()) params.set("q", query.trim());
+    if (typeFilter !== "all") params.set("type", typeFilter);
+    if (sectorFilter !== "all") params.set("sector", sectorFilter);
+    if (sortBy !== "newest") params.set("sort", sortBy);
+    if (savedOnly) params.set("saved", "1");
+
+    const nextUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname;
+    router.replace(nextUrl);
+  }, [category, pathname, query, router, savedOnly, sectorFilter, sortBy, subcategory, typeFilter]);
+
+  useEffect(() => {
+    if (!companies.length) return;
+    setCreationCompanyId((current) =>
+      current && companies.some((company) => company.id === current) ? current : companies[0]?.id ?? "",
+    );
+  }, [companies]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (!companyMenuRef.current?.contains(event.target as Node)) {
+        setCompanyMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("risknova:isg-library-custom-subcategories");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as CustomSubcategoryMap;
+      setCustomSubcategories(parsed);
+    } catch {
+      // Ignore malformed local storage entries.
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "risknova:isg-library-custom-subcategories",
+      JSON.stringify(customSubcategories),
+    );
+  }, [customSubcategories]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPage() {
       setLoading(true);
+      setErrorMessage(null);
+
       const supabase = createClient();
       if (!supabase) {
-        setLoading(false);
+        if (!cancelled) {
+          setErrorMessage("Supabase bağlantısı kurulamadı.");
+          setLoading(false);
+        }
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       if (!user) {
-        setLoading(false);
+        if (!cancelled) {
+          setErrorMessage("Oturum bulunamadı.");
+          setLoading(false);
+        }
         return;
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("user_profiles")
         .select("id, organization_id, full_name")
         .eq("auth_user_id", user.id)
         .maybeSingle();
 
-      if (!profile?.organization_id) {
-        setLoading(false);
+      if (profileError || !profile?.organization_id) {
+        if (!cancelled) {
+          setErrorMessage("Kullanıcı profili yüklenemedi.");
+          setLoading(false);
+        }
         return;
       }
 
-      setProfileId(profile.id);
-      setUserName(profile.full_name || user.email || "Kullanici");
-
-      const { data: workspaces } = await supabase
-        .from("company_workspaces")
-        .select("id, company_identity_id, display_name")
-        .eq("organization_id", profile.organization_id);
-
-      if (workspaces && workspaces.length > 0) {
-        const identityIds = workspaces.map((workspace) => workspace.company_identity_id);
-        const { data: identities } = await supabase
-          .from("company_identities")
-          .select("id, official_name, sector, hazard_class, city")
-          .in("id", identityIds);
-
-        if (identities) {
-          const nextCompanies = identities.map((identity) => {
-            const workspace = workspaces.find((item) => item.company_identity_id === identity.id);
-            return {
-              id: identity.id,
-              workspace_id: workspace?.id || "",
-              name: identity.official_name || workspace?.display_name || "",
-              sector: identity.sector || "",
-              hazard_class: identity.hazard_class || "",
-              city: identity.city || "",
-            };
-          });
-          setCompanies(nextCompanies);
-          if (!initialCompanyId && nextCompanies.length === 1) {
-            setSelectedCompanyId(nextCompanies[0].id);
-          }
-        }
-      }
-
-      const [allDocuments, allSurveys, allQuestions, myDecks, orgDecks, mevzuatResponse] = await Promise.all([
+      const [rolesResponse, workspaceResponse, libraryResponse, documentsResponse, surveysResponse, questionBankResponse, myDecksResponse, orgDecksResponse] = await Promise.all([
+        supabase.from("user_roles").select("roles(code)").eq("user_profile_id", profile.id),
+        supabase
+          .from("company_workspaces")
+          .select(`
+            display_name,
+            company_identity_id,
+            company_identities!inner(
+              id,
+              official_name,
+              sector,
+              hazard_class,
+              city
+            )
+          `)
+          .eq("organization_id", profile.organization_id)
+          .order("display_name", { ascending: true }),
+        fetchLibraryContents(),
         fetchDocuments(profile.organization_id),
         fetchSurveys(profile.organization_id),
         fetchBankQuestions(),
         fetchMyDecks(),
         fetchOrgDecks(),
-        supabase.functions.invoke("sync-mevzuat", { body: { action: "list" } }),
       ]);
 
-      const deckMap = new Map([...myDecks, ...orgDecks].map((deck) => [deck.id, deck]));
+      const roleCodes = (rolesResponse.data ?? []).flatMap((item) => {
+        const rolesValue = (item as { roles?: { code?: string } | Array<{ code?: string }> }).roles;
+        if (Array.isArray(rolesValue)) {
+          return rolesValue.map((role) => role.code ?? "").filter(Boolean);
+        }
+        return rolesValue?.code ? [rolesValue.code] : [];
+      });
 
-      setDocuments(allDocuments);
-      setSurveys(allSurveys);
-      setQuestionCount(allQuestions.length);
-      setDecks([...deckMap.values()]);
-      setLegalDocs(Array.isArray(mevzuatResponse.data) ? (mevzuatResponse.data as LegalDoc[]) : []);
-      setLoading(false);
+      const accessibleCompanies = ((workspaceResponse.data ?? []) as Array<{
+        display_name: string | null;
+        company_identity_id: string;
+        company_identities:
+          | {
+              id: string;
+              official_name: string | null;
+              sector: string | null;
+              hazard_class: string | null;
+              city: string | null;
+            }
+          | Array<{
+              id: string;
+              official_name: string | null;
+              sector: string | null;
+              hazard_class: string | null;
+              city: string | null;
+            }>;
+      }>).flatMap((row) => {
+        const identity = Array.isArray(row.company_identities)
+          ? row.company_identities[0]
+          : row.company_identities;
+
+        if (!identity) return [];
+
+        return [{
+          id: identity.id ?? row.company_identity_id,
+          name: identity.official_name || row.display_name || "İsimsiz Firma",
+          sector: identity.sector || "",
+          hazardClass: identity.hazard_class || "",
+          city: identity.city || "",
+        }];
+      });
+
+      const companyIds = accessibleCompanies.map((item) => item.id);
+      const savedRows = await fetchCompanyLibraryItems(companyIds);
+      const legacyCatalogItems: UnifiedLibraryItem[] = [
+        ...DOCUMENT_GROUPS.flatMap((group) => {
+          const matchingDocs = documentsResponse.filter((doc) => doc.group_key === group.key);
+
+          return group.items.map((groupItem, index) => ({
+            id: `template-${group.key}-${groupItem.id}`,
+            title: groupItem.title,
+            description: createTemplateDescription(group.title, groupItem.title),
+            category: "documentation" as const,
+            subcategory: group.title,
+            contentType: "Şablon",
+            tags: [
+              `Dosya ${DOCUMENT_GROUPS.findIndex((entry) => entry.key === group.key) + 1}`,
+              groupItem.isP1 ? "P1" : "Hazır",
+              groupItem.isP2 ? "P2" : "Şablon",
+            ],
+            sector: [],
+            createdAt: matchingDocs[index]?.updated_at ?? new Date().toISOString(),
+            viewHref: `/documents?group=${group.key}`,
+            downloadHref: null,
+            libraryContentId: null,
+            sourceKind: "template" as const,
+            templateId: groupItem.id,
+          }));
+        }),
+        ...surveysResponse.map((survey) => ({
+          id: `survey-${survey.id}`,
+          title: survey.title,
+          description: survey.description || `${survey.type === "exam" ? "Sınav" : "Anket"} akışını görüntüleyin ve yönetin.`,
+          category: "assessment" as const,
+          subcategory: survey.type === "exam" ? "Sınavlar" : "Anketler",
+          contentType: survey.type === "exam" ? "Sınav" : "Anket",
+          tags: [survey.status, survey.type === "exam" ? "ölçme" : "geri bildirim"],
+          sector: [],
+          createdAt: survey.updatedAt,
+          viewHref: `/training/${survey.id}`,
+          downloadHref: null,
+          libraryContentId: null,
+          sourceKind: "survey" as const,
+          templateId: null,
+        })),
+        ...[...myDecksResponse, ...orgDecksResponse].map((deck) => ({
+          id: `deck-${deck.id}`,
+          title: deck.title,
+          description: deck.description || "Hazır eğitim içeriğini açın ve sunum akışını yönetin.",
+          category: "education" as const,
+          subcategory: "Mesleki Eğitim",
+          contentType: "Sunum",
+          tags: [...(deck.tags ?? [])].slice(0, 3),
+          sector: [],
+          createdAt: deck.updated_at,
+          viewHref: `/training/slides/${deck.id}`,
+          downloadHref: null,
+          libraryContentId: null,
+          sourceKind: "deck" as const,
+          templateId: null,
+        })),
+        {
+          id: "question-bank-overview",
+          title: "Soru Bankası",
+          description: `${questionBankResponse.length} aktif soru ile değerlendirme ve ölçme akışlarını yönetin.`,
+          category: "assessment",
+          subcategory: "Ölçme ve İzleme",
+          contentType: "Soru Bankası",
+          tags: ["AI", "ölçme", "takip"],
+          sector: [],
+          createdAt: new Date().toISOString(),
+          viewHref: "/training/question-bank",
+          downloadHref: null,
+          libraryContentId: null,
+          sourceKind: "question-bank",
+          templateId: null,
+        },
+      ];
+
+      if (!cancelled) {
+        setUserContext({
+          profileId: profile.id,
+          fullName: profile.full_name || user.email || "RiskNova Kullanıcısı",
+          canManageCatalog: roleCodes.some((code) => MANAGE_ROLE_CODES.has(code)),
+        });
+        setCompanies(accessibleCompanies);
+        setContents(libraryResponse);
+        setDocuments(documentsResponse);
+        setLegacyItems(legacyCatalogItems);
+        setSavedItems(savedRows);
+        setLoading(false);
+      }
     }
 
-    void loadLibrary();
-  }, [initialCompanyId]);
+    void loadPage();
 
-  const selectedCompany = companies.find((company) => company.id === selectedCompanyId) || null;
-  const selectedDocuments = useMemo(
-    () =>
-      !selectedCompany
-        ? []
-        : documents.filter((doc) => {
-            if (doc.company_workspace_id === selectedCompany.workspace_id) {
-              return true;
-            }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-            const scopedCompanyId = doc.variables_data?.__company_identity_id;
-            return (
-              doc.company_workspace_id === null &&
-              doc.prepared_by === profileId &&
-              typeof scopedCompanyId === "string" &&
-              scopedCompanyId === selectedCompany.id
-            );
-          }),
-    [documents, profileId, selectedCompany],
+  useEffect(() => {
+    if (!statusMessage) return undefined;
+    const timeout = window.setTimeout(() => setStatusMessage(null), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [statusMessage]);
+
+  const savedContentIds = useMemo(
+    () => new Set(savedItems.map((item) => item.content_id)),
+    [savedItems],
   );
-  const selectedSurveys = useMemo(
-    () => (!selectedCompanyId ? [] : surveys.filter((survey) => survey.companyId === selectedCompanyId)),
-    [selectedCompanyId, surveys],
-  );
-  const visibleGroups = useMemo(() => {
-    let groups = DOCUMENT_GROUPS.filter((group) => {
-      if (section === "all") return true;
-      if (section === "assessment" || section === "legal") return false;
-      return classifySection(group.key) === section;
+
+  const allItems = useMemo<UnifiedLibraryItem[]>(() => {
+    const catalogItems = contents.map((item) => ({
+      id: item.id,
+      title: item.title,
+      description: item.description || "Bu içerik için kısa açıklama henüz eklenmedi.",
+      category: normalizeCategory(item.category) ?? "documentation",
+      subcategory: item.subcategory,
+      contentType: item.content_type || "PDF",
+      tags: item.tags ?? [],
+      sector: item.sector ?? [],
+      createdAt: item.created_at,
+      viewHref: item.file_url,
+      downloadHref: item.file_url,
+      libraryContentId: item.id,
+      sourceKind: "catalog" as const,
+      templateId: null,
+    }));
+
+    return [...catalogItems, ...legacyItems];
+  }, [contents, legacyItems]);
+
+  const savedCompaniesByContent = useMemo(() => {
+    const map = new Map<string, string[]>();
+
+    for (const item of savedItems) {
+      const current = map.get(item.content_id) ?? [];
+      current.push(item.company_id);
+      map.set(item.content_id, current);
+    }
+
+    return map;
+  }, [savedItems]);
+
+  const templateUsageCounts = useMemo(() => {
+    const map = new Map<string, number>();
+
+    for (const doc of documents) {
+      const key = doc.template_id || `${doc.group_key}::${doc.title}`;
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+
+    return map;
+  }, [documents]);
+
+  const typeOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        allItems
+          .map((item) => item.contentType?.trim())
+          .filter((item): item is string => Boolean(item)),
+      ),
+    ).sort((left, right) => left.localeCompare(right, "tr"));
+  }, [allItems]);
+
+  const sectorOptions = useMemo(() => {
+    return Array.from(
+      new Set(allItems.flatMap((item) => item.sector ?? []).filter(Boolean)),
+    ).sort((left, right) => left.localeCompare(right, "tr"));
+  }, [allItems]);
+
+  const filteredContents = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("tr-TR");
+
+    const nextItems = allItems.filter((item) => {
+      const itemSubcategorySlug = slugify(item.subcategory);
+      const matchesCategory = category === "all" ? true : item.category === category;
+      const matchesSubcategory = subcategory ? itemSubcategorySlug === slugify(subcategory) : true;
+      const matchesSaved = savedOnly ? Boolean(item.libraryContentId && savedContentIds.has(item.libraryContentId)) : true;
+      const matchesType =
+        typeFilter === "all"
+          ? true
+          : item.contentType.toLocaleLowerCase("tr-TR") === typeFilter.toLocaleLowerCase("tr-TR");
+      const matchesSector = sectorFilter === "all" ? true : item.sector.includes(sectorFilter);
+      const haystack = [
+        item.title,
+        item.category,
+        item.subcategory,
+        item.description,
+        ...item.tags,
+      ]
+        .join(" ")
+        .toLocaleLowerCase("tr-TR");
+      const matchesQuery = normalizedQuery ? haystack.includes(normalizedQuery) : true;
+
+      return matchesCategory && matchesSubcategory && matchesSaved && matchesType && matchesSector && matchesQuery;
     });
 
-    if (mediaKind !== "all") {
-      groups = groups.filter((group) => getMediaKind(group) === mediaKind);
-    }
+    return [...nextItems].sort((left, right) => {
+      switch (sortBy) {
+        case "oldest":
+          return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+        case "az":
+          return left.title.localeCompare(right.title, "tr");
+        case "za":
+          return right.title.localeCompare(left.title, "tr");
+        case "newest":
+        default:
+          return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+      }
+    });
+  }, [allItems, category, query, savedContentIds, savedOnly, sectorFilter, sortBy, subcategory, typeFilter]);
 
-    if (!query) return groups;
-    const normalized = query.toLowerCase();
-    return groups.filter((group) => group.title.toLowerCase().includes(normalized) || group.items.some((item) => item.title.toLowerCase().includes(normalized)));
-  }, [mediaKind, query, section]);
-  const legalItems = useMemo(() => {
-    const filtered = !query ? legalDocs : legalDocs.filter((doc) => doc.title.toLowerCase().includes(query.toLowerCase()));
-    return {
-      legislation: filtered.filter((doc) => doc.doc_type !== "guide"),
-      guides: filtered.filter((doc) => doc.doc_type === "guide"),
-    };
-  }, [legalDocs, query]);
-  const historyItems = useMemo<HistoryItem[]>(() => {
-    if (!selectedCompany) return [];
-    return [
-      ...selectedDocuments.slice(0, 8).map((doc) => ({
-        id: doc.id,
-        title: doc.title,
-        type: "Dokuman",
-        source: selectedCompany.name,
-        status: doc.status,
-        updatedAt: doc.updated_at,
-        href: `/documents/${doc.id}`,
-      })),
-      ...selectedSurveys.slice(0, 6).map((survey) => ({
-        id: survey.id,
-        title: survey.title,
-        type: survey.type === "exam" ? "Sinav" : "Anket",
-        source: selectedCompany.name,
-        status: survey.status,
-        updatedAt: survey.updatedAt,
-        href: `/training/${survey.id}`,
-      })),
-      ...decks.slice(0, 4).map((deck) => ({
-        id: deck.id,
-        title: deck.title,
-        type: "Slayt",
-        source: "Egitim",
-        status: deck.source === "ai_generated" ? "AI" : "Hazir",
-        updatedAt: deck.updated_at,
-        href: `/training/slides/${deck.id}`,
-      })),
-    ]
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .slice(0, 12);
-  }, [decks, selectedCompany, selectedDocuments, selectedSurveys]);
+  const hydratedContents = useMemo(
+    () =>
+      filteredContents.map((item) => {
+        if (item.sourceKind !== "template") return item;
 
-  async function handleUploadSubmit() {
-    if (!uploadTitle.trim() || !uploadFile) {
-      setUploadMessage("Baslik ve dosya zorunlu.");
+        const usageCount =
+          templateUsageCounts.get(item.templateId ?? "") ??
+          templateUsageCounts.get(`${DOCUMENT_GROUPS.find((group) => group.title === item.subcategory)?.key ?? ""}::${item.title}`) ??
+          0;
+
+        return {
+          ...item,
+          usageCount,
+        };
+      }),
+    [filteredContents, templateUsageCounts],
+  );
+
+  const activeCategoryMeta = CATEGORY_DEFINITIONS.find((item) => item.key === category) ?? CATEGORY_DEFINITIONS[0];
+  const selectedCreationCompany = companies.find((company) => company.id === creationCompanyId) ?? null;
+  const subcategoryOptions = useMemo(() => {
+    if (category === "all") return [];
+    const baseOptions = getSubcategoryOptions(category);
+    const customOptions = customSubcategories[category] ?? [];
+    return [...baseOptions, ...customOptions];
+  }, [category, customSubcategories]);
+
+  function handleCategoryChange(nextCategory: CategoryKey) {
+    setCategory(nextCategory);
+
+    if (nextCategory === "all") {
+      setSubcategory("");
       return;
     }
 
-    setUploading(true);
-    setUploadMessage(null);
+    const nextOptions =
+      nextCategory === "all"
+        ? []
+        : [...getSubcategoryOptions(nextCategory), ...(customSubcategories[nextCategory] ?? [])];
+    setSubcategory((current) => (current && nextOptions.includes(current) ? current : ""));
+  }
+
+  function handleCreateSubcategory() {
+    if (category === "all") {
+      setErrorMessage("Önce bir ana kategori seçin.");
+      return;
+    }
+
+    const trimmedName = newCategoryName.trim();
+    if (!trimmedName) {
+      setErrorMessage("Kategori adı boş bırakılamaz.");
+      return;
+    }
+
+    const exists = subcategoryOptions.some((item) => slugify(item) === slugify(trimmedName));
+    if (exists) {
+      setErrorMessage("Bu alt kategori zaten mevcut.");
+      return;
+    }
+
+    setCustomSubcategories((current) => ({
+      ...current,
+      [category]: [...(current[category] ?? []), trimmedName],
+    }));
+    setSubcategory(trimmedName);
+    setNewCategoryName("");
+    setCategoryModalOpen(false);
+    setErrorMessage(null);
+    setStatusMessage(`“${trimmedName}” alt kategorisi oluşturuldu.`);
+  }
+
+  function openAssignModal(content: LibraryContentRecord) {
+    const alreadyAssigned = new Set(savedCompaniesByContent.get(content.id) ?? []);
+    const firstAvailable = companies.find((company) => !alreadyAssigned.has(company.id))?.id ?? companies[0]?.id ?? "";
+
+    setAssignContent(content);
+    setAssignCompanyId(firstAvailable);
+    setAssignMessage(null);
+    setAssignModalOpen(true);
+  }
+
+  async function handlePreview(item: UnifiedLibraryItem) {
+    if (item.sourceKind !== "template" || !item.templateId) {
+      if (item.viewHref) {
+        window.open(item.viewHref, item.viewHref.startsWith("/") ? "_self" : "_blank", "noreferrer");
+      }
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewState({
+      title: item.title,
+      description: item.description,
+      content: null,
+    });
 
     try {
-      const formData = new FormData();
-      formData.append("title", uploadTitle.trim());
-      formData.append("docType", uploadType);
-      formData.append("docNumber", uploadNumber.trim());
-      formData.append("file", uploadFile);
-
-      const response = await fetch("/api/legal-library-upload", { method: "POST", body: formData });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "Yukleme basarisiz.");
-      }
-
-      setLegalDocs((current) => [
-        { id: payload.id, title: payload.title, doc_type: payload.docType, source_url: payload.sourceUrl, chunk_count: 1 },
-        ...current,
-      ]);
-      setShowUploadModal(false);
-      setUploadTitle("");
-      setUploadNumber("");
-      setUploadFile(null);
-    } catch (error) {
-      setUploadMessage(error instanceof Error ? error.message : "Yükleme sırasında hata oluştu.");
+      const template = await getTemplate(item.templateId);
+      setPreviewState({
+        title: template?.title ?? item.title,
+        description: template?.description ?? item.description,
+        content:
+          template?.content ??
+          ({
+            type: "doc",
+            content: [
+              { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: item.title }] },
+              { type: "paragraph", content: [{ type: "text", text: item.description }] },
+            ],
+          } as JSONContent),
+      });
+    } catch {
+      setErrorMessage("Şablon önizlemesi yüklenemedi. Lütfen tekrar deneyin.");
+      setPreviewState(null);
     } finally {
-      setUploading(false);
+      setPreviewLoading(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-5">
-        <div className="h-48 animate-pulse rounded-[2rem] bg-black/5 dark:bg-white/5" />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {[1, 2, 3, 4].map((item) => (
-            <div key={item} className="h-36 animate-pulse rounded-[1.75rem] bg-black/5 dark:bg-white/5" />
-          ))}
-        </div>
-      </div>
+  async function handleDownload(item: UnifiedLibraryItem) {
+    if (item.sourceKind !== "template" || !item.templateId) {
+      if (item.downloadHref) {
+        window.open(item.downloadHref, item.downloadHref.startsWith("/") ? "_self" : "_blank", "noreferrer");
+      }
+      return;
+    }
+
+    try {
+      const template = await getTemplate(item.templateId);
+      const content =
+        template?.content ??
+        ({
+          type: "doc",
+          content: [
+            { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: item.title }] },
+            { type: "paragraph", content: [{ type: "text", text: item.description }] },
+          ],
+        } as JSONContent);
+
+      const html = `<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(template?.title ?? item.title)}</title>
+    <style>
+      body { font-family: Inter, Arial, sans-serif; margin: 40px; color: #0f172a; line-height: 1.6; }
+      h1,h2,h3 { color: #102033; }
+      table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+      th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }
+      ul, ol { padding-left: 24px; }
+      hr { border: none; border-top: 1px solid #cbd5e1; margin: 20px 0; }
+    </style>
+  </head>
+  <body>
+    ${renderJsonNodeToHtml(content)}
+  </body>
+</html>`;
+
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${slugify(template?.title ?? item.title) || "dokuman"}.html`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setErrorMessage("İndirme dosyası oluşturulamadı. Lütfen tekrar deneyin.");
+    }
+  }
+
+  function handleEdit(item: UnifiedLibraryItem) {
+    if (!creationCompanyId) {
+      setErrorMessage("Lütfen önce üst alandan firma seçin.");
+      return;
+    }
+
+    if (item.sourceKind !== "template") {
+      setErrorMessage("Düzenleme şu an yalnızca şablon kartlarında destekleniyor.");
+      return;
+    }
+
+    router.push(
+      buildDocumentEditorHref(item.category, item.subcategory, {
+        companyId: creationCompanyId,
+        templateId: item.templateId ?? undefined,
+        title: item.title,
+      }),
     );
   }
+
+  async function processImportedFile(file: File) {
+    if (!selectedCreationCompany) {
+      setErrorMessage("Lütfen önce içerik oluşturulacak firmayı seçin.");
+      return;
+    }
+
+    setImportingDocument(true);
+    setErrorMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("documentTitle", subcategory || activeCategoryMeta.label || "Yeni Doküman");
+
+      const matchingGroup = DOCUMENT_GROUPS.find((group) => group.title === subcategory);
+      if (matchingGroup) {
+        formData.append("groupKey", matchingGroup.key);
+      }
+      formData.append("companyName", selectedCreationCompany.name);
+      formData.append("sector", selectedCreationCompany.sector);
+      formData.append("hazardClass", selectedCreationCompany.hazardClass);
+
+      const res = await fetch("/api/document-import", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        setErrorMessage("Dosya yüklenirken bir hata oluştu. Lütfen tekrar deneyin.");
+        return;
+      }
+
+      const data = await res.json();
+      sessionStorage.setItem("importedContent", data.content);
+
+      const params = new URLSearchParams();
+      if (matchingGroup) {
+        params.set("group", matchingGroup.key);
+      }
+      params.set("companyId", selectedCreationCompany.id);
+      params.set("title", subcategory || activeCategoryMeta.label || "Yeni Doküman");
+      params.set("mode", "import");
+      params.set("library", "1");
+      params.set("librarySection", category === "all" ? "documentation" : category);
+
+      router.push(`/documents/new?${params.toString()}`);
+    } catch {
+      setErrorMessage("Bağlantı hatası nedeniyle dosya yüklenemedi.");
+    } finally {
+      setImportingDocument(false);
+    }
+  }
+
+  function handleFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) {
+      void processImportedFile(file);
+    }
+    event.target.value = "";
+  }
+
+  async function handleAssignSubmit() {
+    if (!assignContent || !assignCompanyId) {
+      setAssignMessage("Lütfen bir firma seçin.");
+      return;
+    }
+
+    setAssigning(true);
+    setAssignMessage(null);
+
+    const savedRow = await assignLibraryContentToCompany({
+      companyId: assignCompanyId,
+      contentId: assignContent.id,
+      addedBy: userContext.profileId,
+    });
+
+    if (!savedRow) {
+      setAssigning(false);
+      setAssignMessage("Kayıt oluşturulamadı. Lütfen tekrar deneyin.");
+      return;
+    }
+
+    setSavedItems((current) => {
+      const withoutDuplicate = current.filter(
+        (item) => !(item.company_id === savedRow.company_id && item.content_id === savedRow.content_id),
+      );
+      return [savedRow, ...withoutDuplicate];
+    });
+    setStatusMessage(`“${assignContent.title}” seçilen firmaya kaydedildi.`);
+    setAssigning(false);
+    setAssignModalOpen(false);
+  }
+
+  if (loading) {
+    return <LibraryGridSkeleton />;
+  }
+
+  const emptyTitle =
+    category === "all"
+      ? "Henüz içerik bulunmuyor"
+      : `${activeCategoryMeta.label} kategorisinde henüz içerik bulunmuyor`;
+
+  const emptyDescription =
+    savedOnly
+      ? "Firmalarınıza kaydedilmiş içerik bulunamadı. Bir içeriği kart üzerinden firmaya atayarak bu görünümde listeleyebilirsiniz."
+      : "Bu kategoride henüz içerik bulunmuyor. İçerikler eklendiğinde burada kart görünümüyle listelenecek.";
+
+  const contentCards = hydratedContents.map((item) => {
+    const typeMeta = getContentTypeMeta(item.contentType);
+    const TypeIcon = typeMeta.icon;
+    const assignedCompanyIds = item.libraryContentId
+      ? (savedCompaniesByContent.get(item.libraryContentId) ?? [])
+      : [];
+    const availableCompanies = companies.filter((company) => !assignedCompanyIds.includes(company.id));
+    const isFullyAssigned = companies.length > 0 && availableCompanies.length === 0;
+    const canAssign = Boolean(item.libraryContentId);
+    const sourceBadge =
+      item.sourceKind === "template"
+        ? "Şablon"
+        : item.sourceKind === "survey"
+          ? "Akış"
+          : item.sourceKind === "deck"
+            ? "Sunum"
+            : item.sourceKind === "question-bank"
+              ? "Banka"
+              : "Katalog";
+
+    return (
+      <Card
+        key={item.id}
+        className="overflow-hidden border-border bg-card dark:border-white/10"
+      >
+        <CardHeader className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background/85 px-3 py-1 text-xs font-semibold text-foreground">
+              <TypeIcon size={14} />
+              {typeMeta.label}
+            </span>
+            {item.sourceKind === "template" ? (
+              <span className="inline-flex items-center rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--primary)]">
+                {item.usageCount ?? 0} kullanım
+              </span>
+            ) : assignedCompanyIds.length > 0 ? (
+              <span className="inline-flex items-center rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--primary)]">
+                {assignedCompanyIds.length} firmada
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                {sourceBadge}
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <CardTitle className="text-xl leading-snug">{item.title}</CardTitle>
+            <p className="line-clamp-2 min-h-11 text-sm leading-6 text-muted-foreground">
+              {item.description || "Bu içerik için kısa açıklama henüz eklenmedi."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="neutral">
+              {CATEGORY_DEFINITIONS.find((entry) => entry.key === item.category)?.label ?? item.category}
+            </Badge>
+            <Badge variant="neutral">{item.subcategory}</Badge>
+            {item.tags.slice(0, 2).map((tag) => (
+              <Badge key={tag} variant="accent">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void handlePreview(item)}
+              className={cn(
+                "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition",
+                item.viewHref || item.sourceKind === "template"
+                  ? "border-border bg-background text-foreground hover:border-[var(--gold)]/35"
+                  : "pointer-events-none border-border/60 bg-muted/40 text-muted-foreground",
+              )}
+              disabled={!item.viewHref && item.sourceKind !== "template"}
+            >
+              <Eye size={16} />
+              Görüntüle
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDownload(item)}
+              className={cn(
+                "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition",
+                item.downloadHref || item.sourceKind === "template"
+                  ? "border-border bg-background text-foreground hover:border-[var(--gold)]/35"
+                  : "pointer-events-none border-border/60 bg-muted/40 text-muted-foreground",
+              )}
+              disabled={!item.downloadHref && item.sourceKind !== "template"}
+            >
+              <Download size={16} />
+              İndir
+            </button>
+            <button
+              type="button"
+              onClick={() => handleEdit(item)}
+              className={cn(
+                "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition",
+                item.sourceKind === "template" && creationCompanyId
+                  ? "border-border bg-background text-foreground hover:border-[var(--gold)]/35"
+                  : "pointer-events-none border-border/60 bg-muted/40 text-muted-foreground",
+              )}
+              disabled={item.sourceKind !== "template" || !creationCompanyId}
+            >
+              <FilePenLine size={16} />
+              Düzenle
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => canAssign ? openAssignModal({
+              id: item.libraryContentId!,
+              title: item.title,
+              description: item.description,
+              category: item.category,
+              subcategory: item.subcategory,
+              content_type: item.contentType,
+              file_url: item.viewHref,
+              tags: item.tags,
+              sector: item.sector,
+              created_at: item.createdAt,
+            }) : undefined}
+            disabled={companies.length === 0 || isFullyAssigned || !canAssign}
+            className={cn(
+              "inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold transition",
+              companies.length === 0 || isFullyAssigned || !canAssign
+                ? "cursor-not-allowed bg-muted text-muted-foreground"
+                : "bg-[var(--primary)] text-white hover:brightness-110",
+            )}
+          >
+            {isFullyAssigned ? <Check size={16} /> : <Building2 size={16} />}
+            {isFullyAssigned ? "Tüm firmalara kaydedildi" : canAssign ? "Firmaya Ata" : "Katalog kaydı bekleniyor"}
+          </button>
+
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{item.sourceKind === "template" ? `${item.usageCount ?? 0} kez dokümana dönüştürüldü` : item.sector.slice(0, 2).join(", ") || "Genel kullanım"}</span>
+            <span>{formatDate(item.createdAt)}</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  });
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="İSG Kütüphanesi"
-        title={SECTION_META.find((item) => item.key === section)?.label || "İSG Kütüphanesi"}
-        description="Firma bazlı dokümantasyon, AI destekli eğitim ve sınav akışları, rehberler ve mevzuat kayıtları tek merkezde."
-        className="overflow-hidden border-white/60 bg-[linear-gradient(120deg,rgba(255,249,240,0.96),rgba(237,245,255,0.96),rgba(250,246,226,0.94))] shadow-[var(--shadow-elevated)] dark:border-white/8 dark:bg-[linear-gradient(120deg,rgba(16,24,39,0.98),rgba(12,23,41,0.97),rgba(28,24,17,0.96))]"
+        title="İSG Kütüphanesi"
+        description="Global katalog yapısıyla doküman, eğitim, sınav, form, acil durum ve mevzuat içeriklerini firma seçmeden inceleyin; ihtiyaç duyduğunuz içeriği sonradan firmanıza kaydedin."
+        className="relative overflow-visible border-border bg-card dark:text-slate-100"
         meta={
           <>
-            <span className="inline-flex items-center rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-3 py-1 text-xs font-semibold text-[var(--primary)]">{userName}</span>
-            <span className="inline-flex items-center rounded-full border border-border/80 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">{selectedCompany ? `${selectedCompany.name} seçili` : "Firma seçimi bekleniyor"}</span>
+            <span className="inline-flex items-center rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-3 py-1 text-xs font-semibold text-[var(--primary)] dark:text-[#f3c978]">
+              {userContext.fullName}
+            </span>
+            <span className="inline-flex items-center rounded-full border border-border/80 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
+              {allItems.length} içerik
+            </span>
+            <span className="inline-flex items-center rounded-full border border-border/80 bg-background/70 px-3 py-1 text-xs font-medium text-muted-foreground">
+              {savedContentIds.size} içerik firmalara kaydedildi
+            </span>
+          </>
+        }
+        actions={
+          <>
+            <div className="min-w-[260px]" ref={companyMenuRef}>
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--gold)]/90">
+                Çalışılan Firma
+              </span>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setCompanyMenuOpen((current) => !current)}
+                  className="flex h-12 w-full items-center justify-between rounded-2xl border border-[var(--gold)]/25 bg-background/85 px-4 text-sm text-foreground outline-none transition focus:border-[var(--gold)]/45 dark:border-white/10 dark:bg-white/5 dark:text-white"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <Building2 size={16} className="shrink-0 text-[var(--gold)]/90" />
+                    <span className="truncate text-left">
+                      {selectedCreationCompany?.name || "Firma seçin"}
+                    </span>
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={cn(
+                      "shrink-0 text-[var(--gold)]/90 transition-transform",
+                      companyMenuOpen ? "rotate-180" : "",
+                    )}
+                  />
+                </button>
+
+                {companyMenuOpen ? (
+                  <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-full overflow-hidden rounded-2xl border border-[var(--gold)]/25 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.22)] dark:border-white/10 dark:bg-slate-900">
+                    <div className="max-h-72 overflow-y-auto p-2">
+                      {companies.map((company) => {
+                        const isSelected = company.id === creationCompanyId;
+
+                        return (
+                          <button
+                            key={company.id}
+                            type="button"
+                            onClick={() => {
+                              setCreationCompanyId(company.id);
+                              setCompanyMenuOpen(false);
+                            }}
+                            className={cn(
+                              "flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-sm transition",
+                              isSelected
+                                ? "bg-[var(--primary)] text-white"
+                                : "text-slate-700 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-white/10",
+                            )}
+                          >
+                            <span className="pr-3 leading-6">{company.name}</span>
+                            {isSelected ? <Check size={15} className="shrink-0" /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSavedOnly((current) => !current)}
+              className={cn(
+                "inline-flex h-11 items-center rounded-2xl border px-4 text-sm font-semibold transition",
+                savedOnly
+                  ? "border-[var(--gold)]/35 bg-[var(--gold)]/12 text-[var(--primary)]"
+                  : "border-border bg-background/85 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white",
+              )}
+            >
+              Firmama Kaydedilenler
+            </button>
           </>
         }
       />
-      <section className="rounded-[2rem] border border-border/80 bg-card/95 p-4 shadow-[var(--shadow-card)] sm:p-6">
-        <div className="grid gap-3 2xl:grid-cols-[minmax(320px,0.95fr)_180px_220px_220px_minmax(0,1fr)_auto]">
-          <label className="relative">
-            <Building2 size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <select value={selectedCompanyId} onChange={(event) => setSelectedCompanyId(event.target.value)} className="h-14 w-full rounded-[1.2rem] border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground outline-none transition focus:border-[var(--gold)]/40">
-              <option value="">Firma seçin</option>
-              {companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </select>
-          </label>
 
-          <div className="flex items-center gap-2 rounded-[1.2rem] border border-border bg-background p-1">
-            {(["browse", "history"] as BrowseView[]).map((item) => (
-              <button key={item} type="button" onClick={() => setView(item)} className={`flex-1 rounded-[0.95rem] px-4 py-2 text-sm font-semibold transition-colors ${view === item ? "bg-[var(--primary)] text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-                {item === "browse" ? "Browse" : "History"}
+      <section className="relative overflow-hidden rounded-[2rem] border border-border/70 bg-card/95 p-4 shadow-[var(--shadow-card)] dark:border-white/10 dark:bg-[rgba(15,23,42,0.82)] sm:p-6">
+        <div className="pointer-events-none absolute -right-16 -top-14 h-40 w-40 rounded-[2rem] border border-[var(--gold)]/10 bg-[radial-gradient(circle,rgba(184,134,11,0.08),transparent_70%)]" />
+        <div className="pointer-events-none absolute bottom-0 left-0 h-24 w-24 translate-x-[-20%] translate-y-[35%] rotate-12 rounded-[1.5rem] border border-slate-200/60 bg-white/30 dark:border-white/10 dark:bg-white/5" />
+
+        <div className="grid grid-cols-2 gap-3 pb-2 md:grid-cols-3 xl:grid-cols-7">
+          {CATEGORY_DEFINITIONS.map((item) => {
+            const Icon = item.icon;
+            const isActive = item.key === category;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => handleCategoryChange(item.key)}
+                className={cn(
+                  "inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[1rem] border px-4 py-3 text-[14px] font-semibold transition-all duration-200 sm:px-5",
+                  isActive
+                    ? "border-[var(--gold)] bg-[var(--gold)] text-primary-foreground shadow-[var(--shadow-card)]"
+                    : "border-border bg-card text-muted-foreground hover:border-[var(--gold)]/40 hover:text-foreground",
+                )}
+              >
+                <Icon size={16} />
+                {item.label}
               </button>
-            ))}
-          </div>
+            );
+          })}
+        </div>
 
-          <label className="relative">
-            <Filter size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <select value={section} onChange={(event) => setSection(event.target.value as SectionKey)} className="h-14 w-full rounded-[1.2rem] border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground outline-none transition focus:border-[var(--gold)]/40">
-              {SECTION_META.map((item) => (
-                <option key={item.key} value={item.key}>{item.label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="relative">
-            <Filter size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <select value={mediaKind} onChange={(event) => setMediaKind(event.target.value as MediaKind)} className="h-14 w-full rounded-[1.2rem] border border-border bg-background pl-11 pr-4 text-sm font-medium text-foreground outline-none transition focus:border-[var(--gold)]/40">
-              <option value="all">Tüm tipler</option>
-              <option value="form">Form</option>
-              <option value="checklist">Checklist</option>
-              <option value="procedure">Talimat / Prosedür</option>
-              <option value="plan">Plan</option>
-              <option value="visual">Görsel</option>
-              <option value="record">Kayıt / Rapor</option>
-            </select>
-          </label>
-
+        <div className="mt-5 grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_180px_180px_160px]">
           <label className="relative">
             <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Belge sınıfı, eğitim, anket, rehber ara..." className="h-14 w-full rounded-[1.2rem] border border-border bg-background pl-11 pr-4 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-[var(--gold)]/40" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Başlık, açıklama veya etiket ara..."
+              className="h-12 w-full rounded-2xl border border-border bg-background pl-11 pr-4 text-sm text-foreground outline-none transition focus:border-[var(--gold)]/40"
+            />
           </label>
 
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedCompanyId("");
-              setView("browse");
-              setSection("all");
-              setMediaKind("all");
-              setQuery("");
-            }}
-            className="inline-flex h-14 items-center justify-center rounded-[1.2rem] bg-[var(--primary)] px-6 text-sm font-semibold text-white transition hover:brightness-110"
-          >
-            Temizle
-          </button>
+          <label className="relative">
+            <Filter size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <select
+              value={typeFilter}
+              onChange={(event) => setTypeFilter(event.target.value)}
+              className="h-12 w-full rounded-2xl border border-border bg-background pl-11 pr-4 text-sm text-foreground outline-none transition focus:border-[var(--gold)]/40"
+            >
+              <option value="all">Tip</option>
+              {typeOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="relative">
+            <Building2 size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <select
+              value={sectorFilter}
+              onChange={(event) => setSectorFilter(event.target.value)}
+              className="h-12 w-full rounded-2xl border border-border bg-background pl-11 pr-4 text-sm text-foreground outline-none transition focus:border-[var(--gold)]/40"
+            >
+              <option value="all">Sektör</option>
+              {sectorOptions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="relative">
+            <Filter size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(parseSort(event.target.value))}
+              className="h-12 w-full rounded-2xl border border-border bg-background pl-11 pr-4 text-sm text-foreground outline-none transition focus:border-[var(--gold)]/40"
+            >
+              <option value="newest">Sırala</option>
+              <option value="newest">En yeni</option>
+              <option value="oldest">En eski</option>
+              <option value="az">A-Z</option>
+              <option value="za">Z-A</option>
+            </select>
+          </label>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {selectedCompany ? (
-            <>
-              <span className="rounded-full border border-border bg-background px-3 py-1.5 font-medium">{selectedCompany.sector || "Sektör belirtilmedi"}</span>
-              <span className="rounded-full border border-border bg-background px-3 py-1.5 font-medium">{selectedCompany.hazard_class || "Tehlike sınıfı belirtilmedi"}</span>
-              {selectedCompany.city ? <span className="rounded-full border border-border bg-background px-3 py-1.5 font-medium">{selectedCompany.city}</span> : null}
-              <span className="rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-3 py-1.5 font-semibold text-[var(--primary)]">
-                {selectedDocuments.length} doküman · {selectedDocuments.filter((doc) => doc.status === "hazir").length} hazır
-              </span>
-            </>
-          ) : (
-            <span className="rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-3 py-1.5 font-semibold text-[var(--primary)]">
-              Kütüphane içeriğini açmak ve firma bazlı kaydı izlemek için önce firma seçin.
-            </span>
-          )}
-        </div>
-      </section>
-      {!selectedCompany ? (
-        <section className="rounded-[2rem] border border-dashed border-[var(--gold)]/30 bg-card p-8 text-center shadow-[var(--shadow-card)]">
-          <PremiumIconBadge icon={Building2} tone="gold" size="lg" className="mx-auto" />
-          <h2 className="mt-5 text-2xl font-semibold text-foreground">Firma seçimi gerekli</h2>
-          <p className="mx-auto mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
-            Hangi firmaya hangi dokümanların, sınavların ve içeriklerin hazırlandığını kayıt altına almak için kütüphane firma seçimiyle başlar.
-          </p>
-        </section>
-      ) : view === "history" ? (
-        <section className="rounded-[2rem] border border-border bg-card p-4 shadow-[var(--shadow-card)] sm:p-6">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Geçmiş</h2>
-              <p className="text-sm text-muted-foreground">{selectedCompany.name} için son erişilen doküman, sınav ve eğitim içerikleri.</p>
-            </div>
-            <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-muted-foreground">{historyItems.length} kayıt</span>
-          </div>
+        {category !== "all" ? (
+          <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="rounded-[1.5rem] border border-border bg-muted/30 p-3">
+              <div className="mb-3 flex items-center gap-2 px-2">
+                <Filter size={16} className="text-[var(--gold)]" />
+                <span className="text-sm font-semibold text-foreground">Alt Kategoriler</span>
+              </div>
 
-          <div className="overflow-hidden rounded-[1.5rem] border border-border">
-            <div className="hidden grid-cols-[minmax(0,1.4fr)_160px_160px_160px_130px] gap-4 bg-background px-5 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground md:grid">
-              <span>İçerik</span>
-              <span>Tip</span>
-              <span>Kaynak</span>
-              <span>Tarih</span>
-              <span>Durum</span>
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setSubcategory("")}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-2xl border border-transparent px-4 py-3 text-left text-sm transition",
+                    !subcategory
+                      ? "bg-[var(--primary)] text-white shadow-[0_18px_35px_rgba(15,23,42,0.18)]"
+                      : "bg-white/70 text-[#6f4e12] hover:border-[#e3c58f] hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-[#f8ddb0] dark:hover:border-[#6f5320] dark:hover:bg-white/10",
+                  )}
+                >
+                  <span className="font-medium">Tüm alt kategoriler</span>
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                      !subcategory
+                        ? "border-white/20 bg-white/15 text-white"
+                        : "border-[#e3c58f] bg-white text-[#9b6f1b] dark:border-[#6f5320] dark:bg-white/10 dark:text-[#f0c36b]",
+                    )}
+                  >
+                    Tümü
+                  </span>
+                </button>
+
+                {subcategoryOptions.map((item) => {
+                  const badgeMeta = getSubcategoryBadgeMeta(category);
+
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setSubcategory(item)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-2xl border border-transparent px-4 py-3 text-left text-sm transition",
+                        subcategory === item
+                          ? "bg-[var(--primary)] text-white shadow-[0_18px_35px_rgba(15,23,42,0.18)]"
+                          : "bg-white/70 text-[#6f4e12] hover:border-[#e3c58f] hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-[#f8ddb0] dark:hover:border-[#6f5320] dark:hover:bg-white/10",
+                      )}
+                    >
+                      <span className="pr-3 font-medium leading-6">{item}</span>
+                      <span
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                          subcategory === item
+                            ? "border-white/20 bg-white/15 text-white"
+                            : badgeMeta.className,
+                        )}
+                      >
+                        {badgeMeta.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 border-t border-[#e3c58f] pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewCategoryName("");
+                    setCategoryModalOpen(true);
+                  }}
+                  className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-[var(--gold)]/30 bg-[var(--gold)]/12 px-4 text-sm font-semibold text-[var(--primary)] transition hover:border-[var(--gold)]/45 hover:bg-[var(--gold)]/18"
+                >
+                  Kategori Ekle
+                </button>
+              </div>
             </div>
-            {historyItems.map((item) => (
-              <Link key={`${item.type}-${item.id}`} href={item.href} className="grid gap-2 border-t border-border/70 px-5 py-4 transition hover:bg-background/70 md:grid-cols-[minmax(0,1.4fr)_160px_160px_160px_130px] md:items-center md:gap-4 first:border-t-0">
+
+            <div className="rounded-[1.5rem] border border-border bg-card p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                 <div>
-                  <p className="font-medium text-foreground">{item.title}</p>
-                  <p className="text-xs text-muted-foreground md:hidden">{item.type} · {item.source}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--gold)]">
+                    {activeCategoryMeta.label}
+                  </p>
+                  <h2 className="mt-2 text-lg font-semibold text-foreground">
+                    {subcategory || "Tüm alt kategoriler"}
+                  </h2>
                 </div>
-                <span className="hidden text-sm text-muted-foreground md:block">{item.type}</span>
-                <span className="hidden text-sm text-muted-foreground md:block">{item.source}</span>
-                <span className="hidden text-sm text-muted-foreground md:block">{formatDate(item.updatedAt)}</span>
-                <span className="inline-flex w-fit rounded-full border border-border bg-background px-2.5 py-1 text-xs font-semibold text-[var(--primary)]">{item.status}</span>
-              </Link>
-            ))}
+                <span className="inline-flex items-center rounded-full border border-[#e3c58f] bg-white/75 px-3 py-1 text-xs font-semibold text-[#8b6513] dark:border-[#6f5320] dark:bg-white/10 dark:text-[#f0c36b]">
+                  {filteredContents.length} sonuç
+                </span>
+              </div>
+
+              {filteredContents.length === 0 ? (
+                <div className="flex min-h-[260px] flex-col items-center justify-center rounded-[1.25rem] border border-dashed border-[#e3c58f] bg-white/45 px-6 py-10 text-center dark:border-[#6f5320] dark:bg-white/5">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-[1.25rem] border border-[#e3c58f] bg-white/80 text-[#b8860b] dark:border-[#6f5320] dark:bg-white/10 dark:text-[#f0c36b]">
+                    <LayoutGrid size={24} />
+                  </div>
+                  <h3 className="mt-4 text-lg font-semibold text-[#1f2f46] dark:text-white">
+                    Bu alt kategoride henüz içerik yok
+                  </h3>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                    Soldaki listeden farklı bir alt kategori seçebilir veya yeni içerik ekleyebilirsiniz.
+                  </p>
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    Doküman oluşturma ve yükleme işlemleri, üst alandaki firma seçimine göre ilgili çalışma alanına bağlanır.
+                  </p>
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <Link
+                      href={creationCompanyId ? buildDocumentEditorHref(category, subcategory, { companyId: creationCompanyId }) : "#"}
+                      onClick={(event) => {
+                        if (!creationCompanyId) {
+                          event.preventDefault();
+                          setErrorMessage("Lütfen önce içerik oluşturulacak firmayı seçin.");
+                        }
+                      }}
+                      className={cn(
+                        "inline-flex h-11 items-center justify-center rounded-2xl px-5 text-sm font-semibold transition",
+                        creationCompanyId
+                          ? "bg-[var(--primary)] text-white hover:brightness-110"
+                          : "cursor-not-allowed bg-slate-300 text-white dark:bg-slate-700 dark:text-slate-300",
+                      )}
+                    >
+                      Doküman Editöründe Oluştur
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={importingDocument || !creationCompanyId}
+                      className={cn(
+                        "inline-flex h-11 items-center justify-center rounded-2xl border border-[var(--gold)]/30 bg-white/80 px-5 text-sm font-semibold text-[var(--primary)] transition hover:border-[var(--gold)]/45 hover:bg-[var(--gold)]/10 dark:bg-white/10 dark:text-[#f0c36b] dark:hover:bg-white/15",
+                        importingDocument || !creationCompanyId ? "cursor-not-allowed opacity-60" : "",
+                      )}
+                    >
+                      {importingDocument ? "Dosya Yükleniyor..." : "Cihazdan Doküman Yükle"}
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Yüklediğiniz dosya editörde açılır; isterseniz düzenleyip kaydedebilir, daha sonra tekrar düzenleyebilirsiniz.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-5 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                  {contentCards}
+                </div>
+              )}
+            </div>
           </div>
-        </section>
-      ) : (
-        <>
-          {section === "all" ? (
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              <FeatureCard icon={GraduationCap} tone="emerald" title="Eğitim Merkezi" description="AI destekli eğitim akışları, slayt kütüphanesi ve sertifikalar." href={`/training?companyId=${selectedCompanyId}&library=1&librarySection=education`} badge="AI" />
-              <FeatureCard icon={ClipboardCheck} tone="violet" title="Sınav ve Anket" description="Firma bağlamında sınavlar, anketler ve soru bankası." href={`/training?companyId=${selectedCompanyId}&tab=all&library=1&librarySection=assessment`} badge="Ölçüm" />
-              <FeatureCard icon={Scale} tone="indigo" title="Mevzuat ve Rehberler" description="Resmi mevzuat kayıtları ve bakanlık rehberleri tek kart akışında." href="/isg-library?section=legal" badge="RAG" />
-              <UploadTriggerCard icon={FileUp} tone="gold" title="Rehber veya mevzuat yükle" description="Kullanıcı yüklemeleriyle kütüphaneyi zenginleştirin." badge="Yükleme" onClick={() => { setUploadType("guide"); setUploadMessage(null); setShowUploadModal(true); }} />
-              {visibleGroups.map((group) => (
-                <DocClassCard key={group.key} group={group} companyId={selectedCompanyId} documents={selectedDocuments} />
-              ))}
-            </section>
-          ) : null}
+        ) : null}
+      </section>
 
-          {section === "assessment" ? (
-            <section className="grid gap-4 xl:grid-cols-3">
-              <FeatureCard icon={ClipboardCheck} tone="violet" title="Anket Merkezi" description="Katılım odaklı AI destekli anketler, sonuç takibi ve dağıtım." href={`/training?companyId=${selectedCompanyId}&tab=survey&library=1&librarySection=assessment`} badge="Anket" />
-              <FeatureCard icon={ShieldAlert} tone="cobalt" title="Sınav Merkezi" description="AI ile soru seti, başarı puanı ve sınav dağıtımı." href={`/training?companyId=${selectedCompanyId}&tab=exam&library=1&librarySection=assessment`} badge="Sınav" />
-              <FeatureCard icon={Sparkles} tone="gold" title="Soru Bankası" description={`${questionCount} aktif soru ile tekrar kullanılabilir AI havuzu.`} href={`/training/question-bank?companyId=${selectedCompanyId}&library=1&librarySection=assessment`} badge="AI" />
-            </section>
-          ) : null}
+      {statusMessage ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {statusMessage}
+        </div>
+      ) : null}
 
-          {section === "education" ? (
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              <FeatureCard icon={LibraryBig} tone="teal" title="Slayt Kütüphanesi" description="AI destekli slayt desteleri, kurum içi veya özel eğitim akışları." href={`/training/slides?companyId=${selectedCompanyId}&library=1&librarySection=education`} badge="Slayt" />
-              <FeatureCard icon={FileCheck2} tone="gold" title="Sertifika ve Kayıtlar" description={`${decks.length} eğitim varlığı ve sertifika akışlarını yönetin.`} href={`/training/certificates?companyId=${selectedCompanyId}&library=1&librarySection=education`} badge="Kayıt" />
-              {visibleGroups.map((group) => (
-                <DocClassCard key={group.key} group={group} companyId={selectedCompanyId} documents={selectedDocuments} />
-              ))}
-            </section>
-          ) : null}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,.jpg,.jpeg,.png,.webp"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
 
-          {section === "legal" ? (
-            <section className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <FeatureCard icon={Scale} tone="indigo" title="Mevzuat Senkronizasyonu" description="Resmi mevzuat kayıtları, chunk sayısı ve RAG bağlantıları." href="/settings?tab=mevzuat" badge="RAG" />
-                <UploadTriggerCard icon={FileUp} tone="indigo" title="Mevzuat Yükle" description="Kanun, yönetmelik, tebliğ veya genelge yükleyin." badge="Yükleme" onClick={() => { setUploadType("regulation"); setUploadMessage(null); setShowUploadModal(true); }} />
-                <UploadTriggerCard icon={BookOpen} tone="gold" title="Rehber Yükle" description="Bakanlık veya kurumsal rehberleri kütüphaneye ekleyin." badge="Rehber" onClick={() => { setUploadType("guide"); setUploadMessage(null); setShowUploadModal(true); }} />
-                <FeatureCard icon={FileText} tone="cobalt" title="Doküman Yükleme Akışı" description="Firma bazlı doküman yükleme ve AI ile düzenleme için dokümantasyona geçin." href={`/documents?companyId=${selectedCompanyId}&library=1&librarySection=documentation`} badge="Doküman" />
-              </div>
+      {errorMessage ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {errorMessage}
+        </div>
+      ) : null}
 
-              <div>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-foreground">Resmi Mevzuat</h2>
-                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{legalItems.legislation.length} kayıt</span>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {legalItems.legislation.map((doc) => (
-                    <LegalDocCard key={doc.id} doc={doc} />
-                  ))}
-                </div>
-              </div>
+      {category === "all" ? (
+        filteredContents.length === 0 ? (
+          <EmptyState
+            title={emptyTitle}
+            description={emptyDescription}
+            canManageCatalog={userContext.canManageCatalog}
+            addHref={buildAddContentHref(category)}
+          />
+        ) : (
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {contentCards}
+          </section>
+        )
+      ) : null}
 
-              <div>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-foreground">Rehberler</h2>
-                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{legalItems.guides.length} kayıt</span>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {legalItems.guides.map((doc) => (
-                    <LegalDocCard key={doc.id} doc={doc} />
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          {section !== "all" && section !== "assessment" && section !== "education" && section !== "legal" ? (
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {visibleGroups.map((group) => (
-                <DocClassCard key={group.key} group={group} companyId={selectedCompanyId} documents={selectedDocuments} />
-              ))}
-            </section>
-          ) : null}
-        </>
-      )}
-      {showUploadModal ? (
+      {assignModalOpen && assignContent ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-[2rem] border border-border bg-card p-6 shadow-[var(--shadow-elevated)]">
+          <div className="w-full max-w-lg rounded-[2rem] border border-border bg-card p-6 shadow-[var(--shadow-elevated)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-foreground">Rehber veya mevzuat yükle</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Yüklenen dosya kütüphaneye eklenir. Metin okunabiliyorsa ilk arama chunk&apos;ı da otomatik oluşturulur.</p>
+                <h2 className="text-xl font-semibold text-foreground">Firmaya Ata</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  “{assignContent.title}” içeriğini seçtiğiniz firmaya kaydederek firma kütüphanesine ekleyin.
+                </p>
               </div>
-              <button type="button" onClick={() => setShowUploadModal(false)} className="rounded-full border border-border bg-background px-3 py-1 text-sm text-muted-foreground hover:text-foreground">Kapat</button>
+              <button
+                type="button"
+                onClick={() => setAssignModalOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition hover:text-foreground"
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="mt-6 space-y-4">
               <label className="space-y-2">
-                <span className="text-sm font-medium text-foreground">Belge tipi</span>
-                <select value={uploadType} onChange={(event) => setUploadType(event.target.value as UploadDocType)} className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm text-foreground outline-none focus:border-[var(--gold)]/40">
-                  <option value="law">Kanun</option>
-                  <option value="regulation">Yönetmelik</option>
-                  <option value="communique">Tebliğ</option>
-                  <option value="guide">Rehber</option>
-                  <option value="announcement">Duyuru</option>
-                  <option value="circular">Genelge</option>
+                <span className="text-sm font-medium text-foreground">Firma</span>
+                <select
+                  value={assignCompanyId}
+                  onChange={(event) => setAssignCompanyId(event.target.value)}
+                  className="h-12 w-full rounded-2xl border border-border bg-background px-4 text-sm text-foreground outline-none transition focus:border-[var(--gold)]/40"
+                >
+                  <option value="">Firma seçin</option>
+                  {companies.map((company) => {
+                    const alreadyAssigned = (savedCompaniesByContent.get(assignContent.id) ?? []).includes(company.id);
+                    return (
+                      <option key={company.id} value={company.id} disabled={alreadyAssigned}>
+                        {company.name}
+                        {alreadyAssigned ? " (zaten kayıtlı)" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium text-foreground">Belge / resmi sayı</span>
-                <input value={uploadNumber} onChange={(event) => setUploadNumber(event.target.value)} className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm text-foreground outline-none focus:border-[var(--gold)]/40" placeholder="Opsiyonel" />
-              </label>
-              <label className="space-y-2 sm:col-span-2">
-                <span className="text-sm font-medium text-foreground">Başlık</span>
-                <input value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} className="h-12 w-full rounded-xl border border-border bg-background px-4 text-sm text-foreground outline-none focus:border-[var(--gold)]/40" placeholder="Ör. Kimyasal maddelerle çalışmalarda rehber" />
-              </label>
-              <label className="space-y-2 sm:col-span-2">
-                <span className="text-sm font-medium text-foreground">Dosya</span>
-                <input type="file" accept=".pdf,.doc,.docx,.txt" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} className="block w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-[var(--gold)]/10 file:px-3 file:py-2 file:font-medium file:text-[var(--primary)]" />
-              </label>
+
+              {assignMessage ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                  {assignMessage}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setAssignModalOpen(false)}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-border bg-background px-5 text-sm font-semibold text-foreground transition hover:border-[var(--gold)]/35"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleAssignSubmit()}
+                  disabled={assigning || !assignCompanyId}
+                  className={cn(
+                    "inline-flex h-11 items-center justify-center rounded-2xl px-5 text-sm font-semibold text-white transition",
+                    assigning || !assignCompanyId
+                      ? "cursor-not-allowed bg-slate-300"
+                      : "bg-[var(--primary)] hover:brightness-110",
+                  )}
+                >
+                  {assigning ? "Kaydediliyor..." : "Firmaya Kaydet"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <TemplatePreview
+        open={Boolean(previewState)}
+        title={previewState?.title ?? ""}
+        description={previewState?.description ?? ""}
+        content={previewState?.content ?? null}
+        loading={previewLoading}
+        onClose={() => {
+          setPreviewLoading(false);
+          setPreviewState(null);
+        }}
+      />
+
+      {categoryModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[2rem] border border-border bg-card p-6 shadow-[var(--shadow-elevated)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-foreground">Yeni Alt Kategori</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {activeCategoryMeta.label} altında görünecek yeni kategori adını yazın.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryModalOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition hover:text-foreground"
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            {uploadMessage ? <p className="mt-4 text-sm text-[var(--primary)]">{uploadMessage}</p> : null}
+            <div className="mt-6 space-y-4">
+              <label className="space-y-2">
+                <span className="text-sm font-medium text-foreground">Kategori Adı</span>
+                <input
+                  value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  placeholder="Örn. Acil Toplanma Noktaları"
+                  className="h-12 w-full rounded-2xl border border-border bg-background px-4 text-sm text-foreground outline-none transition focus:border-[var(--gold)]/40"
+                />
+              </label>
 
-            <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => setShowUploadModal(false)} className="rounded-xl border border-border bg-background px-4 py-2.5 text-sm font-medium text-foreground">İptal</button>
-              <button type="button" onClick={() => void handleUploadSubmit()} disabled={uploading} className="rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                {uploading ? "Yükleniyor..." : "Kütüphane kaydı oluştur"}
-              </button>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCategoryModalOpen(false)}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-border bg-background px-5 text-sm font-semibold text-foreground transition hover:border-[var(--gold)]/35"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateSubcategory}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--primary)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+                >
+                  Kaydet
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -634,142 +1774,130 @@ export function IsgLibraryClient() {
   );
 }
 
-function LibraryCardVisual({
-  icon: Icon,
-  tone,
-  title,
-  badge,
-}: {
-  icon: React.ElementType;
-  tone: PremiumIconTone;
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderInlineContent(content?: JSONContent["content"]): string {
+  if (!content?.length) return "";
+
+  return content
+    .map((node) => {
+      if (node.type !== "text") return "";
+
+      let html = escapeHtml(node.text ?? "");
+      const marks = node.marks ?? [];
+
+      for (const mark of marks) {
+        if (mark.type === "bold") html = `<strong>${html}</strong>`;
+        if (mark.type === "italic") html = `<em>${html}</em>`;
+        if (mark.type === "underline") html = `<u>${html}</u>`;
+      }
+
+      return html;
+    })
+    .join("");
+}
+
+function renderJsonNodeToHtml(node: JSONContent): string {
+  const children = (node.content ?? []).map((child) => renderJsonNodeToHtml(child)).join("");
+  const inline = renderInlineContent(node.content);
+
+  switch (node.type) {
+    case "doc":
+      return children;
+    case "paragraph":
+      return `<p>${inline || children || "&nbsp;"}</p>`;
+    case "heading":
+      return `<h${node.attrs?.level ?? 2}>${inline || children}</h${node.attrs?.level ?? 2}>`;
+    case "bulletList":
+      return `<ul>${children}</ul>`;
+    case "orderedList":
+      return `<ol>${children}</ol>`;
+    case "listItem":
+      return `<li>${children}</li>`;
+    case "table":
+      return `<table><tbody>${children}</tbody></table>`;
+    case "tableRow":
+      return `<tr>${children}</tr>`;
+    case "tableHeader":
+      return `<th>${children || inline}</th>`;
+    case "tableCell":
+      return `<td>${children || inline}</td>`;
+    case "horizontalRule":
+      return "<hr />";
+    case "text":
+      return renderInlineContent([node]);
+    default:
+      return children || inline;
+  }
+}
+
+function TemplatePreview(props: {
+  open: boolean;
   title: string;
-  badge: string;
+  description: string;
+  content: JSONContent | null;
+  loading: boolean;
+  onClose: () => void;
 }) {
-  const surfaceTone =
-    tone === "gold" ? "from-[var(--gold)]/22 via-yellow-100/35 to-transparent dark:from-[var(--gold)]/24 dark:via-slate-900/20 dark:to-slate-950/15" :
-    tone === "emerald" ? "from-emerald-500/18 via-teal-100/25 to-transparent dark:from-emerald-500/26 dark:via-slate-900/20 dark:to-slate-950/15" :
-    tone === "violet" ? "from-violet-500/18 via-fuchsia-100/25 to-transparent dark:from-violet-500/26 dark:via-slate-900/20 dark:to-slate-950/15" :
-    tone === "indigo" ? "from-indigo-500/18 via-indigo-100/25 to-transparent dark:from-indigo-500/26 dark:via-slate-900/20 dark:to-slate-950/15" :
-    tone === "teal" ? "from-teal-500/18 via-cyan-100/25 to-transparent dark:from-teal-500/26 dark:via-slate-900/20 dark:to-slate-950/15" :
-    tone === "amber" ? "from-amber-500/18 via-yellow-100/25 to-transparent dark:from-amber-500/26 dark:via-slate-900/20 dark:to-slate-950/15" :
-    tone === "orange" ? "from-orange-500/18 via-amber-100/25 to-transparent dark:from-orange-500/26 dark:via-slate-900/20 dark:to-slate-950/15" :
-    "from-blue-500/18 via-sky-100/25 to-transparent dark:from-blue-500/26 dark:via-slate-900/20 dark:to-slate-950/15";
+  const hasRenderableContent = Boolean(props.content?.content?.length);
+  const previewHtml = useMemo(
+    () => (props.content ? renderJsonNodeToHtml(props.content) : ""),
+    [props.content],
+  );
+
+  if (!props.open) return null;
 
   return (
-    <div className={`relative overflow-hidden rounded-[1.35rem] border border-white/45 bg-gradient-to-br ${surfaceTone} p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]`}>
-      <div className="absolute -right-6 -top-10 h-24 w-24 rounded-full bg-white/45 blur-2xl dark:bg-white/10" />
-      <div className="absolute bottom-0 left-6 h-16 w-16 rounded-full bg-white/35 blur-2xl dark:bg-white/5" />
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{badge}</p>
-          <p className="mt-2 line-clamp-2 max-w-[180px] text-base font-semibold text-foreground">{title}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-[2rem] border border-border bg-card shadow-[var(--shadow-elevated)]">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--gold)]/90">
+              Şablon Önizleme
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-foreground">{props.title}</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">{props.description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={props.onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition hover:text-foreground"
+          >
+            <X size={16} />
+          </button>
         </div>
-        <PremiumIconBadge icon={Icon} tone={tone} size="md" />
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.98),rgba(255,251,235,0.9))] px-6 py-6 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(17,24,39,0.94))]">
+          {props.loading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-1/3 rounded-xl" />
+              <Skeleton className="h-5 w-full rounded-xl" />
+              <Skeleton className="h-5 w-5/6 rounded-xl" />
+              <Skeleton className="h-80 w-full rounded-[1.5rem]" />
+            </div>
+          ) : (
+            <div className="a4-page mx-auto min-h-0 max-w-4xl rounded-[1.5rem] border border-border bg-white px-8 py-8 text-slate-900 shadow-sm dark:border-white/10 dark:bg-slate-950/70 dark:text-slate-100">
+              {hasRenderableContent ? (
+                <div
+                  className="tiptap min-h-[720px]"
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
+              ) : (
+                <div className="flex min-h-[240px] items-center justify-center rounded-[1.25rem] border border-dashed border-border/70 bg-background/50 px-6 text-center text-sm text-muted-foreground">
+                  Önizleme içeriği şu anda yüklenemedi. Bu şablonu yine de indirip düzenleyebilirsiniz.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="relative mt-4 h-px bg-white/65 dark:bg-white/10" />
-    </div>
-  );
-}
-
-function FeatureCard({
-  icon,
-  tone,
-  title,
-  description,
-  href,
-  badge,
-}: {
-  icon: React.ElementType;
-  tone: PremiumIconTone;
-  title: string;
-  description: string;
-  href: string;
-  badge: string;
-}) {
-  return (
-    <Link href={href} className="rounded-[1.7rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-[var(--gold)]/30">
-      <LibraryCardVisual icon={icon} tone={tone} title={title} badge={badge} />
-      <h3 className="mt-5 text-lg font-semibold text-foreground">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-      <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-[var(--primary)]">Ac <ChevronRight size={16} /></span>
-    </Link>
-  );
-}
-
-function UploadTriggerCard({
-  icon,
-  tone,
-  title,
-  description,
-  badge,
-  onClick,
-}: {
-  icon: React.ElementType;
-  tone: PremiumIconTone;
-  title: string;
-  description: string;
-  badge: string;
-  onClick: () => void;
-}) {
-  return (
-    <button type="button" onClick={onClick} className="rounded-[1.7rem] border border-border bg-card p-5 text-left shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-[var(--gold)]/30">
-      <LibraryCardVisual icon={icon} tone={tone} title={title} badge={badge} />
-      <h3 className="mt-5 text-lg font-semibold text-foreground">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-      <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-[var(--primary)]">Yukleme baslat <ChevronRight size={16} /></span>
-    </button>
-  );
-}
-
-function DocClassCard({
-  group,
-  companyId,
-  documents,
-}: {
-  group: DocumentGroup;
-  companyId: string;
-  documents: DocumentRecord[];
-}) {
-  const section = classifySection(group.key);
-  const href = `/documents?group=${group.key}&companyId=${companyId}&library=1&librarySection=${section}`;
-  const preparedCount = documents.filter((doc) => doc.group_key === group.key).length;
-  const readyCount = documents.filter((doc) => doc.group_key === group.key && doc.status === "hazir").length;
-  const tone: PremiumIconTone =
-    section === "documentation" ? "cobalt" :
-    section === "forms" ? "amber" :
-    section === "emergency" ? "orange" :
-    section === "education" ? "emerald" :
-    "teal";
-
-  return (
-    <Link href={href} className="rounded-[1.7rem] border border-border bg-card p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-[var(--gold)]/30">
-      <LibraryCardVisual icon={FileText} tone={tone} title={group.title} badge={getMediaKind(group)} />
-      <h3 className="mt-4 text-lg font-semibold text-foreground">{group.title}</h3>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{group.items.length} hazir baslik. Bu firmada {preparedCount} kayit, {readyCount} hazir dokuman var.</p>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {group.items.slice(0, 3).map((item) => (
-          <span key={item.id} className="rounded-full bg-background px-2.5 py-1 text-xs text-muted-foreground">{item.title}</span>
-        ))}
-      </div>
-      <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-[var(--primary)]">Kartlari ac <ChevronRight size={16} /></span>
-    </Link>
-  );
-}
-
-function LegalDocCard({ doc }: { doc: LegalDoc }) {
-  const tone: PremiumIconTone = doc.doc_type === "guide" ? "gold" : doc.doc_type === "law" ? "indigo" : "cobalt";
-  const kindLabel = doc.doc_type === "guide" ? "Rehber" : doc.doc_type === "law" ? "Kanun" : doc.doc_type === "regulation" ? "Yonetmelik" : "Mevzuat";
-
-  return (
-    <div className="rounded-[1.7rem] border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-      <LibraryCardVisual icon={doc.doc_type === "guide" ? BookOpen : Scale} tone={tone} title={doc.title} badge={`${doc.chunk_count} chunk`} />
-      <h3 className="mt-4 text-lg font-semibold text-foreground">{doc.title}</h3>
-      <p className="mt-2 text-sm leading-6 text-muted-foreground">{kindLabel}{doc.doc_number ? ` · ${doc.doc_number}` : ""}. RAG ve arama akislarinda kullanilabilir.</p>
-      {doc.source_url ? (
-        <a href={doc.source_url} target="_blank" rel="noreferrer" className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-[var(--primary)]">Kaynagi ac <ChevronRight size={16} /></a>
-      ) : (
-        <span className="mt-5 inline-flex items-center gap-1 text-sm font-medium text-[var(--primary)]">Kayit hazir</span>
-      )}
     </div>
   );
 }

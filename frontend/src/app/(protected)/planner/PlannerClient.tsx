@@ -894,15 +894,19 @@ export function PlannerCore({ fixedCompanyId, showHeader }: PlannerCoreProps) {
                   <div className="space-y-0.5">
                     {dayTasks.slice(0, 3).map((t) => {
                       const cat = t.category_id ? catMap[t.category_id] : null;
+                      const companyName = t.company_workspace_id ? companyMap[t.company_workspace_id] : null;
                       return (
                         <div
                           key={t.id}
                           onClick={(e) => { e.stopPropagation(); setModalDate(undefined); setModalTask(t); }}
-                          className="truncate rounded-md px-1.5 py-0.5 text-[10px] font-medium text-white transition hover:brightness-110"
+                          className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-white transition hover:brightness-110 cursor-pointer"
                           style={{ background: cat?.color ?? "#6B7280" }}
-                          title={t.title}
+                          title={companyName ? `${t.title} — ${companyName}` : t.title}
                         >
-                          {t.title}
+                          <div className="truncate font-semibold leading-tight">{t.title}</div>
+                          {companyName && (
+                            <div className="truncate text-[8.5px] leading-tight opacity-90">{companyName}</div>
+                          )}
                         </div>
                       );
                     })}

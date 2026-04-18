@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 type BrandProps = {
@@ -18,7 +17,7 @@ export function Brand({
   return (
     <Link
       href={href}
-      className={cn("inline-flex items-center gap-2.5", className)}
+      className={cn("inline-flex items-center gap-4", className)}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -26,7 +25,7 @@ export function Brand({
         alt="RiskNova"
         className={cn(
           "rounded-xl shadow-[var(--shadow-soft)]",
-          compact ? "h-8 w-8" : "h-10 w-10",
+          compact ? "h-8 w-8" : "h-[58px] w-[58px] xl:h-[62px] xl:w-[62px]",
         )}
       />
 
@@ -35,7 +34,7 @@ export function Brand({
           className={cn(
             "truncate tracking-tight",
             inverted ? "text-white" : "text-foreground",
-            compact ? "text-sm font-semibold" : "text-base font-semibold",
+            compact ? "text-sm font-semibold" : "text-[23px] font-semibold leading-none xl:text-[26px]",
           )}
         >
           Risk<span className="font-serif italic">Nova</span>
@@ -44,7 +43,7 @@ export function Brand({
         {!compact ? (
           <span
             className={cn(
-              "truncate text-xs",
+              "truncate text-[13px] leading-tight xl:text-[14px]",
               inverted ? "text-amber-100/85" : "text-muted-foreground",
             )}
           >

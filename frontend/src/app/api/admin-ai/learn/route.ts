@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
             },
             {
               type: "text",
-              text: "Bu PDF dokumandaki tum metni cikar. Tablolari, maddeleri, baslik ve alt basliklari koru. Turkce ise Turkce olarak yaz. Sadece icerigi yaz, yorum ekleme.",
+              text: "Bu PDF dok?mandaki t?m metni ??kar. Tablolar?, maddeleri, ba?l?k ve alt ba?l?klar? koru. T?rk?e ise T?rk?e olarak yaz. Sadece i?eri?i yaz, yorum ekleme.",
             },
           ],
         }],

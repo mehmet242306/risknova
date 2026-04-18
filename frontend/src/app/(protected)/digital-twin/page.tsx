@@ -235,7 +235,7 @@ export default function DigitalTwinPage() {
           </div>
           <h3 className="mt-6 text-lg font-semibold text-foreground">Henuz dijital ikiz verisi yok</h3>
           <p className="mt-2 max-w-md mx-auto text-sm text-muted-foreground leading-6">
-            Mobil uygulamayi kullanarak saha taramasi baslatin. Kamera ile yuruyerek cektiginiz veriler buraya otomatik olarak aktarilacak ve mekansal risk haritasi olusturulacaktir.
+            Mobil uygulamayi kullanarak saha taramasi baslatin. Kamera ile y?r?yerek cektiginiz veriler buraya otomatik olarak aktarilacak ve mekansal risk haritasi olusturulacaktir.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 text-center">
@@ -245,15 +245,15 @@ export default function DigitalTwinPage() {
             </div>
             <div className="flex items-center text-muted-foreground">→</div>
             <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 text-center">
-              <p className="text-xs font-medium text-muted-foreground">Adim 2</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">Saha Taramasi</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Kamera ile yuru</p>
+              <p className="text-xs font-medium text-muted-foreground">Ad?m 2</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">Saha Taramas?</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Kamera ile y?r?</p>
             </div>
             <div className="flex items-center text-muted-foreground">→</div>
             <div className="rounded-xl border border-border bg-secondary/30 px-4 py-3 text-center">
-              <p className="text-xs font-medium text-muted-foreground">Adim 3</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">Gorsellestirme</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Burada goruntule</p>
+              <p className="text-xs font-medium text-muted-foreground">Ad?m 3</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">G?rselle?tirme</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Burada g?r?nt?le</p>
             </div>
           </div>
         </div>
@@ -264,7 +264,7 @@ export default function DigitalTwinPage() {
           <div className="space-y-5">
             {/* Sessions */}
             <div className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]">
-              <h3 className="text-sm font-semibold text-foreground">Tarama Oturumlari</h3>
+              <h3 className="text-sm font-semibold text-foreground">Tarama Oturumlar?</h3>
               <div className="mt-3 space-y-2 max-h-[400px] overflow-y-auto">
                 {sessions.map((s) => {
                   const isActive = selectedSession?.id === s.id;
