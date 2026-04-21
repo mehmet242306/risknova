@@ -246,7 +246,17 @@
       "Bash(npx.cmd tsc *)",
       "Bash(npm.cmd install *)",
       "Bash(node -e \"const t=require\\('./messages/tr.json'\\); const e=require\\('./messages/en.json'\\); console.log\\('TR nav.dashboard:', t.nav.dashboard\\); console.log\\('EN nav.dashboard:', e.nav.dashboard\\); console.log\\('TR valid:', !!t.common && !!t.profile\\); console.log\\('EN valid:', !!e.common && !!e.profile\\);\")",
-      "Bash(node -e \"const t=require\\('./messages/tr.json'\\); const e=require\\('./messages/en.json'\\); console.log\\('TR:', Object.keys\\(t.ohsFile || {}\\).length, 'EN:', Object.keys\\(e.ohsFile || {}\\).length\\);\")"
+      "Bash(node -e \"const t=require\\('./messages/tr.json'\\); const e=require\\('./messages/en.json'\\); console.log\\('TR:', Object.keys\\(t.ohsFile || {}\\).length, 'EN:', Object.keys\\(e.ohsFile || {}\\).length\\);\")",
+      "Bash(xargs -I {} bash -c 'echo \"=== {} ===\" && ls -la {}')",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(find frontend/src -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) -exec grep -l \"workspace\" {} \\\\;)",
+      "Bash(grep -E \"^package\\\\.json$\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git reset *)",
+      "mcp__e2ec7b36-e883-4bf6-ac80-e1475d1e5e59__list_migrations",
+      "mcp__e2ec7b36-e883-4bf6-ac80-e1475d1e5e59__list_branches",
+      "mcp__e2ec7b36-e883-4bf6-ac80-e1475d1e5e59__get_advisors"
     ]
   }
 }

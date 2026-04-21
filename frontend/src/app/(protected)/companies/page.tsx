@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { CompaniesListClient } from "./CompaniesListClient";
+import { WorkspaceOnboardingClient } from "../workspace/onboarding/WorkspaceOnboardingClient";
 import { createClient } from "@/lib/supabase/server";
 import {
   getAccountContextForUser,
@@ -19,5 +19,5 @@ export default async function Page() {
     }
   }
 
-  return <CompaniesListClient />;
+  return <WorkspaceOnboardingClient />;
 }

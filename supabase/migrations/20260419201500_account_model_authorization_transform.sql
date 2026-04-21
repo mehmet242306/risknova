@@ -346,9 +346,64 @@ where o.current_plan_id is not null
        and s.status in ('active', 'trialing')
   );
 
-alter table public.organizations
-  add constraint organizations_current_plan_id_fkey
-  foreign key (current_plan_id) references public.plans(id);
+do $$
+begin
+  if not exists (
+    select 1
+      from pg_constraint
+     where conname = 'organizations_current_plan_id_fkey'
+       and conrelid = 'public.organizations'::regclass
+  ) then
+    alter table public.organizations
+      add constraint organizations_current_plan_id_fkey
+      foreign key (current_plan_id) references public.plans(id);
+  end if;
+end $$;
+
+-- NOTE: company_workspaces.status must exist before functions that reference
+-- cw.status are created, because PostgreSQL validates `language sql` function
+-- bodies at CREATE time. This block was originally located after the function
+-- definitions, which caused a "column cw.status does not exist" error on
+-- fresh databases. The lower duplicate has been removed.
+alter table public.company_workspaces
+  add column if not exists status text,
+  add column if not exists archived_at timestamptz,
+  add column if not exists archived_by_user_id uuid references auth.users(id) on delete set null,
+  add column if not exists created_by_user_id uuid references auth.users(id) on delete set null;
+
+update public.company_workspaces
+   set status = case when coalesce(is_archived, false) then 'archived' else 'active' end
+ where status is null;
+
+update public.company_workspaces
+   set archived_at = now()
+ where archived_at is null
+   and coalesce(is_archived, false) = true;
+
+update public.company_workspaces
+   set created_by_user_id = created_by
+ where created_by_user_id is null
+   and created_by is not null;
+
+alter table public.company_workspaces
+  alter column status set default 'active';
+
+do $$
+begin
+  if not exists (
+    select 1
+      from pg_constraint
+     where conname = 'company_workspaces_status_check'
+       and conrelid = 'public.company_workspaces'::regclass
+  ) then
+    alter table public.company_workspaces
+      add constraint company_workspaces_status_check
+      check (status in ('active', 'archived'));
+  end if;
+end $$;
+
+create index if not exists idx_company_workspaces_status
+  on public.company_workspaces(organization_id, status);
 
 create or replace function public.current_plan_limits(p_organization_id uuid)
 returns table (
@@ -695,46 +750,6 @@ begin
      and is_archived = true;
 end;
 $$;
-
-alter table public.company_workspaces
-  add column if not exists status text,
-  add column if not exists archived_at timestamptz,
-  add column if not exists archived_by_user_id uuid references auth.users(id) on delete set null,
-  add column if not exists created_by_user_id uuid references auth.users(id) on delete set null;
-
-update public.company_workspaces
-   set status = case when coalesce(is_archived, false) then 'archived' else 'active' end
- where status is null;
-
-update public.company_workspaces
-   set archived_at = now()
- where archived_at is null
-   and coalesce(is_archived, false) = true;
-
-update public.company_workspaces
-   set created_by_user_id = created_by
- where created_by_user_id is null
-   and created_by is not null;
-
-alter table public.company_workspaces
-  alter column status set default 'active';
-
-do $$
-begin
-  if not exists (
-    select 1
-      from pg_constraint
-     where conname = 'company_workspaces_status_check'
-       and conrelid = 'public.company_workspaces'::regclass
-  ) then
-    alter table public.company_workspaces
-      add constraint company_workspaces_status_check
-      check (status in ('active', 'archived'));
-  end if;
-end $$;
-
-create index if not exists idx_company_workspaces_status
-  on public.company_workspaces(organization_id, status);
 
 create table if not exists public.workspace_assignments (
   id uuid primary key default gen_random_uuid(),

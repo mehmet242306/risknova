@@ -617,11 +617,6 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
 
             {/* Right: Actions — absolute so it doesn't affect nav centering */}
             <div className="flex items-center justify-end gap-1 justify-self-end sm:gap-1.5">
-              {showWorkspaceSwitcher ? (
-                <div className="md:hidden">
-                  <WorkspaceSwitcher />
-                </div>
-              ) : null}
               <LanguageSelector variant="dark" />
               {showNotificationBell ? <NotificationBell /> : null}
               <ThemeToggle />
@@ -660,9 +655,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
         {/* Gold ayraç — 1 ile 2 arası (üst üste, boşluksuz) */}
         <div className="hidden md:block relative z-0" style={{ background: "var(--secondary-nav-bg-solid)", borderBottom: "1px solid var(--secondary-nav-border)" }}>
           <div className="mx-auto grid h-12 w-full max-w-[1480px] grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)] items-center gap-3 px-4 sm:px-6 xl:grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] xl:gap-4 xl:px-8 2xl:px-10">
-            <div className="flex items-center justify-start">
-              {showWorkspaceSwitcher ? <WorkspaceSwitcher /> : null}
-            </div>
+            <div />
             <div className="min-w-0 justify-self-center overflow-x-auto">
               <div className="flex items-center justify-center gap-1">
                 {baseSecondaryNav.map((item) => {
@@ -701,7 +694,9 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                 })}
               </div>
             </div>
-            <div />
+            <div className="flex items-center justify-end">
+              {showWorkspaceSwitcher ? <WorkspaceSwitcher /> : null}
+            </div>
           </div>
         </div>
       </div>

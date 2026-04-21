@@ -1,0 +1,210 @@
+RISKNOVA PLATFORM — OTURUM RAPORU
+==================================
+Tarih     : 2026-04-21
+Branch    : main
+Supabase  : getrisknova (xbnvedbagfmkrvicvoam, eu-west-1)
+Başlangıç : e47158d "Ship Nova agent workflow and workspace platform upgrades"
+
+
+1. BAŞLANGIÇ DURUMU
+-------------------
+Repo açılışta:
+- 62 modified dosya
+- 40+ untracked dosya/dizin (osgb, platform-admin, enterprise, account, ...)
+- 3 untracked migration (20260419180000, 20260419201500, 20260419213000)
+- Toplam yaklaşık 4884 ekleme / 856 silme beklemede
+- Kullanıcı isteği: sistem kontrolü + ne yapacağımıza karar
+
+
+2. SİSTEM KONTROL BULGULARI
+---------------------------
+Auth / Workspace akışı                -> SAĞLAM
+  - Login, OAuth callback, email confirm çalışıyor
+  - Rate limiting, lockout, audit log mevcut
+  - Protected shell guard /login redirect yapıyor
+  - Workspace onboarding graceful fallback var (local_fallback)
+  - TODO/FIXME/@ts-ignore yok
+
+Backend / Supabase                    -> 2 küçük açık
+  - Supabase client'ları (server + browser) sağlam
+  - backend/.env gitignore doğru, commit edilmemiş
+  - backend/main.py:68 health endpoint stub (DB ping yok)
+  - admin-observability/error-log POST auth + rate limit yok
+
+Veritabanı / Migrasyon / RLS          -> 1 kritik açık bulundu
+  - 137 migration dosyası, kronolojik, yarım iş yok
+  - Çekirdek tablolar (organizations, user_profiles, roles,
+    audit_logs, company_identities, vs.) RLS enabled + org-scoped
+  - KRİTİK: slide_deck_sessions_update politikası "using (true)"
+    Authenticated herkes başka org'un session kayıtlarını
+    güncelleyebilirdi (Supabase Advisor da bağımsız olarak flagliyor)
+
+
+3. YAPILAN COMMIT'LER (main'de, push YAPILMADI)
+-----------------------------------------------
+Commit a46d65f  — Fix slide_deck_sessions RLS: scope update policy to viewer or deck org
+  1 dosya, +24 satır
+  Yeni migration: 20260421100000_fix_slide_deck_sessions_update_rls.sql
+
+Commit 06cf5f9  — Add nova governance, account authorization, workspace role migrations
+  3 dosya, +1608 satır
+    20260419180000 nova_governance_eval_and_rollouts
+    20260419201500 account_model_authorization_transform (41 KB)
+    20260419213000 workspace_assignment_role_normalization
+
+Commit 37912aa  — Add OSGB, platform-admin, enterprise surfaces and account model integration
+  111 dosya, +18190 / -855 satır
+  - OSGB portali: firms, personnel, assignments, tasks, contracts,
+    announcements, documents
+  - Platform-admin: demo-builder konsolu
+  - Enterprise sayfası
+  - Account context + onboarding API, routing lib
+  - Nova governance/benchmarks/usage-analytics lib'leri
+  - Self-healing nova-outbox, documents CRUD API
+  - DemoSessionGuard, mail şablonları, workspace proxy package.json
+  - Auth actions, protected-shell, mailer, Supabase wrapper'larında
+    yeni yüzeyleri destekleyen düzenlemeler
+
+Bilinerek dışarıda bırakıldı:
+  .claude/settings.local.json (yerel geliştirici ayarı)
+
+
+4. PROD SUPABASE DRIFT TESPİTİ
+------------------------------
+Prod'da uygulanmış son migration: 20260419063445_incident_ai_corrective_actions
+Sonraki 13 migration UYGULANMAMIŞ:
+
+  Eski commit'lerden (9 adet):
+    20260419110000 mevzuat_versioned_retrieval_and_trace
+    20260419120000 workspace_system
+    20260419120100 seed_certifications
+    20260419120200 workspace_backfill
+    20260419123000 workspace_scope_solution_center
+    20260419130000 legal_corpus_scoping
+    20260419130000 ohs_archive_jobs
+    20260419130100 ohs_archive_scope_presets
+    20260419143000 nova_outbox_and_dlq
+
+  Bu oturumda commit edilen (3 adet):
+    20260419180000 nova_governance_eval_and_rollouts
+    20260419201500 account_model_authorization_transform
+    20260419213000 workspace_assignment_role_normalization
+
+  Bu oturumda yazılan (1 adet):
+    20260421100000 fix_slide_deck_sessions_update_rls
+
+Gerçek şema doğrulandı: organization_memberships, platform_admins,
+plans, nova_outbox tablolarının hiçbiri prod'da yok — drift gerçek.
+
+Vercel main branch auto-deploy ediyor. Sonuç:
+Push edersek yeni OSGB/platform-admin/account kodu prod'da 500
+atar çünkü beklediği tablolar yok. Eski kod etkilenmez.
+
+
+5. BUGÜN UYGULANAN (Strateji B)
+-------------------------------
+Karar: Sadece RLS fix'i prod'a uygulandı; diğer 12 migration'a
+dokunulmadı; push YAPILMADI.
+
+Gerekçe:
+  - 41 KB'lık account_model_authorization_transform saatler sürecek
+    gözden geçirme gerektirir (backfill logic, veri bağımlılığı)
+  - 9 eski migration da henüz satır satır okunmadı
+  - Supabase Pro branch/preview yok, direkt prod riski var
+  - Supabase Advisor RLS fix hedefini zaten flaglemiş —
+    güvenli bir kazanım olarak kapatıldı
+
+İşlem: apply_migration ile fix_slide_deck_sessions_update_rls
+       prod'a uygulandı.
+
+Doğrulama:
+  [OK] Policy güncellendi (pg_policies sorgusu):
+       qual:       ((viewer_id = auth.uid()) OR (EXISTS
+                    (SELECT 1 FROM slide_decks d
+                     WHERE d.id = slide_deck_sessions.deck_id
+                       AND d.organization_id = current_user_org_id())))
+       with_check: (aynısı)
+  [OK] Advisor uyarı listesinden slide_deck_sessions_update kalktı
+       (slide_deck_sessions_insert hâlâ var — public viewing için kasıtlı)
+  [OK] Ledger'a düştü: 20260421195955 fix_slide_deck_sessions_update_rls
+
+NOT: Prod ledger timestamp'i 20260421195955, git dosyası
+     20260421100000. MCP apply-time damga bastığı için fark var.
+     Migration adı aynı olduğu için çifte uygulanmaz, kozmetik fark.
+     Sonraki seansa ertelendi (opsiyonel rename).
+
+
+6. OTURUM SONU DURUMU
+---------------------
+Git (local):
+  main dalı = e47158d  ->  a46d65f  ->  06cf5f9  ->  37912aa
+  Working tree temiz (sadece .claude/settings.local.json unstaged)
+  Push henüz yok.
+
+Prod Supabase:
+  - slide_deck_sessions UPDATE RLS sıkılaştırıldı
+  - Diğer 12 migration HÂLÂ uygulanmamış
+  - Push güvenli değil (yeni kod eksik tablolara başvuruyor)
+
+Canlı site:
+  - Hâlâ e47158d seviyesinde çalışıyor
+  - Yeni risk alınmadı, oturumda prod bozulmadı
+
+
+7. SONRAKİ SEANSLAR İÇİN BEKLEYEN İŞLER
+---------------------------------------
+[YÜKSEK] 12 migration'ı sırayla prod'a uygula, sonra push
+  1) Önce 9 eski migration'ı oku (ne yaptıklarını netleştir)
+  2) 20260419201500 (41 KB) için ayrı dikkat: backfill davranışı
+     prod veri üzerinde doğrulanmalı
+  3) Her apply_migration sonrası Supabase Advisor check
+  4) Hepsi bittiğinde git push origin main
+
+[ORTA] error-log POST rotasına rate limit ekle
+  frontend/src/app/api/admin-observability/error-log/route.ts
+  Auth gereksiz (client error reporter) ama abuse'a açık
+
+[ORTA] backend /health endpoint'ine DB ping ekle
+  backend/main.py:68
+
+[ORTA] organization_memberships vs user_roles sync
+  20260419201500 içinde backfill var, uygulandıktan sonra
+  çift kayıt olup olmadığı doğrulanmalı
+
+[DÜŞÜK] Supabase Advisor'ın diğer bulguları (scope dışında tutuldu):
+  - scan_session_stats view SECURITY DEFINER (ERROR seviyesi)
+  - ~18 tablo "using/with check (true)" policy'li:
+    ai_qa_learning, certificate_templates, certificates,
+    surveys, survey_questions, survey_tokens, survey_responses,
+    company_committee_meetings, company_periodic_controls,
+    company_training_attendees, company_trainings,
+    slide_view_events (INSERT), ...
+  - 6 public bucket broad listing izni
+    (avatars, company-logos, documents, scan-images,
+     slide-media, voice-notes)
+  - 20+ fonksiyonda search_path mutable
+  - Auth leaked password protection kapalı
+
+[DÜŞÜK] permissions / role_permissions SELECT "using (true)"
+  kasıtlı mı, değilse org-scope eklenmeli
+
+
+8. İLGİLİ DOSYA/SATIR REFERANSLARI
+----------------------------------
+Yeni migration:
+  supabase/migrations/20260421100000_fix_slide_deck_sessions_update_rls.sql
+
+Etkilenen kod (güncelledik değil, sadece RLS ile uyumlu çalışıyor):
+  frontend/src/app/(protected)/training/slides/[id]/present/PresenterClient.tsx:110
+
+Commit SHA'ları:
+  a46d65f  RLS fix
+  06cf5f9  3 migration bundle
+  37912aa  OSGB + platform-admin + enterprise + account + misc
+
+
+SON
+---
+Net kazanç bugün: 1 gerçek güvenlik açığı kapandı (advisor onaylı),
+büyük iş yığını 3 mantıksal commit'e ayrılıp local'de güvende.
+Push ve 12 migration'ın uygulanması kontrollü bir sonraki seansa ertelendi.
