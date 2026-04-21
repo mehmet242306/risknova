@@ -9,6 +9,7 @@ import {
   novaActionCancelSchema,
   resolveNovaExecutionContext,
 } from "@/lib/nova/action-endpoint";
+import { assertNovaFeatureEnabled } from "@/lib/nova/governance";
 
 export async function POST(
   request: NextRequest,
@@ -38,6 +39,14 @@ export async function POST(
     if (!actionRun) {
       return NextResponse.json({ message: "Nova aksiyonu bulunamadi." }, { status: 404 });
     }
+
+    const confirmationGuard = await assertNovaFeatureEnabled({
+      featureKey: "nova.agent.confirmations",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      fallbackMessage: "Nova onay iptal akisi bu tenant icin su anda kapali.",
+    });
+    if (confirmationGuard) return confirmationGuard;
 
     if (actionRun.status === "cancelled" || actionRun.status === "failed") {
       return NextResponse.json(buildReplayResponse(actionRun), { status: 200 });

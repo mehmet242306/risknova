@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/supabase/api-auth";
 import { createServiceClient, logSecurityEventWithContext, parseJsonBody } from "@/lib/security/server";
+import { locales, type Locale } from "@/i18n/routing";
 
 const COUNTRY_CONFIG = {
   TR: {
@@ -62,6 +63,22 @@ const roleLabels: Record<(typeof ROLE_OPTIONS)[number], string> = {
   viewer: "Görüntüleyici",
 };
 
+const LANGUAGE_LABELS: Record<Locale, string> = {
+  tr: "Türkçe",
+  en: "English",
+  ar: "العربية",
+  ru: "Русский",
+  de: "Deutsch",
+  fr: "Français",
+  es: "Español",
+  zh: "中文",
+  ja: "日本語",
+  ko: "한국어",
+  hi: "हिन्दी",
+  az: "Azərbaycanca",
+  id: "Bahasa Indonesia",
+};
+
 const fallbackCertifications = [
   {
     id: "fallback-tr-isg-a",
@@ -118,6 +135,7 @@ const fallbackCertifications = [
 const onboardingSchema = z.object({
   countryCode: z.string().regex(/^[A-Z]{2}$/),
   roleKey: z.enum(ROLE_OPTIONS),
+  defaultLanguage: z.enum(locales),
   certificationId: z.string().trim().min(1).nullable().optional(),
   workspaceName: z.string().trim().min(3).max(120).optional(),
   makePrimary: z.boolean().optional().default(true),
@@ -236,6 +254,9 @@ async function loadProfileForOnboarding(
       `
       id,
       full_name,
+      email,
+      title,
+      phone,
       active_workspace_id,
       organization:organizations!user_profiles_organization_id_fkey (
         id,
@@ -264,6 +285,9 @@ async function loadProfileForOnboarding(
       `
       id,
       full_name,
+      email,
+      title,
+      phone,
       organization:organizations!user_profiles_organization_id_fkey (
         id,
         name,
@@ -419,6 +443,9 @@ export async function GET(request: NextRequest) {
   let profile: {
     id?: string | null;
     full_name?: string | null;
+    email?: string | null;
+    title?: string | null;
+    phone?: string | null;
     organization?:
       | { id: string; name: string; country_code: string | null }
       | { id: string; name: string; country_code: string | null }[]
@@ -453,6 +480,9 @@ export async function GET(request: NextRequest) {
     profile: {
       id: profile?.id ?? auth.userProfileId,
       fullName: profile?.full_name ?? null,
+      email: profile?.email ?? null,
+      title: profile?.title ?? null,
+      phone: profile?.phone ?? null,
       activeWorkspaceId,
     },
     organization: {
@@ -471,6 +501,10 @@ export async function GET(request: NextRequest) {
     roleOptions: ROLE_OPTIONS.map((value) => ({
       value,
       label: roleLabels[value],
+    })),
+    languageOptions: locales.map((value) => ({
+      value,
+      label: LANGUAGE_LABELS[value],
     })),
     certifications: certifications.map((item) => ({
       id: item.id,
@@ -577,12 +611,13 @@ export async function POST(request: NextRequest) {
   }
 
   const countryConfig = getCountryConfig(parsed.data.countryCode);
+  const selectedLanguage = parsed.data.defaultLanguage;
   const desiredWorkspaceName =
     parsed.data.workspaceName?.trim() ||
     buildSuggestedWorkspaceName(organization.name, parsed.data.countryCode);
 
   try {
-    await persistUserPreferenceLanguage(supabase, auth.userId, countryConfig.defaultLanguage);
+    await persistUserPreferenceLanguage(supabase, auth.userId, selectedLanguage);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Kullanici tercihleri kaydedilemedi." },
@@ -609,7 +644,7 @@ export async function POST(request: NextRequest) {
         id: `local-${parsed.data.countryCode}`,
         name: desiredWorkspaceName,
         countryCode: parsed.data.countryCode,
-        defaultLanguage: countryConfig.defaultLanguage,
+        defaultLanguage: selectedLanguage,
         timezone: countryConfig.timezone,
       },
     });
@@ -628,7 +663,7 @@ export async function POST(request: NextRequest) {
         organization_id: organization.id,
         country_code: parsed.data.countryCode,
         name: desiredWorkspaceName,
-        default_language: countryConfig.defaultLanguage,
+        default_language: selectedLanguage,
         timezone: countryConfig.timezone,
       })
       .select("id, organization_id, country_code, name, default_language, timezone, is_active, created_at, updated_at")
@@ -645,7 +680,7 @@ export async function POST(request: NextRequest) {
             id: `local-${parsed.data.countryCode}`,
             name: desiredWorkspaceName,
             countryCode: parsed.data.countryCode,
-            defaultLanguage: countryConfig.defaultLanguage,
+            defaultLanguage: selectedLanguage,
             timezone: countryConfig.timezone,
           },
         });
@@ -654,6 +689,30 @@ export async function POST(request: NextRequest) {
     }
 
     workspace = insertedWorkspace;
+  }
+
+  if (
+    workspace &&
+    (workspace.name !== desiredWorkspaceName ||
+      workspace.default_language !== selectedLanguage ||
+      workspace.timezone !== countryConfig.timezone)
+  ) {
+    const { data: updatedWorkspace, error: workspaceUpdateError } = await supabase
+      .from("nova_workspaces")
+      .update({
+        name: desiredWorkspaceName,
+        default_language: selectedLanguage,
+        timezone: countryConfig.timezone,
+      })
+      .eq("id", workspace.id)
+      .select("id, organization_id, country_code, name, default_language, timezone, is_active, created_at, updated_at")
+      .single();
+
+    if (workspaceUpdateError) {
+      return NextResponse.json({ error: workspaceUpdateError.message }, { status: 500 });
+    }
+
+    workspace = updatedWorkspace;
   }
 
   if (parsed.data.makePrimary) {
@@ -673,7 +732,7 @@ export async function POST(request: NextRequest) {
             id: `local-${parsed.data.countryCode}`,
             name: desiredWorkspaceName,
             countryCode: parsed.data.countryCode,
-            defaultLanguage: countryConfig.defaultLanguage,
+            defaultLanguage: selectedLanguage,
             timezone: countryConfig.timezone,
           },
         });
@@ -700,7 +759,7 @@ export async function POST(request: NextRequest) {
           id: `local-${parsed.data.countryCode}`,
           name: desiredWorkspaceName,
           countryCode: parsed.data.countryCode,
-          defaultLanguage: countryConfig.defaultLanguage,
+          defaultLanguage: selectedLanguage,
           timezone: countryConfig.timezone,
         },
       });
@@ -729,7 +788,7 @@ export async function POST(request: NextRequest) {
             id: `local-${parsed.data.countryCode}`,
             name: desiredWorkspaceName,
             countryCode: parsed.data.countryCode,
-            defaultLanguage: countryConfig.defaultLanguage,
+            defaultLanguage: selectedLanguage,
             timezone: countryConfig.timezone,
           },
         });
@@ -758,7 +817,7 @@ export async function POST(request: NextRequest) {
             id: `local-${parsed.data.countryCode}`,
             name: desiredWorkspaceName,
             countryCode: parsed.data.countryCode,
-            defaultLanguage: countryConfig.defaultLanguage,
+            defaultLanguage: selectedLanguage,
             timezone: countryConfig.timezone,
           },
         });

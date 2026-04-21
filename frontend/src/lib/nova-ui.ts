@@ -319,6 +319,18 @@ async function readNovaRuntimeErrorContext(error?: unknown): Promise<NovaRuntime
 export async function resolveNovaRuntimeErrorMessage(locale?: string | null, error?: unknown): Promise<string> {
   const context = await readNovaRuntimeErrorContext(error);
   const fallback = getNovaRuntimeErrorMessage(locale, error);
+  const language = getNovaUiLanguage(locale);
+  const rawMessage = String(context?.message || "").toLowerCase();
+
+  if (
+    rawMessage.includes("err_auth_006") ||
+    rawMessage.includes("gerekli yetki") ||
+    rawMessage.includes("required permission")
+  ) {
+    return language === "tr"
+      ? "Nova bu ekranda yalnizca yetkili oldugunuz firma ve calisma alanlari icin yardim sunabilir. Ilgili firmayi acin veya OSGB yoneticinizden erisim isteyin."
+      : "Nova can only help with companies and workspaces you are authorized to access on this screen. Open the relevant company or ask your OSGB admin for access.";
+  }
 
   if (!context?.message) {
     return fallback;

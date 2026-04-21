@@ -22,7 +22,7 @@ import type { LucideIcon } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   fetchDocument, createDocument, updateDocument,
-  createVersion, fetchVersions, fetchSignatures,
+  fetchVersions, fetchSignatures,
   type DocumentRecord, type DocumentVersionRecord, type DocumentSignatureRecord,
 } from '@/lib/supabase/document-api';
 import { getTemplate } from '@/lib/document-templates-p1';
@@ -44,6 +44,37 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: Lucide
   revizyon: { label: 'Revizyon', color: 'text-orange-600 bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400', icon: AlertCircle },
 };
 
+function normalizeDocumentLookup(value: string) {
+  return value
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function resolveTemplateIdFromQuery(groupKey: string, title: string) {
+  if (!groupKey || !title) return '';
+
+  const group = getGroupByKey(groupKey);
+  if (!group) return '';
+
+  const normalizedTitle = normalizeDocumentLookup(title);
+  const matchedItem = group.items.find((item) => {
+    const itemTitle = normalizeDocumentLookup(item.title);
+    const itemId = normalizeDocumentLookup(item.id);
+
+    return (
+      itemTitle === normalizedTitle ||
+      itemId === normalizedTitle ||
+      itemTitle.includes(normalizedTitle) ||
+      normalizedTitle.includes(itemTitle)
+    );
+  });
+
+  return matchedItem?.id || '';
+}
+
 interface Props {
   paramsPromise?: Promise<{ id: string }>;
 }
@@ -62,6 +93,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const qDownload = searchParams.get('download') || '';
   const fromLibrary = searchParams.get('library') === '1';
   const librarySection = searchParams.get('librarySection') || 'documentation';
+  const resolvedTemplateId = qTemplateId || resolveTemplateIdFromQuery(qGroup, qTitle);
 
   // State
   const [doc, setDoc] = useState<DocumentRecord | null>(null);
@@ -89,6 +121,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const [signatures, setSignatures] = useState<DocumentSignatureRecord[]>([]);
   const [userName, setUserName] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Word/char count
   const [wordCount, setWordCount] = useState(0);
@@ -247,8 +280,8 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
           const json = markdownToTipTapJSON(importedMarkdown);
           setInitialContent(json);
         }
-      } else if (qTemplateId) {
-        const template = await getTemplate(qTemplateId);
+      } else if (resolvedTemplateId) {
+        const template = await getTemplate(resolvedTemplateId);
         if (template) {
           setInitialContent(template.content);
           setTitle(template.title);
@@ -260,7 +293,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
     }
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [documentId, qTemplateId]);
+  }, [documentId, resolvedTemplateId]);
 
   // Auto-save
   const handleAutoSave = useCallback(async (contentJson: JSONContent) => {
@@ -273,8 +306,10 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
         status,
       });
       setLastSavedAt(new Date());
+      setSaveError(null);
     } catch (err) {
       console.error('Auto-save error:', err);
+      setSaveError(err instanceof Error ? err.message : 'Otomatik kayit tamamlanamadi.');
     } finally {
       setSaving(false);
     }
@@ -284,6 +319,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const handleSave = useCallback(async () => {
     if (!orgId || !editor) return;
     setSaving(true);
+    setSaveError(null);
     const content = editor.getJSON();
 
     try {
@@ -297,7 +333,6 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
         });
         if (updated) {
           setDoc(updated);
-          await createVersion(doc.id, nextVersion, content as Record<string, unknown>, userId);
         }
       } else {
         const isPrivateCustomDocument = qMode === "custom";
@@ -334,6 +369,9 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       console.error('Save error:', err);
+      setSaveError(
+        err instanceof Error ? err.message : 'Dokuman kaydi sirasinda beklenmeyen bir hata olustu.',
+      );
     } finally {
       setSaving(false);
     }
@@ -589,6 +627,12 @@ ${content}
       {editor && <EditorToolbar editor={editor} />}
 
       {/* ── Main Area ── */}
+      {saveError ? (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+          {saveError}
+        </div>
+      ) : null}
+
       <div className="flex flex-1 min-h-0">
         {/* Canvas — scrollable gray bg with A4 page */}
         <div className="flex-1 overflow-y-auto editor-canvas">

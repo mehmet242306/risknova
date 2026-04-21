@@ -31,6 +31,7 @@ export default getRequestConfig(async () => {
   const locale = await readLocaleFromRequest();
   return {
     locale,
+    timeZone: "Europe/Istanbul",
     messages: await loadMessages(locale),
   };
 });

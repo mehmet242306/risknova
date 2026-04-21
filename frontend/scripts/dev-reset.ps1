@@ -3,6 +3,21 @@ $lockPath = Join-Path $projectRoot ".next\dev\lock"
 
 Write-Host "RiskNova frontend dev reset basliyor..." -ForegroundColor Cyan
 
+function Stop-NodeProcessesOnDevPorts {
+  $candidatePorts = 3000..3005
+  $portOwners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+    Where-Object { $candidatePorts -contains $_.LocalPort } |
+    Select-Object -ExpandProperty OwningProcess -Unique
+
+  foreach ($pid in $portOwners) {
+    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    if ($proc -and $proc.ProcessName -eq "node") {
+      Write-Host ("Port tabanli temizlik: PID {0} kapatiliyor" -f $pid) -ForegroundColor Yellow
+      Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
 try {
   $escapedRoot = [Regex]::Escape($projectRoot)
   $nextProcesses = Get-CimInstance Win32_Process -ErrorAction Stop |
@@ -17,7 +32,8 @@ try {
     Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
   }
 } catch {
-  Write-Host "Surec taramasi yapilamadi, lock temizligi ile devam ediliyor." -ForegroundColor DarkYellow
+  Write-Host "Surec taramasi yapilamadi, port tabanli temizlik deneniyor." -ForegroundColor DarkYellow
+  Stop-NodeProcessesOnDevPorts
 }
 
 Start-Sleep -Milliseconds 500

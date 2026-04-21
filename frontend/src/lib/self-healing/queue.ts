@@ -4,6 +4,7 @@ import {
   loadNovaActionRunForExecution,
   resolveNovaExecutionContext,
 } from "@/lib/nova/action-endpoint";
+import { recordNovaOutboxEvent } from "@/lib/nova/governance";
 import { createServiceClient } from "@/lib/security/server";
 import { runSnapshotBackup } from "@/lib/self-healing/backup";
 import { runSelfHealingHealthChecks } from "@/lib/self-healing/health";
@@ -253,6 +254,17 @@ async function processNovaActionExecution(task: TaskQueueRow) {
     completed_at: new Date().toISOString(),
     last_error: null,
   });
+  await recordNovaOutboxEvent({
+    actionRunId,
+    taskQueueId: task.id,
+    actorUserId: task.created_by,
+    eventType: "worker_succeeded",
+    message: "Nova queue worker aksiyonu basariyla tamamladi.",
+    metadata: {
+      task_type: task.task_type,
+      retry_count: task.retry_count,
+    },
+  }).catch(() => undefined);
 
   await completeTask(task.id, {
     actionRunId,
@@ -347,6 +359,23 @@ export async function processSelfHealingQueue(options?: {
         completed_at: isDeadLetter ? new Date().toISOString() : null,
         last_attempt_at: new Date().toISOString(),
       });
+      if (task.task_type === "nova.action.execute") {
+        const actionRunId = String(task.payload?.action_run_id ?? "").trim();
+        if (actionRunId) {
+          await recordNovaOutboxEvent({
+            actionRunId,
+            taskQueueId: task.id,
+            actorUserId: task.created_by,
+            eventType: isDeadLetter ? "worker_dead_letter" : "worker_failed",
+            message,
+            metadata: {
+              task_type: task.task_type,
+              retry_count: task.retry_count + 1,
+              max_retries: task.max_retries,
+            },
+          }).catch(() => undefined);
+        }
+      }
       await failTask(task.id, message, 60 * (task.retry_count + 1));
       results.push({
         taskId: task.id,

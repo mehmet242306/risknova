@@ -1,9 +1,55 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
 import { signup } from "./actions";
+
+function AccountTypePreview() {
+  const items = [
+    {
+      title: "Bireysel",
+      description:
+        "Bagimsiz calisan uzman, hekim, DSP veya bireysel profesyoneller icin.",
+      note: "Varsayilan baslangic plani: 1 aktif firma / workspace.",
+    },
+    {
+      title: "OSGB",
+      description:
+        "OSGB firmalari, ekip yonetimi, personel gorevlendirme ve is takibi icin.",
+      note: "Firma ve personel limitleri pakete gore yonetilir.",
+    },
+    {
+      title: "Kurumsal",
+      description:
+        "Cok lokasyonlu ve ozel ihtiyacli kurumlar icin enterprise akis.",
+      note: "Self-service degil; iletisim talebi ile ilerler.",
+    },
+  ];
+
+  return (
+    <div className="rounded-3xl border border-border/70 bg-muted/20 p-4">
+      <div className="mb-3 text-sm font-semibold text-foreground">
+        Kayit sonrasi hesap secimi
+      </div>
+      <div className="grid gap-3">
+        {items.map((item) => (
+          <div key={item.title} className="rounded-2xl border border-border bg-card p-4">
+            <div className="text-sm font-semibold text-foreground">{item.title}</div>
+            <div className="mt-1 text-sm leading-6 text-muted-foreground">
+              {item.description}
+            </div>
+            <div className="mt-2 text-xs font-medium text-primary">{item.note}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs leading-6 text-muted-foreground">
+        Platform Admin public kayit secenegi degildir. Admin kullanicilar giris
+        yaptiginda otomatik olarak platform yonetim paneline yonlendirilir.
+      </p>
+    </div>
+  );
+}
 
 export default async function RegisterPage({
   searchParams,
@@ -17,16 +63,45 @@ export default async function RegisterPage({
   return (
     <AuthShell
       eyebrow="Yeni hesap"
-      title="RiskNova hesabını oluştur"
-      description="Kuruluşunu, çalışma alanını ve risk yönetimi süreçlerini profesyonel bir panel içinde toplamaya başla."
+      title="RiskNova hesabini olustur"
+      description="Kaydini tamamla, sonra sadece Bireysel, OSGB veya Kurumsal akislardan birini secerek devam et."
+      highlights={[
+        {
+          title: "Sade urun modeli",
+          description:
+            "Musteri tarafinda yalnizca Bireysel, OSGB ve Kurumsal hesap akislarini gosteririz.",
+        },
+        {
+          title: "Uzmanlik ayri katman",
+          description:
+            "Is Guvenligi Uzmani, Isyeri Hekimi ve Diger Saglik Personeli gibi roller hesap tipinden ayridir.",
+        },
+        {
+          title: "Admin rolu ayri",
+          description:
+            "Platform Admin bir kayit secenegi degil, global ic yetkidir ve giriste onceliklidir.",
+        },
+      ]}
+      spotlight={
+        <div className="space-y-3 text-sm leading-7 text-white/92">
+          <p>
+            Kamu kurumu kullanicisi, bagimsiz uzman, hekim veya danisman olmak ayri
+            bir musteri hesap tipi dogurmaz.
+          </p>
+          <p>
+            Bu ayrimlar uzmanlik ve sertifika katmaninda tutulur. Ornegin ISG
+            uzmaninin A, B, C sinifi sertifika bilgisidir; hesap tipi degildir.
+          </p>
+        </div>
+      }
       footer={
         <p className="text-sm leading-7 text-muted-foreground">
-          Hesabın var mı?{" "}
+          Hesabin var mi?{" "}
           <Link
             href="/login"
             className="font-medium text-primary underline underline-offset-4"
           >
-            Giriş yap
+            Giris yap
           </Link>
         </p>
       }
@@ -39,9 +114,11 @@ export default async function RegisterPage({
 
       {checkEmail ? (
         <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
-          Kayıt işlemi başlatıldı. Gerekliyse e-posta kutunu kontrol et.
+          Kayit islemi baslatildi. Gerekliyse e-posta kutunu kontrol et.
         </div>
       ) : null}
+
+      <AccountTypePreview />
 
       <SocialLoginButtons mode="register" />
 
@@ -54,7 +131,7 @@ export default async function RegisterPage({
           autoComplete="email"
           label="E-posta"
           placeholder="ornek@kurum.com"
-          hint="Hesap doğrulama ve erişim işlemleri bu adres üzerinden yürütülür."
+          hint="Kayit sonrasi onboarding akisi ve erisim islemleri bu adres uzerinden yurur."
         />
 
         <Input
@@ -64,16 +141,15 @@ export default async function RegisterPage({
           required
           minLength={8}
           autoComplete="new-password"
-          label="Şifre"
+          label="Sifre"
           placeholder="En az 8 karakter"
-          hint="Daha güvenli bir erişim için güçlü bir şifre belirle."
+          hint="Guclu bir sifre belirle. Hesap tipi secimini kayit sonrasi yapacaksin."
         />
 
         <Button type="submit" formAction={signup} className="w-full" size="lg">
-          Kayıt Ol
+          Hesap Olustur
         </Button>
       </form>
     </AuthShell>
   );
 }
-

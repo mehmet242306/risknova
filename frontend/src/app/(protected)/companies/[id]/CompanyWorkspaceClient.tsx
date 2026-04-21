@@ -394,7 +394,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
             <div className="min-w-0 flex-1">
               <Link href="/companies" className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-secondary/40 px-3 py-1.5 text-xs font-semibold text-foreground shadow-sm transition-all hover:-translate-y-0.5 hover:bg-primary hover:text-primary-foreground hover:border-primary hover:shadow-md">
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-                Firmalar
+                İşyeri
               </Link>
               <h1 className="mt-0.5 text-lg font-semibold tracking-tight text-foreground sm:text-xl">{company.name}</h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -427,46 +427,153 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
         </div>
       </div>
 
-      {/* ── Sticky Tab Bar (Satır 3 — firma tabları) ── */}
-      <div
-        className="sticky top-[138px] z-30 -mx-4 bg-white px-4 dark:bg-[#0A0E18] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
-        style={{
-          borderTop: "2px solid var(--tab-bar-border-top)",
-          borderBottom: "2px solid var(--tab-bar-border-bottom)",
-        }}
-      >
-        <div className="overflow-x-auto">
-          <nav className="flex min-w-max justify-center gap-0.5 py-1">
-            {TABS.map((t) => {
-              const isActive = tab === t.k;
-              return (
-                <button
-                  key={t.k}
-                  type="button"
-                  onClick={() => setTab(t.k)}
-                  className="relative inline-flex items-center whitespace-nowrap rounded-xl px-4 py-2.5 text-base font-semibold transition-all duration-200"
-                  style={{
-                    color: isActive ? "var(--tab-bar-active)" : "var(--tab-bar-text)",
-                    background: isActive ? "var(--tab-bar-hover-bg)" : "transparent",
-                  }}
-                  onMouseEnter={(e) => { if (!isActive) { e.currentTarget.style.color = "var(--tab-bar-hover-text)"; e.currentTarget.style.background = "var(--tab-bar-hover-bg)"; } }}
-                  onMouseLeave={(e) => { if (!isActive) { e.currentTarget.style.color = "var(--tab-bar-text)"; e.currentTarget.style.background = "transparent"; } }}
-                >
-                  {t.l}
-                  {isActive && (
-                    <span className="absolute inset-x-2 bottom-0 h-[3px] rounded-full" style={{ background: "var(--tab-bar-active)" }} />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-      </div>
+      <div className="mt-5 grid gap-5 lg:grid-cols-[230px_minmax(0,1fr)] xl:grid-cols-[250px_minmax(0,1fr)]">
+        <aside className="min-w-0 lg:sticky lg:top-[152px] lg:self-start">
+          <div className="rounded-[1.6rem] border border-border/80 bg-card p-3 shadow-[var(--shadow-card)]">
+            <div className="px-2 pb-3 pt-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground">
+                İşyeri Bölümleri
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Sol menüden bir alan seç, içeriği sağ tarafta yönet.
+              </p>
+            </div>
 
-      {/* ── Content + Sidebar ── */}
-      <div className={`mt-5 ${tab === "overview" ? "grid gap-6 lg:grid-cols-[1fr_300px]" : ""}`}>
+            <nav className="flex flex-col gap-1.5">
+              {TABS.map((t, index) => {
+                const isActive = tab === t.k;
+                return (
+                  <button
+                    key={t.k}
+                    type="button"
+                    onClick={() => setTab(t.k)}
+                    className={`group flex w-full items-center gap-3 rounded-[1.1rem] border px-3 py-3 text-left transition-all duration-200 ${
+                      isActive
+                        ? "border-[var(--gold)]/40 bg-[var(--gold-glow)] text-[var(--gold-deep)] shadow-[0_10px_28px_rgba(184,134,11,0.15)]"
+                        : "border-transparent bg-secondary/20 text-foreground hover:border-border/70 hover:bg-secondary/40"
+                    }`}
+                  >
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                        isActive
+                          ? "bg-white/70 text-[var(--gold-deep)]"
+                          : "bg-card text-muted-foreground group-hover:text-foreground"
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-bold ${isActive ? "text-[var(--gold-deep)]" : "text-foreground"}`}>
+                        {t.l}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
+
         <main className="min-w-0 space-y-5">
-          {tab === "overview" && <OverviewTab company={company} upd={upd} risk={risk} tasks={tasks} setTab={setTab} />}
+          {tab === "overview" && (
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="min-w-0">
+                <OverviewTab company={company} upd={upd} risk={risk} tasks={tasks} setTab={setTab} />
+              </div>
+
+              <div className="space-y-4">
+                {risk && (
+                  <div className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]">
+                    <h3 className="section-title text-sm">Risk Durumu</h3>
+                    <div className={`mt-3 rounded-lg p-3 ${risk.className}`}>
+                      <p className="text-sm font-semibold">{risk.label}{risk.score !== null ? ` — ${risk.score}/100` : ""}</p>
+                      <p className="mt-1 text-xs leading-5">{risk.description}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-foreground">Hatırlatmalar</h3>
+                    <Link href="/planner" className="text-[11px] font-semibold text-primary hover:underline">Ajanda &rarr;</Link>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Ajanda ile senkron, geciken ve yaklaşan görevler.</p>
+
+                  {agendaReminders.length > 0 ? (
+                    <ul className="mt-3 space-y-2">
+                      {agendaReminders.map((r) => {
+                        const toneCls = r.tone === "danger"
+                          ? "border-red-400/40 bg-red-50/60 dark:bg-red-950/20"
+                          : r.tone === "warning"
+                          ? "border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20"
+                          : "border-border/60 bg-secondary/30";
+                        const dotCls = r.tone === "danger" ? "bg-red-500" : r.tone === "warning" ? "bg-amber-500" : "bg-blue-500";
+                        return (
+                          <li key={r.id} className={`rounded-xl border ${toneCls} p-2.5`}>
+                            <div className="flex items-start gap-2">
+                              <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold text-foreground">{r.title}</p>
+                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                  {r.category ? <span className="font-medium">{r.category}</span> : ""}
+                                  {r.category && r.date ? " · " : ""}
+                                  {r.date ? new Date(r.date).toLocaleDateString("tr-TR", { day: "2-digit", month: "short" }) : ""}
+                                  {r.tone === "danger" ? <span className="ml-1 font-bold text-red-600">· Gecikmiş</span> : r.tone === "warning" ? <span className="ml-1 font-bold text-amber-600">· Yaklaşıyor</span> : null}
+                                </p>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-dashed border-border/60 p-3 text-center text-[11px] text-muted-foreground">
+                      Ajandada yaklaşan görev yok.
+                    </p>
+                  )}
+
+                  {reminders.length > 0 && (
+                    <>
+                      <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Zorunlu Eksikler</p>
+                      <ul className="mt-2 space-y-1.5">
+                        {reminders.map((r, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-[11px] leading-5 text-muted-foreground">
+                            <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60" />
+                            <span>{r}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+
+                <div className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
+                  <h3 className="text-sm font-bold text-foreground">Son Aktivite</h3>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Bu işyerinde yapılan son değişiklikler.</p>
+                  {activities.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {activities.map((act) => (
+                        <div key={act.id} className="rounded-xl border border-border/60 bg-secondary/20 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-xs font-bold text-foreground">{act.actorName}</p>
+                            <span className="shrink-0 text-[10px] text-muted-foreground">{act.when}</span>
+                          </div>
+                          <p className="text-[10px] font-medium text-muted-foreground">{act.actorRole}</p>
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-foreground">{act.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-dashed border-border/60 p-3 text-center text-[11px] text-muted-foreground">
+                      Henüz aktivite kaydı yok.
+                    </p>
+                  )}
+                </div>
+
+                <CompanyManagementActions companyName={company.name} onArchiveConfirm={() => void doArchive()} onDeleteConfirm={() => void doDelete()} />
+              </div>
+            </div>
+          )}
           {tab === "structure" && <StructureTab company={company} upd={upd} />}
           {tab === "risk" && <RiskTab company={company} />}
           {tab === "people" && <TeamManagementTab companyId={companyId} companyName={company.name} />}
@@ -477,101 +584,6 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
           {tab === "organization" && <OrganizationPanel companyId={companyId} />}
           {tab === "history" && <HistoryTab />}
         </main>
-
-        {/* Sidebar — sadece Genel Durum sekmesinde */}
-        <aside className={`space-y-4 ${tab === "overview" ? "hidden lg:block" : "hidden"}`}>
-          {risk && (
-            <div className="rounded-xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]">
-              <h3 className="section-title text-sm">Risk Durumu</h3>
-              <div className={`mt-3 rounded-lg p-3 ${risk.className}`}>
-                <p className="text-sm font-semibold">{risk.label}{risk.score !== null ? ` \u2014 ${risk.score}/100` : ""}</p>
-                <p className="mt-1 text-xs leading-5">{risk.description}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-foreground">Hatırlatmalar</h3>
-              <Link href="/planner" className="text-[11px] font-semibold text-primary hover:underline">Ajanda &rarr;</Link>
-            </div>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Ajanda ile senkron, geciken ve yaklaşan görevler.</p>
-
-            {/* Ajandadan canlı görevler */}
-            {agendaReminders.length > 0 ? (
-              <ul className="mt-3 space-y-2">
-                {agendaReminders.map((r) => {
-                  const toneCls = r.tone === "danger"
-                    ? "border-red-400/40 bg-red-50/60 dark:bg-red-950/20"
-                    : r.tone === "warning"
-                    ? "border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20"
-                    : "border-border/60 bg-secondary/30";
-                  const dotCls = r.tone === "danger" ? "bg-red-500" : r.tone === "warning" ? "bg-amber-500" : "bg-blue-500";
-                  return (
-                    <li key={r.id} className={`rounded-xl border ${toneCls} p-2.5`}>
-                      <div className="flex items-start gap-2">
-                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-semibold text-foreground">{r.title}</p>
-                          <p className="mt-0.5 text-[10px] text-muted-foreground">
-                            {r.category ? <span className="font-medium">{r.category}</span> : ""}
-                            {r.category && r.date ? " · " : ""}
-                            {r.date ? new Date(r.date).toLocaleDateString("tr-TR", { day: "2-digit", month: "short" }) : ""}
-                            {r.tone === "danger" ? <span className="ml-1 font-bold text-red-600">· Gecikmiş</span> : r.tone === "warning" ? <span className="ml-1 font-bold text-amber-600">· Yaklaşıyor</span> : null}
-                          </p>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="mt-3 rounded-xl border border-dashed border-border/60 p-3 text-center text-[11px] text-muted-foreground">
-                Ajandada yaklaşan görev yok.
-              </p>
-            )}
-
-            {/* Yapısal hatırlatmalar (firma verisinden türetilen) */}
-            {reminders.length > 0 && (
-              <>
-                <p className="mt-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Zorunlu Eksikler</p>
-                <ul className="mt-2 space-y-1.5">
-                  {reminders.map((r, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-[11px] leading-5 text-muted-foreground">
-                      <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-muted-foreground/60" />
-                      <span>{r}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-
-          <div className="rounded-[1.5rem] border border-border/80 bg-card p-5 shadow-[var(--shadow-card)]">
-            <h3 className="text-sm font-bold text-foreground">Son Aktivite</h3>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">Bu firmada yapılan son değişiklikler.</p>
-            {activities.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {activities.map((act) => (
-                  <div key={act.id} className="rounded-xl border border-border/60 bg-secondary/20 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs font-bold text-foreground">{act.actorName}</p>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">{act.when}</span>
-                    </div>
-                    <p className="text-[10px] font-medium text-muted-foreground">{act.actorRole}</p>
-                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-foreground">{act.description}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 rounded-xl border border-dashed border-border/60 p-3 text-center text-[11px] text-muted-foreground">
-                Henüz aktivite kaydı yok.
-              </p>
-            )}
-          </div>
-
-          <CompanyManagementActions companyName={company.name} onArchiveConfirm={() => void doArchive()} onDeleteConfirm={() => void doDelete()} />
-        </aside>
       </div>
 
     </div>

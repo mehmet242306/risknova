@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { validateStrongPassword } from "@/lib/security/server";
+import {
+  getAccountContextForUser,
+  resolvePostLoginPath,
+} from "@/lib/account/account-routing";
 
 export async function signup(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -41,7 +45,7 @@ export async function signup(formData: FormData) {
   revalidatePath("/", "layout");
 
   if (data.session) {
-    redirect("/dashboard");
+    redirect(resolvePostLoginPath(await getAccountContextForUser(data.session.user.id)));
   }
 
   redirect("/register?checkEmail=1");

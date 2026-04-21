@@ -115,12 +115,12 @@ export function WorkspaceSwitcher() {
         aria-haspopup="listbox"
         aria-expanded={open}
         title={`${t("switcher")}${active ? ` — ${activeLabel}` : ""}`}
-        className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-[var(--gold)]/30 bg-[var(--gold)]/10 px-2.5 text-[12px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:border-[var(--gold)]/60 hover:bg-[var(--gold)]/20 hover:text-white"
+        className="inline-flex h-11 max-w-[220px] shrink-0 items-center gap-1.5 rounded-xl border border-[var(--gold)]/30 bg-[var(--gold)]/10 px-2.5 text-[12px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:border-[var(--gold)]/60 hover:bg-[var(--gold)]/20 hover:text-white"
       >
         <span className="text-base leading-none" aria-hidden>
           {activeCode ? flagFor(activeCode) : "🏳️"}
         </span>
-        <span className="hidden max-w-[90px] truncate lg:inline">{activeLabel}</span>
+        <span className="hidden max-w-[118px] truncate md:inline lg:max-w-[132px] xl:max-w-[156px]">{activeLabel}</span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="12"

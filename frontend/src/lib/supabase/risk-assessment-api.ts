@@ -320,6 +320,11 @@ export async function saveRiskAnalysis(input: SaveRiskAnalysisInput): Promise<st
   const supabase = createClient();
   if (!supabase) return null;
 
+  if (!input.companyWorkspaceId) {
+    console.warn("[risk-assessment-api] saveRiskAnalysis: companyWorkspaceId is required");
+    return null;
+  }
+
   const auth = await resolveOrganizationId();
   if (!auth) { console.warn("[risk-assessment-api] saveRiskAnalysis: auth failed"); return null; }
 
@@ -334,7 +339,7 @@ export async function saveRiskAnalysis(input: SaveRiskAnalysisInput): Promise<st
         analysis_note: input.analysisNote,
         method: input.method,
         method_version: `${input.method}-v1`,
-        company_workspace_id: input.companyWorkspaceId || null,
+        company_workspace_id: input.companyWorkspaceId,
         assessment_date: new Date().toISOString().split("T")[0],
         workplace_name: input.location || null,
         department_name: input.department || null,
@@ -415,7 +420,7 @@ export async function saveRiskAnalysis(input: SaveRiskAnalysisInput): Promise<st
             row_id: dbRow.id,
             image_id: dbImageId,
             organization_id: auth.orgId,
-            company_workspace_id: input.companyWorkspaceId || null,
+            company_workspace_id: input.companyWorkspaceId,
             title: f.title,
             category: f.category,
             category_key: mapCategoryToKey(f.category),

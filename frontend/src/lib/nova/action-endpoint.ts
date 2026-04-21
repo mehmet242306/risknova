@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createServiceClient } from "@/lib/security/server";
+import { recordNovaOutboxEvent } from "@/lib/nova/governance";
 import { normalizeNovaAgentResponse, type NovaAgentResponse } from "@/lib/nova/agent";
 
 export const novaActionConfirmSchema = z.object({
@@ -436,6 +437,22 @@ export async function queueNovaActionExecution(params: {
   if (outboxError) {
     throw new Error(outboxError.message);
   }
+
+  await recordNovaOutboxEvent({
+    actionRunId: params.actionRun.id,
+    taskQueueId: String(queueTaskId),
+    actorUserId: params.userId,
+    eventType: "queued",
+    message:
+      params.actionRun.language === "en"
+        ? "Nova action was queued for background execution."
+        : "Nova aksiyonu arka plan isleyicisine kuyruklandi.",
+    metadata: {
+      action_name: params.actionRun.action_name,
+      context_surface: params.contextSurface,
+      idempotency_key: params.idempotencyKey,
+    },
+  }).catch(() => undefined);
 
   return buildActionStateResponse({
     ...params.actionRun,

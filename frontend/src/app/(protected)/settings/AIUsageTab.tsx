@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getNovaUsageAnalytics } from "@/lib/nova/usage-analytics";
 import { createClient } from "@/lib/supabase/client";
 import { formatCompactNumber, formatCurrencyUsd } from "./admin-monitoring-utils";
 
@@ -25,6 +26,18 @@ type UserProfileMini = {
   email: string | null;
 };
 
+type NovaEvalRunRow = {
+  id: string;
+  suite_key: string;
+  case_key: string;
+  category: string;
+  score: number;
+  passed: boolean;
+  latency_ms: number | null;
+  failure_reason: string | null;
+  created_at: string;
+};
+
 const periodOptions = [
   { value: "1", label: "Son 24 saat" },
   { value: "7", label: "Son 7 gun" },
@@ -33,6 +46,7 @@ const periodOptions = [
 
 export function AIUsageTab() {
   const [rows, setRows] = useState<AiUsageRow[]>([]);
+  const [evalRows, setEvalRows] = useState<NovaEvalRunRow[]>([]);
   const [userMap, setUserMap] = useState<Map<string, UserProfileMini>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,16 +65,23 @@ export function AIUsageTab() {
 
     const since = new Date(Date.now() - Number(periodDays) * 24 * 60 * 60 * 1000).toISOString();
 
-    const [{ data: usageRows, error: usageError }, { data: profiles, error: profileError }] = await Promise.all([
+    const [
+      { data: usageRows, error: usageError },
+      { data: profiles, error: profileError },
+      { data: evalData, error: evalError },
+    ] = await Promise.all([
       supabase.from("ai_usage_logs").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(500),
       supabase.from("user_profiles").select("auth_user_id, full_name, email"),
+      supabase.from("nova_eval_runs").select("*").gte("created_at", since).order("created_at", { ascending: false }).limit(120),
     ]);
 
-    if (usageError || profileError) {
+    if (usageError || profileError || evalError) {
       setRows([]);
-      setError(usageError?.message ?? profileError?.message ?? "AI kullanim verileri alinamadi.");
+      setEvalRows([]);
+      setError(usageError?.message ?? profileError?.message ?? evalError?.message ?? "AI kullanim verileri alinamadi.");
     } else {
       setRows((usageRows ?? []) as AiUsageRow[]);
+      setEvalRows((evalData ?? []) as NovaEvalRunRow[]);
       setUserMap(
         new Map(
           ((profiles ?? []) as UserProfileMini[]).map((row) => [
@@ -79,6 +100,8 @@ export function AIUsageTab() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
+
+  const novaAnalytics = useMemo(() => getNovaUsageAnalytics(rows), [rows]);
 
   const stats = useMemo(() => {
     const totalCalls = rows.length;
@@ -129,6 +152,11 @@ export function AIUsageTab() {
 
     const haikuCalls = rows.filter((row) => row.model.toLowerCase().includes("haiku")).length;
     const sonnetCalls = rows.filter((row) => row.model.toLowerCase().includes("sonnet")).length;
+    const passedEvals = evalRows.filter((row) => row.passed).length;
+    const benchmarkAverage =
+      evalRows.length === 0
+        ? 0
+        : evalRows.reduce((sum, row) => sum + Number(row.score ?? 0), 0) / evalRows.length;
 
     return {
       totalCalls,
@@ -141,8 +169,11 @@ export function AIUsageTab() {
       endpointBreakdown,
       userBreakdown,
       cascadeRatio: totalCalls === 0 ? 0 : Math.round((haikuCalls / Math.max(haikuCalls + sonnetCalls, 1)) * 100),
+      passedEvals,
+      benchmarkCoverage: evalRows.length,
+      benchmarkAverage: Number(benchmarkAverage.toFixed(1)),
     };
-  }, [rows]);
+  }, [evalRows, rows]);
 
   return (
     <div className="space-y-4">
@@ -173,7 +204,7 @@ export function AIUsageTab() {
           </div>
         )}
 
-        <div className="mt-5 grid gap-3 xl:grid-cols-5">
+        <div className="mt-5 grid gap-3 xl:grid-cols-6">
           <div className="rounded-2xl border border-border bg-background px-4 py-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Toplam cagri</div>
             <div className="mt-2 text-2xl font-semibold text-foreground">{formatCompactNumber(stats.totalCalls)}</div>
@@ -193,6 +224,13 @@ export function AIUsageTab() {
           <div className="rounded-2xl border border-border bg-background px-4 py-4">
             <div className="text-xs uppercase tracking-wide text-muted-foreground">Haiku kapanis</div>
             <div className="mt-2 text-2xl font-semibold text-foreground">%{stats.cascadeRatio}</div>
+          </div>
+          <div className="rounded-2xl border border-border bg-background px-4 py-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Benchmark ort.</div>
+            <div className="mt-2 text-2xl font-semibold text-foreground">{stats.benchmarkAverage}</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              {stats.passedEvals}/{stats.benchmarkCoverage} gecti
+            </div>
           </div>
         </div>
 
@@ -255,6 +293,89 @@ export function AIUsageTab() {
                     </div>
                   );
                 })
+              )}
+            </div>
+          </section>
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)_minmax(0,1fr)]">
+          <section className="rounded-2xl border border-border bg-background p-4">
+            <h4 className="text-sm font-semibold text-foreground">Task tipi kalitesi</h4>
+            <div className="mt-2 text-xs text-muted-foreground">
+              Nova gorev siniflari bazinda maliyet, p95 gecikme ve basari dengesi.
+            </div>
+            <div className="mt-3 space-y-3">
+              {novaAnalytics.taskTypes.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Veri yok.</div>
+              ) : (
+                novaAnalytics.taskTypes.slice(0, 6).map((item) => (
+                  <div key={item.taskType} className="rounded-xl border border-border/70 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-foreground">{item.taskType}</div>
+                      <div className="text-xs text-muted-foreground">{item.calls} cagri</div>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatCurrencyUsd(item.cost)} - %{item.successRate} basari - ort. {item.avgLatencyMs} ms
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-background p-4">
+            <h4 className="text-sm font-semibold text-foreground">Tool maliyet ve latency</h4>
+            <div className="mt-2 text-xs text-muted-foreground">
+              En cok calisan Nova tool ve action sinyalleri. Genel p95: {novaAnalytics.p95LatencyMs} ms
+            </div>
+            <div className="mt-3 space-y-3">
+              {novaAnalytics.tools.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Tool verisi yok.</div>
+              ) : (
+                novaAnalytics.tools.slice(0, 8).map((tool) => (
+                  <div key={tool.tool} className="rounded-xl border border-border/70 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-foreground">{tool.tool}</div>
+                      <div className="text-xs text-muted-foreground">{tool.calls} cagri</div>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatCurrencyUsd(tool.cost)} - p95 {tool.p95LatencyMs} ms
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-background p-4">
+            <h4 className="text-sm font-semibold text-foreground">Benchmark ve kalite kosulari</h4>
+            <div className="mt-3 space-y-3">
+              {evalRows.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Benchmark kaydi henuz yok.</div>
+              ) : (
+                evalRows.slice(0, 8).map((row) => (
+                  <div key={row.id} className="rounded-xl border border-border/70 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-foreground">{row.case_key}</div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          {row.suite_key} - {row.category}
+                        </div>
+                      </div>
+                      <div className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        row.passed
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200"
+                          : "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-200"
+                      }`}>
+                        {row.score}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {row.latency_ms ?? 0} ms
+                      {row.failure_reason ? ` - ${row.failure_reason}` : " - gecti"}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </section>

@@ -5,6 +5,7 @@
 
 import { createClient } from "./client";
 import { resolveOrganizationId } from "./incident-api";
+import { fetchAccountContext } from "@/lib/account/account-api";
 
 export type NotificationType = "risk_analysis" | "incident" | "task" | "dof" | "system";
 export type NotificationLevel = "info" | "warning" | "critical";
@@ -42,6 +43,27 @@ async function resolveIsAdmin() {
   return data === true;
 }
 
+async function resolveNotificationScope() {
+  const supabase = createClient();
+  if (!supabase) return null;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const accountContext = await fetchAccountContext();
+  const organizationId = accountContext?.context.organizationId ?? null;
+  const surface = accountContext?.surface ?? "standard";
+
+  return {
+    supabase,
+    userId: user.id,
+    organizationId,
+    isPlatformAdmin: surface === "platform-admin",
+  };
+}
+
 export async function createNotification(opts: {
   title: string;
   message: string;
@@ -54,8 +76,15 @@ export async function createNotification(opts: {
   const supabase = createClient();
   if (!supabase) return;
 
-  const auth = await resolveOrganizationId();
-  if (!auth) return;
+  const accountContext = await fetchAccountContext();
+  const scopedOrganizationId = accountContext?.context.organizationId ?? null;
+  const auth = scopedOrganizationId
+    ? {
+        orgId: scopedOrganizationId,
+        userId: accountContext?.context.userId ?? opts.userId ?? null,
+      }
+    : await resolveOrganizationId();
+  if (!auth?.orgId || !auth.userId) return;
 
   await supabase.from("notifications").insert({
     organization_id: auth.orgId,
@@ -70,18 +99,14 @@ export async function createNotification(opts: {
 }
 
 export async function listMyNotifications(limit = 50): Promise<NotificationRow[]> {
-  const supabase = createClient();
-  if (!supabase) return [];
+  const scope = await resolveNotificationScope();
+  if (!scope || !scope.organizationId || scope.isPlatformAdmin) return [];
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
-
-  const { data, error } = await supabase
+  const { data, error } = await scope.supabase
     .from("notifications")
     .select("id, title, message, type, level, link, actor_name, is_read, created_at")
-    .eq("user_id", user.id)
+    .eq("user_id", scope.userId)
+    .eq("organization_id", scope.organizationId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -96,19 +121,15 @@ export async function listMyNotifications(limit = 50): Promise<NotificationRow[]
 }
 
 export async function markNotificationAsRead(id: string): Promise<boolean> {
-  const supabase = createClient();
-  if (!supabase) return false;
+  const scope = await resolveNotificationScope();
+  if (!scope || !scope.organizationId || scope.isPlatformAdmin) return false;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { error } = await supabase
+  const { error } = await scope.supabase
     .from("notifications")
     .update({ is_read: true })
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", scope.userId)
+    .eq("organization_id", scope.organizationId);
 
   if (error) {
     console.warn("[notification-api] markNotificationAsRead:", error.message);
@@ -119,18 +140,14 @@ export async function markNotificationAsRead(id: string): Promise<boolean> {
 }
 
 export async function markAllMyNotificationsAsRead(ids: string[]): Promise<boolean> {
-  const supabase = createClient();
-  if (!supabase || ids.length === 0) return false;
+  const scope = await resolveNotificationScope();
+  if (!scope || !scope.organizationId || scope.isPlatformAdmin || ids.length === 0) return false;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { error } = await supabase
+  const { error } = await scope.supabase
     .from("notifications")
     .update({ is_read: true })
-    .eq("user_id", user.id)
+    .eq("user_id", scope.userId)
+    .eq("organization_id", scope.organizationId)
     .in("id", ids);
 
   if (error) {

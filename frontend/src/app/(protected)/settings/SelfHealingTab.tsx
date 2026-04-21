@@ -54,6 +54,17 @@ type NovaOutboxRow = {
   payload: Record<string, unknown> | null;
 };
 
+type NovaOutboxEventRow = {
+  id: string;
+  outbox_id: string;
+  action_run_id: string;
+  task_queue_id: string | null;
+  event_type: string;
+  message: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
 type RecoveryScenarioRow = {
   id: string;
   scenario_key: string;
@@ -105,6 +116,7 @@ export function SelfHealingTab() {
   const [serviceStates, setServiceStates] = useState<ServiceStateRow[]>([]);
   const [queueRows, setQueueRows] = useState<TaskQueueRow[]>([]);
   const [novaOutboxRows, setNovaOutboxRows] = useState<NovaOutboxRow[]>([]);
+  const [novaOutboxEvents, setNovaOutboxEvents] = useState<NovaOutboxEventRow[]>([]);
   const [recoveryScenarios, setRecoveryScenarios] = useState<RecoveryScenarioRow[]>([]);
   const [backupRuns, setBackupRuns] = useState<BackupRunRow[]>([]);
   const [deploymentLogs, setDeploymentLogs] = useState<DeploymentLogRow[]>([]);
@@ -125,6 +137,7 @@ export function SelfHealingTab() {
       stateResult,
       queueResult,
       novaOutboxResult,
+      novaOutboxEventsResult,
       recoveryResult,
       backupResult,
       deploymentResult,
@@ -133,6 +146,7 @@ export function SelfHealingTab() {
       supabase.from("service_resilience_states").select("*").order("display_name"),
       supabase.from("task_queue").select("*").order("created_at", { ascending: false }).limit(30),
       supabase.from("nova_outbox").select("*").order("created_at", { ascending: false }).limit(30),
+      supabase.from("nova_outbox_events").select("*").order("created_at", { ascending: false }).limit(80),
       supabase.from("recovery_scenarios").select("*").order("name"),
       supabase.from("backup_runs").select("*").order("started_at", { ascending: false }).limit(20),
       supabase.from("deployment_logs").select("*").order("started_at", { ascending: false }).limit(20),
@@ -143,6 +157,7 @@ export function SelfHealingTab() {
       stateResult.error ||
       queueResult.error ||
       novaOutboxResult.error ||
+      novaOutboxEventsResult.error ||
       recoveryResult.error ||
       backupResult.error ||
       deploymentResult.error;
@@ -155,6 +170,7 @@ export function SelfHealingTab() {
     setServiceStates((stateResult.data ?? []) as ServiceStateRow[]);
     setQueueRows((queueResult.data ?? []) as TaskQueueRow[]);
     setNovaOutboxRows((novaOutboxResult.data ?? []) as NovaOutboxRow[]);
+    setNovaOutboxEvents((novaOutboxEventsResult.data ?? []) as NovaOutboxEventRow[]);
     setRecoveryScenarios((recoveryResult.data ?? []) as RecoveryScenarioRow[]);
     setBackupRuns((backupResult.data ?? []) as BackupRunRow[]);
     setDeploymentLogs((deploymentResult.data ?? []) as DeploymentLogRow[]);
@@ -202,6 +218,16 @@ export function SelfHealingTab() {
     [novaOutboxFilter, novaOutboxRows],
   );
 
+  const latestNovaOutboxEvents = useMemo(() => {
+    const map = new Map<string, NovaOutboxEventRow>();
+    for (const row of novaOutboxEvents) {
+      if (!map.has(row.outbox_id)) {
+        map.set(row.outbox_id, row);
+      }
+    }
+    return map;
+  }, [novaOutboxEvents]);
+
   async function triggerAction(key: string, url: string, body?: Record<string, unknown>) {
     try {
       setBusyAction(key);
@@ -246,6 +272,38 @@ export function SelfHealingTab() {
       }
 
       setMessage(action === "requeue" ? "Gorev yeniden kuyruga alindi." : "Gorev iptal edildi.");
+      await load();
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Bilinmeyen hata");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function triggerNovaOutboxAction(outboxId: string, action: "replay" | "cancel" | "resolve") {
+    try {
+      setBusyAction(`nova-outbox:${action}:${outboxId}`);
+      setError(null);
+      setMessage(null);
+
+      const response = await fetch(`/api/self-healing/nova-outbox/${outboxId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload as { error?: string }).error ?? "Nova outbox islemi basarisiz.");
+      }
+
+      setMessage(
+        action === "replay"
+          ? "Nova aksiyonu yeniden kuyruga alindi."
+          : action === "cancel"
+            ? "Nova outbox islemi iptal edildi."
+            : "Nova outbox kaydi incelendi olarak isaretlendi.",
+      );
       await load();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Bilinmeyen hata");
@@ -623,8 +681,51 @@ export function SelfHealingTab() {
                   {row.last_error ? (
                     <div className="mt-3 text-xs text-rose-600 dark:text-rose-300">{row.last_error}</div>
                   ) : null}
+                  {latestNovaOutboxEvents.get(row.id) ? (
+                    <div className="mt-3 rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
+                      <div className="text-[11px] font-medium text-foreground">
+                        Son olay: {latestNovaOutboxEvents.get(row.id)?.event_type}
+                      </div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">
+                        {latestNovaOutboxEvents.get(row.id)?.message || "Mesaj yok"} -{" "}
+                        {formatDateTime(latestNovaOutboxEvents.get(row.id)?.created_at ?? null)}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="mt-3 text-xs text-muted-foreground">
                     Olusturuldu: {formatDateTime(row.created_at)} | Tamamlandi: {formatDateTime(row.completed_at)}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(row.status === "failed" || row.status === "dead_letter") && (
+                      <button
+                        type="button"
+                        onClick={() => void triggerNovaOutboxAction(row.id, "replay")}
+                        disabled={busyAction !== null}
+                        className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground disabled:opacity-60"
+                      >
+                        {busyAction === `nova-outbox:replay:${row.id}` ? "Replay ediliyor..." : "Replay et"}
+                      </button>
+                    )}
+                    {row.last_error && (
+                      <button
+                        type="button"
+                        onClick={() => void triggerNovaOutboxAction(row.id, "resolve")}
+                        disabled={busyAction !== null}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 disabled:opacity-60 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200"
+                      >
+                        {busyAction === `nova-outbox:resolve:${row.id}` ? "Isaretleniyor..." : "Incelendi isaretle"}
+                      </button>
+                    )}
+                    {row.status !== "cancelled" && row.status !== "succeeded" && (
+                      <button
+                        type="button"
+                        onClick={() => void triggerNovaOutboxAction(row.id, "cancel")}
+                        disabled={busyAction !== null}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 disabled:opacity-60 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-200"
+                      >
+                        {busyAction === `nova-outbox:cancel:${row.id}` ? "Iptal ediliyor..." : "Outbox iptal et"}
+                      </button>
+                    )}
                   </div>
                 </article>
               ))

@@ -1660,8 +1660,26 @@ async function getActiveWorkspaceId(
   context: ToolContext,
   preferredWorkspaceId?: string | null,
 ): Promise<string | null> {
-  if (preferredWorkspaceId) return preferredWorkspaceId
-  if (context.session.company_workspace_id) return context.session.company_workspace_id
+  const requestedWorkspaceId = preferredWorkspaceId || context.session.company_workspace_id || null
+  const hasOrganizationWideAccess = await hasOrganizationWideWorkspaceAccess(context)
+  const accessibleWorkspaceIds = hasOrganizationWideAccess
+    ? []
+    : await getAccessibleWorkspaceIdsForUser(context)
+
+  if (requestedWorkspaceId) {
+    if (hasOrganizationWideAccess) {
+      const inOrganization = await isWorkspaceInOrganization(context, requestedWorkspaceId)
+      return inOrganization ? requestedWorkspaceId : null
+    }
+
+    return accessibleWorkspaceIds.includes(requestedWorkspaceId)
+      ? requestedWorkspaceId
+      : null
+  }
+
+  if (!hasOrganizationWideAccess) {
+    return accessibleWorkspaceIds[0] || null
+  }
 
   const { data: lastAssessment } = await context.supabase
     .from('risk_assessments')
@@ -1683,6 +1701,115 @@ async function getActiveWorkspaceId(
     .maybeSingle()
 
   return ws?.id || null
+}
+
+function isCompatSchemaError(message?: string | null): boolean {
+  const normalized = String(message || '').toLowerCase()
+  return (
+    normalized.includes('relation') ||
+    normalized.includes('schema cache') ||
+    normalized.includes('does not exist')
+  )
+}
+
+function flattenLegacyRoleCodes(
+  rows: Array<{ roles?: { code?: string } | Array<{ code?: string }> | null }>,
+): string[] {
+  return rows.flatMap((row) => {
+    if (Array.isArray(row.roles)) {
+      return row.roles
+        .map((role) => String(role?.code || '').trim().toLowerCase())
+        .filter(Boolean)
+    }
+
+    const code = String(row.roles?.code || '').trim().toLowerCase()
+    return code ? [code] : []
+  })
+}
+
+async function isWorkspaceInOrganization(
+  context: ToolContext,
+  workspaceId: string,
+): Promise<boolean> {
+  const { data, error } = await context.supabase
+    .from('company_workspaces')
+    .select('id')
+    .eq('id', workspaceId)
+    .eq('organization_id', context.user.organization_id)
+    .maybeSingle()
+
+  if (error) return false
+  return Boolean(data?.id)
+}
+
+async function hasOrganizationWideWorkspaceAccess(context: ToolContext): Promise<boolean> {
+  const { data: membership, error: membershipError } = await context.supabase
+    .from('organization_memberships')
+    .select('role')
+    .eq('organization_id', context.user.organization_id)
+    .eq('user_id', context.user.id)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (!membershipError) {
+    return membership?.role === 'owner' || membership?.role === 'admin'
+  }
+
+  if (!isCompatSchemaError(membershipError.message)) {
+    return false
+  }
+
+  const profileId = await getUserProfileId(context)
+  if (!profileId) return false
+
+  const { data: legacyRoles, error: legacyRolesError } = await context.supabase
+    .from('user_roles')
+    .select('roles(code)')
+    .eq('user_profile_id', profileId)
+
+  if (legacyRolesError) {
+    return false
+  }
+
+  const roleCodes = flattenLegacyRoleCodes(
+    (legacyRoles || []) as Array<{ roles?: { code?: string } | Array<{ code?: string }> | null }>,
+  )
+
+  return roleCodes.some((code) =>
+    ['owner', 'admin', 'organization_admin', 'osgb_manager', 'super_admin', 'platform_admin'].includes(code),
+  )
+}
+
+async function getAccessibleWorkspaceIdsForUser(context: ToolContext): Promise<string[]> {
+  const { data: assignments, error: assignmentsError } = await context.supabase
+    .from('workspace_assignments')
+    .select('company_workspace_id')
+    .eq('user_id', context.user.id)
+    .eq('assignment_status', 'active')
+
+  if (!assignmentsError) {
+    return (assignments || [])
+      .map((row: any) => row.company_workspace_id)
+      .filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
+  }
+
+  if (!isCompatSchemaError(assignmentsError.message)) {
+    return []
+  }
+
+  const { data: memberships, error: membershipsError } = await context.supabase
+    .from('company_memberships')
+    .select('company_workspace_id')
+    .eq('user_id', context.user.id)
+    .eq('status', 'active')
+
+  if (membershipsError) {
+    return []
+  }
+
+  return (memberships || [])
+    .map((row: any) => row.company_workspace_id)
+    .filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
 }
 
 async function getUserProfileId(context: ToolContext): Promise<string | null> {

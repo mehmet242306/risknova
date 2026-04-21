@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -891,12 +891,18 @@ function WelcomeScreen({
   loadingProactive,
   onFollowUpNavigate,
   onFollowUpPrompt,
+  title,
+  description,
+  quickQuestions,
 }: {
   onQuickQuestion: (q: string) => void;
   proactiveBrief: NovaProactiveBrief | null;
   loadingProactive: boolean;
   onFollowUpNavigate: (action: NovaFollowUpAction) => void;
   onFollowUpPrompt: (action: NovaFollowUpAction) => void;
+  title: string;
+  description: string;
+  quickQuestions: string[];
 }) {
   const { locale } = useI18n();
   const ui = getNovaUiCopy(locale);
@@ -908,10 +914,10 @@ function WelcomeScreen({
           <span className="text-2xl font-bold text-primary">N</span>
         </div>
         <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-          Nova
+          {title}
         </h2>
         <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-          {ui.solutionCenter.welcomeDescription}
+          {description}
         </p>
       </div>
 
@@ -987,7 +993,7 @@ function WelcomeScreen({
       )}
 
       <div className="grid w-full max-w-3xl gap-2 sm:grid-cols-2">
-        {ui.solutionCenter.quickQuestions.map((q) => (
+        {quickQuestions.map((q) => (
           <button
             key={q}
             type="button"
@@ -1008,6 +1014,8 @@ function WelcomeScreen({
 
 export default function SolutionCenterPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t, locale } = useI18n();
   const ui = getNovaUiCopy(locale);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1026,7 +1034,64 @@ export default function SolutionCenterPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const proactiveLocaleRef = useRef<string | null>(null);
+  const promptSeedRef = useRef<string | null>(null);
   const actionPollCancelledRef = useRef(false);
+  const requestedSurface = searchParams.get("surface");
+  const promptSeed = searchParams.get("prompt")?.trim() ?? "";
+  const managerSurface = requestedSurface === "osgb-manager";
+  const enterpriseSurface = requestedSurface === "enterprise";
+  const platformAdminSurface = requestedSurface === "platform-admin";
+  const currentQueryString = searchParams.toString();
+  const currentPage = `${pathname}${currentQueryString ? `?${currentQueryString}` : ""}`;
+  const companyWorkspaceId = useMemo(() => {
+    const workspaceId = searchParams.get("workspaceId");
+    return workspaceId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        workspaceId,
+      )
+      ? workspaceId
+      : null;
+  }, [searchParams]);
+  const welcomeTitle = platformAdminSurface
+    ? "Nova Platform"
+    : managerSurface
+    ? "Nova OSGB Manager"
+    : enterpriseSurface
+      ? "Nova Kurumsal"
+      : "Nova";
+  const welcomeDescription = platformAdminSurface
+    ? "Platform genel sagligi, hata akislari, belge omurgasi, risk hattı ve ic operasyon eksiklerini yonetici perspektifiyle analiz eder."
+    : managerSurface
+    ? "Firma, personel, gorevlendirme, dokuman ve gecikme risklerini yonetici perspektifiyle analiz eder. Secili firma varsa cevaplari varsayilan olarak o kapsamda tutar."
+    : enterpriseSurface
+      ? "Kurumsal yapilar icin lokasyon, standart, dokuman, rapor ve yonetim onceliklerini merkezi bir bakisla analiz eder."
+      : ui.solutionCenter.welcomeDescription;
+  const contextualQuickQuestions = useMemo(
+    () =>
+      platformAdminSurface
+        ? [
+            "Son 24 saatte hangi platform akislarinda daha cok hata var?",
+            "Onay bekleyen dokuman ve taslak risk yogunlugunu ozetle",
+            "Kritik alarm ve bekleyen kuyruklar icin oncelik sirasi cikar",
+            "Sistemde gordugun temel eksik ve aksakliklari listele",
+          ]
+        : managerSurface
+        ? [
+            "Secili firma icin geciken gorevleri ozetle",
+            "Atama bosluklarini ve kritik yetki eksiklerini goster",
+            "Onay bekleyen dokumanlari onceliklendir",
+            "Personel yuk dagilimina gore yonetici aksiyonlarini sirala",
+          ]
+        : enterpriseSurface
+          ? [
+              "Bu kurumsal hesap icin oncelikli yonetim aksiyonlarini sirala",
+              "Lokasyon bazli dokuman ve onay risklerini ozetle",
+              "Raporlama ve standartlasma aciklarini goster",
+              "Secili firma icin yonetici eylem plani hazirla",
+            ]
+        : ui.solutionCenter.quickQuestions,
+    [enterpriseSurface, managerSurface, platformAdminSurface, ui.solutionCenter.quickQuestions],
+  );
 
   const buildAssistantMessageFromAgentResponse = useCallback(
     (data: NovaAgentResponse): ChatMessage => {
@@ -1178,6 +1243,8 @@ export default function SolutionCenterPage() {
           mode: "agent",
           context_surface: "solution_center",
           access_token: session?.access_token ?? null,
+          company_workspace_id: companyWorkspaceId,
+          current_page: currentPage,
           history,
         }),
       });
@@ -1222,6 +1289,16 @@ export default function SolutionCenterPage() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!promptSeed) return;
+    if (loading) return;
+    if (promptSeedRef.current === promptSeed) return;
+
+    promptSeedRef.current = promptSeed;
+    setInput(promptSeed);
+    void sendMessage(promptSeed);
+  }, [loading, promptSeed]);
 
   async function toggleSave(messageId: string) {
     const msg = messages.find((m) => m.id === messageId);
@@ -1519,13 +1596,16 @@ export default function SolutionCenterPage() {
             <div ref={messagesEndRef} />
           </div>
         ) : (
-          <WelcomeScreen
-            onQuickQuestion={sendMessage}
-            proactiveBrief={proactiveBrief}
-            loadingProactive={loadingProactive}
-            onFollowUpNavigate={handleFollowUpNavigate}
-            onFollowUpPrompt={handleFollowUpPrompt}
-          />
+        <WelcomeScreen
+          onQuickQuestion={sendMessage}
+          proactiveBrief={proactiveBrief}
+          loadingProactive={loadingProactive}
+          onFollowUpNavigate={handleFollowUpNavigate}
+          onFollowUpPrompt={handleFollowUpPrompt}
+          title={welcomeTitle}
+          description={welcomeDescription}
+          quickQuestions={contextualQuickQuestions}
+        />
         )}
       </div>
 

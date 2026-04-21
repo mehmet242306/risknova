@@ -1,6 +1,12 @@
 "use client";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import {
+  fetchAccountContext,
+  hasManagedOsgbAccount,
+  type AccountContextResponse,
+} from "@/lib/account/account-api";
 import { getNovaUiLanguage } from "@/lib/nova-ui";
 
 export type NovaFollowUpAction = {
@@ -32,6 +38,131 @@ export type NovaProactiveBrief = {
   activeWorkflows: NovaWorkflowSummary[];
 };
 
+type WorkspaceScopedRow = {
+  company_workspace_id?: string | null;
+};
+
+function isCompatSchemaError(message: string | undefined | null): boolean {
+  const normalized = String(message ?? "").toLowerCase();
+  return (
+    normalized.includes("relation") ||
+    normalized.includes("schema cache") ||
+    normalized.includes("does not exist")
+  );
+}
+
+function hasOrganizationWideNovaAccess(account: AccountContextResponse | null): boolean {
+  const context = account?.context;
+  if (!context?.organizationId || !context.accountType) {
+    return false;
+  }
+
+  if (context.accountType === "osgb") {
+    return hasManagedOsgbAccount(context);
+  }
+
+  return true;
+}
+
+async function fetchActiveOrganizationWorkspaceIds(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<string[]> {
+  const preferred = await supabase
+    .from("company_workspaces")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("status", "active");
+
+  if (!preferred.error) {
+    return (preferred.data ?? []).map((row) => row.id).filter(Boolean);
+  }
+
+  if (!isCompatSchemaError(preferred.error.message)) {
+    return [];
+  }
+
+  const legacy = await supabase
+    .from("company_workspaces")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("is_archived", false);
+
+  if (legacy.error) {
+    return [];
+  }
+
+  return (legacy.data ?? []).map((row) => row.id).filter(Boolean);
+}
+
+async function fetchAssignedWorkspaceIds(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<string[]> {
+  const assignments = await supabase
+    .from("workspace_assignments")
+    .select("company_workspace_id")
+    .eq("user_id", userId)
+    .eq("assignment_status", "active");
+
+  if (!assignments.error) {
+    return (assignments.data ?? [])
+      .map((row) => row.company_workspace_id)
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+  }
+
+  if (!isCompatSchemaError(assignments.error.message)) {
+    return [];
+  }
+
+  const memberships = await supabase
+    .from("company_memberships")
+    .select("company_workspace_id")
+    .eq("user_id", userId)
+    .eq("status", "active");
+
+  if (memberships.error) {
+    return [];
+  }
+
+  return (memberships.data ?? [])
+    .map((row) => row.company_workspace_id)
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
+}
+
+async function resolveAccessibleWorkspaceIds(
+  supabase: SupabaseClient,
+  account: AccountContextResponse | null,
+  userId: string,
+): Promise<string[]> {
+  const organizationId = account?.context.organizationId ?? null;
+  if (!organizationId) {
+    return [];
+  }
+
+  if (hasOrganizationWideNovaAccess(account)) {
+    return fetchActiveOrganizationWorkspaceIds(supabase, organizationId);
+  }
+
+  return fetchAssignedWorkspaceIds(supabase, userId);
+}
+
+function filterAccessibleRows<T extends WorkspaceScopedRow>(
+  rows: T[],
+  accessibleWorkspaceIds: string[],
+  organizationWideAccess: boolean,
+): T[] {
+  if (organizationWideAccess) {
+    return rows;
+  }
+
+  const workspaceIdSet = new Set(accessibleWorkspaceIds);
+  return rows.filter((row) => {
+    const workspaceId = row.company_workspace_id;
+    return typeof workspaceId === "string" && workspaceIdSet.has(workspaceId);
+  });
+}
+
 export async function markNovaWorkflowStep(stepId: string, status: "completed" | "skipped" | "cancelled" = "completed") {
   const supabase = createClient();
   if (!supabase || !stepId) return null;
@@ -61,9 +192,117 @@ export async function getNovaProactiveBrief(locale: string = "tr"): Promise<Nova
 
   if (!user) return null;
 
+  const account = await fetchAccountContext();
+  const organizationId = account?.context.organizationId ?? null;
+  const organizationWideAccess = hasOrganizationWideNovaAccess(account);
+  const accessibleWorkspaceIds = await resolveAccessibleWorkspaceIds(supabase, account, user.id);
+
+  if (!organizationWideAccess && accessibleWorkspaceIds.length === 0) {
+    return {
+      summary:
+        uiLanguage === "en"
+          ? "Nova could not verify a workspace scope for this user, so it is holding back proactive operational data."
+          : "Nova bu kullanici icin erisilebilir firma baglamini dogrulayamadigi icin proaktif operasyon verisini gostermiyor.",
+      actions: [],
+      insights: [],
+      activeWorkflows: [],
+    };
+  }
+
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + 14);
   const horizonDate = horizon.toISOString().slice(0, 10);
+
+  let workflowRunsQuery = supabase
+    .from("nova_workflow_runs")
+    .select("id, title, summary, status, current_step, total_steps, company_workspace_id")
+    .eq("status", "active")
+    .order("updated_at", { ascending: false })
+    .limit(3);
+
+  if (organizationId) {
+    workflowRunsQuery = workflowRunsQuery.eq("organization_id", organizationId);
+  }
+
+  if (!organizationWideAccess) {
+    workflowRunsQuery = workflowRunsQuery.in("company_workspace_id", accessibleWorkspaceIds);
+  }
+
+  let dueTasksQuery = supabase
+    .from("isg_tasks")
+    .select("id, title, start_date, status, company_workspace_id")
+    .in("status", ["planned", "in_progress", "overdue"])
+    .lte("start_date", horizonDate)
+    .order("start_date", { ascending: true })
+    .limit(4);
+
+  if (organizationId) {
+    dueTasksQuery = dueTasksQuery.eq("organization_id", organizationId);
+  }
+
+  if (!organizationWideAccess) {
+    dueTasksQuery = dueTasksQuery.in("company_workspace_id", accessibleWorkspaceIds);
+  }
+
+  let dueTrainingsQuery = supabase
+    .from("company_trainings")
+    .select("id, title, training_date, status, company_workspace_id")
+    .eq("status", "planned")
+    .lte("training_date", horizonDate)
+    .order("training_date", { ascending: true })
+    .limit(3);
+
+  if (organizationId) {
+    dueTrainingsQuery = dueTrainingsQuery.eq("organization_id", organizationId);
+  }
+
+  if (!organizationWideAccess) {
+    dueTrainingsQuery = dueTrainingsQuery.in("company_workspace_id", accessibleWorkspaceIds);
+  }
+
+  let incidentsQuery = supabase
+    .from("incidents")
+    .select("id, incident_code, status, company_workspace_id, created_at")
+    .in("status", ["draft", "investigating", "dof_open"])
+    .order("created_at", { ascending: false })
+    .limit(3);
+
+  if (organizationId) {
+    incidentsQuery = incidentsQuery.eq("organization_id", organizationId);
+  }
+
+  if (!organizationWideAccess) {
+    incidentsQuery = incidentsQuery.in("company_workspace_id", accessibleWorkspaceIds);
+  }
+
+  let documentsQuery = supabase
+    .from("editor_documents")
+    .select("id, title, status, company_workspace_id, updated_at")
+    .in("status", ["taslak", "revizyon", "onay_bekliyor"])
+    .order("updated_at", { ascending: false })
+    .limit(3);
+
+  if (organizationId) {
+    documentsQuery = documentsQuery.eq("organization_id", organizationId);
+  }
+
+  if (!organizationWideAccess) {
+    documentsQuery = documentsQuery.in("company_workspace_id", accessibleWorkspaceIds);
+  }
+
+  let signalsQuery = supabase
+    .from("nova_learning_signals")
+    .select("signal_label, outcome, signal_key, created_at, company_workspace_id")
+    .order("created_at", { ascending: false })
+    .limit(6);
+
+  if (organizationId) {
+    signalsQuery = signalsQuery.eq("organization_id", organizationId);
+  }
+
+  if (!organizationWideAccess) {
+    signalsQuery = signalsQuery.in("company_workspace_id", accessibleWorkspaceIds);
+  }
 
   const [
     workflowRunsRes,
@@ -73,46 +312,27 @@ export async function getNovaProactiveBrief(locale: string = "tr"): Promise<Nova
     documentsRes,
     signalsRes,
   ] = await Promise.all([
-    supabase
-      .from("nova_workflow_runs")
-      .select("id, title, summary, status, current_step, total_steps, company_workspace_id")
-      .eq("status", "active")
-      .order("updated_at", { ascending: false })
-      .limit(3),
-    supabase
-      .from("isg_tasks")
-      .select("id, title, start_date, status, company_workspace_id")
-      .in("status", ["planned", "in_progress", "overdue"])
-      .lte("start_date", horizonDate)
-      .order("start_date", { ascending: true })
-      .limit(4),
-    supabase
-      .from("company_trainings")
-      .select("id, title, training_date, status, company_workspace_id")
-      .eq("status", "planned")
-      .lte("training_date", horizonDate)
-      .order("training_date", { ascending: true })
-      .limit(3),
-    supabase
-      .from("incidents")
-      .select("id, incident_code, status, company_workspace_id, created_at")
-      .in("status", ["draft", "investigating", "dof_open"])
-      .order("created_at", { ascending: false })
-      .limit(3),
-    supabase
-      .from("editor_documents")
-      .select("id, title, status, company_workspace_id, updated_at")
-      .in("status", ["taslak", "revizyon", "onay_bekliyor"])
-      .order("updated_at", { ascending: false })
-      .limit(3),
-    supabase
-      .from("nova_learning_signals")
-      .select("signal_label, outcome, signal_key, created_at")
-      .order("created_at", { ascending: false })
-      .limit(6),
+    workflowRunsQuery,
+    dueTasksQuery,
+    dueTrainingsQuery,
+    incidentsQuery,
+    documentsQuery,
+    signalsQuery,
   ]);
 
-  const workflowRuns = workflowRunsRes.data || [];
+  const workflowRuns = filterAccessibleRows(
+    (workflowRunsRes.data || []) as Array<{
+      id: string;
+      title: string;
+      summary?: string | null;
+      status: "active" | "completed" | "cancelled" | "failed";
+      current_step: number;
+      total_steps: number;
+      company_workspace_id?: string | null;
+    }>,
+    accessibleWorkspaceIds,
+    organizationWideAccess,
+  );
   const workflowIds = workflowRuns.map((item) => item.id);
 
   const workflowStepsRes = workflowIds.length
@@ -160,7 +380,17 @@ export async function getNovaProactiveBrief(locale: string = "tr"): Promise<Nova
     }
   }
 
-  for (const task of dueTasksRes.data || []) {
+  for (const task of filterAccessibleRows(
+    (dueTasksRes.data || []) as Array<{
+      id: string;
+      title: string;
+      start_date: string;
+      status: string;
+      company_workspace_id?: string | null;
+    }>,
+    accessibleWorkspaceIds,
+    organizationWideAccess,
+  )) {
     actions.push({
       id: `task:${task.id}`,
       label: uiLanguage === "en" ? `Review task: ${task.title}` : `Gorevi gozden gecir: ${task.title}`,
@@ -175,7 +405,17 @@ export async function getNovaProactiveBrief(locale: string = "tr"): Promise<Nova
     });
   }
 
-  for (const training of dueTrainingsRes.data || []) {
+  for (const training of filterAccessibleRows(
+    (dueTrainingsRes.data || []) as Array<{
+      id: string;
+      title: string;
+      training_date: string;
+      status: string;
+      company_workspace_id?: string | null;
+    }>,
+    accessibleWorkspaceIds,
+    organizationWideAccess,
+  )) {
     actions.push({
       id: `training:${training.id}`,
       label: uiLanguage === "en"
@@ -192,7 +432,17 @@ export async function getNovaProactiveBrief(locale: string = "tr"): Promise<Nova
     });
   }
 
-  for (const incident of incidentsRes.data || []) {
+  for (const incident of filterAccessibleRows(
+    (incidentsRes.data || []) as Array<{
+      id: string;
+      incident_code: string;
+      status: string;
+      company_workspace_id?: string | null;
+      created_at: string;
+    }>,
+    accessibleWorkspaceIds,
+    organizationWideAccess,
+  )) {
     actions.push({
       id: `incident:${incident.id}`,
       label: uiLanguage === "en"
@@ -207,7 +457,17 @@ export async function getNovaProactiveBrief(locale: string = "tr"): Promise<Nova
     });
   }
 
-  for (const document of documentsRes.data || []) {
+  for (const document of filterAccessibleRows(
+    (documentsRes.data || []) as Array<{
+      id: string;
+      title: string;
+      status: string;
+      company_workspace_id?: string | null;
+      updated_at: string;
+    }>,
+    accessibleWorkspaceIds,
+    organizationWideAccess,
+  )) {
     actions.push({
       id: `document:${document.id}`,
       label: uiLanguage === "en"
@@ -222,7 +482,17 @@ export async function getNovaProactiveBrief(locale: string = "tr"): Promise<Nova
     });
   }
 
-  const insights = (signalsRes.data || [])
+  const insights = filterAccessibleRows(
+    (signalsRes.data || []) as Array<{
+      signal_label: string;
+      outcome: string;
+      signal_key: string;
+      created_at: string;
+      company_workspace_id?: string | null;
+    }>,
+    accessibleWorkspaceIds,
+    organizationWideAccess,
+  )
     .filter((signal) => signal.outcome === "positive")
     .slice(0, 3)
     .map((signal) =>

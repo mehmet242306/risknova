@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
+function isCompatRpcError(error: { message?: string } | null | undefined) {
+  const normalized = String(error?.message ?? "").toLowerCase();
+  return (
+    normalized.includes("schema cache") ||
+    normalized.includes("does not exist") ||
+    normalized.includes("relation")
+  );
+}
+
 /**
  * useIsAdmin — Super admin kontrolü (DB-based, fail-CLOSED).
  *
@@ -53,21 +62,31 @@ export function useIsAdmin(): boolean | null {
           return;
         }
 
-        // 2. is_super_admin() RPC çağrısı — default parametresi auth.uid() kullanır
-        const { data, error } = await supabase.rpc("is_super_admin");
+        // 2. Yeni model: platform admin ana kaynak, eski super admin fallback.
+        const [{ data: platformAdmin, error: platformAdminError }, { data: superAdmin, error: superAdminError }] =
+          await Promise.all([
+            supabase.rpc("is_platform_admin"),
+            supabase.rpc("is_super_admin"),
+          ]);
         if (cancelled) return;
 
-        if (error) {
-          console.error(
-            `[useIsAdmin] [${new Date().toISOString()}] [user=${user.id}] RPC error:`,
-            error,
+        if (platformAdminError || superAdminError) {
+          const unexpectedError = [platformAdminError, superAdminError].find(
+            (error) => error && !isCompatRpcError(error),
           );
+
+          if (unexpectedError) {
+            console.error(
+              `[useIsAdmin] [${new Date().toISOString()}] [user=${user.id}] RPC error:`,
+              unexpectedError,
+            );
+          }
+
           setIsAdmin(false);
           return;
         }
 
-        // RPC `boolean` döner. `true` dışındaki her şey false sayılır.
-        setIsAdmin(data === true);
+        setIsAdmin(platformAdmin === true || superAdmin === true);
       } catch (err) {
         if (cancelled) return;
         console.error(

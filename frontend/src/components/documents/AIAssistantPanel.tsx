@@ -48,6 +48,10 @@ type DocumentAiResponse = {
   error?: string;
   degraded?: boolean;
   queuedTaskId?: string | null;
+  fallback?: {
+    type?: string;
+    label?: string;
+  };
 };
 
 const QUICK_PROMPTS = [
@@ -194,9 +198,14 @@ export function AIAssistantPanel({
   }, []);
 
   const applyAiError = useCallback((data: DocumentAiResponse, fallbackMessage: string) => {
+    const content = extractContent(data);
     setDegraded(Boolean(data.degraded));
     setQueueTaskId(typeof data.queuedTaskId === 'string' ? data.queuedTaskId : null);
-    setResult(typeof data.error === 'string' && data.error.trim().length > 0 ? data.error : fallbackMessage);
+    setResult(
+      content ||
+        (typeof data.error === 'string' && data.error.trim().length > 0 ? data.error : fallbackMessage),
+    );
+    return content;
   }, []);
 
   const generateContent = async (prompt: string, autoInsert = true) => {
@@ -215,11 +224,19 @@ export function AIAssistantPanel({
       const data = (await res.json().catch(() => ({}))) as DocumentAiResponse;
 
       if (!res.ok) {
-        applyAiError(data, 'Hata: AI servisi su anda yanit veremiyor. Lutfen tekrar deneyin.');
+        const fallbackContent = applyAiError(
+          data,
+          'Hata: AI servisi su anda yanit veremiyor. Lutfen tekrar deneyin.',
+        );
+        if (autoInsert && fallbackContent) {
+          insertToEditor(fallbackContent);
+        }
         return;
       }
 
       const content = extractContent(data);
+      setDegraded(Boolean(data.degraded));
+      setQueueTaskId(typeof data.queuedTaskId === 'string' ? data.queuedTaskId : null);
       setResult(content);
       if (autoInsert && content) {
         insertToEditor(content);
@@ -255,6 +272,8 @@ export function AIAssistantPanel({
       }
 
       const content = extractContent(data);
+      setDegraded(Boolean(data.degraded));
+      setQueueTaskId(typeof data.queuedTaskId === 'string' ? data.queuedTaskId : null);
       setResult(content);
 
       if (content) {
@@ -385,14 +404,14 @@ export function AIAssistantPanel({
             <div className="mb-2 flex items-center justify-between">
               <span
                 className={`text-[11px] font-medium ${
-                  inserted
-                    ? 'text-green-600'
-                    : degraded
+                inserted
+                  ? 'text-green-600'
+                  : degraded
                       ? 'text-amber-700 dark:text-amber-300'
                       : 'text-[var(--gold)]'
                 }`}
               >
-                {inserted ? 'Editora Eklendi' : degraded ? 'AI Durumu' : 'AI Sonucu'}
+                {inserted ? 'Editora Eklendi' : degraded ? 'Yerel Taslak' : 'AI Sonucu'}
               </span>
               <button
                 onClick={() => {
@@ -421,7 +440,7 @@ export function AIAssistantPanel({
 
             {degraded ? (
               <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:border-amber-800/40 dark:bg-amber-950/20 dark:text-amber-200">
-                AI servisi gecici olarak korumali modda calisti.
+                AI servisi gecici olarak korumali modda calisti. Yerel taslak uretildi; duzenleyip kaydedebilirsiniz.
                 {queueTaskId
                   ? ` Kuyruk gorevi: ${queueTaskId}`
                   : ' Istek arka planda isleniyor olabilir; kisa sure sonra tekrar deneyin.'}
@@ -431,11 +450,10 @@ export function AIAssistantPanel({
             {!inserted ? (
               <button
                 onClick={() => insertToEditor(result)}
-                disabled={degraded}
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gold)] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--gold-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gold)] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--gold-hover)]"
               >
                 <FileText size={14} />
-                Editore Ekle
+                {degraded ? 'Yerel Taslagi Editore Ekle' : 'Editore Ekle'}
               </button>
             ) : null}
 

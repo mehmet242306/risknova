@@ -20,7 +20,7 @@ const defaultCatalog: CompanyRecord[] = [
   },
   {
     id: "company-2",
-    name: "RiskNova Demo Fabrika",
+    name: "RiskNova Ornek Fabrika",
     kind: "Özel Sektör",
     address: "Elazığ OSB",
     locations: ["Üretim Sahası", "Depo", "Yükleme Alanı"],
@@ -28,7 +28,7 @@ const defaultCatalog: CompanyRecord[] = [
   },
   {
     id: "company-3",
-    name: "RiskNova Demo İnşaat Sahası",
+    name: "RiskNova Ornek Insaat Sahasi",
     kind: "Şantiye",
     address: "Elazığ Merkez",
     locations: ["Blok A", "Blok B", "Cephe Alanı", "Malzeme Sahası"],

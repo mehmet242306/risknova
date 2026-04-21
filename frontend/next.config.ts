@@ -33,7 +33,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactCompiler: true,
   turbopack: {
-    root: path.resolve(__dirname),
+    root: path.resolve(__dirname, ".."),
   },
 
   async headers() {

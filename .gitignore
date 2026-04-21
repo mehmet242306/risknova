@@ -79,3 +79,5 @@ frontend/.claude/
 frontend/.codex-tsc-check.txt
 *.v17-backup
 *.v12-backup
+
+.vercel

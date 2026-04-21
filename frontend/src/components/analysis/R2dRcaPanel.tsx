@@ -106,7 +106,7 @@ export function R2dRcaPanel({ incidentTitle, initialData, onSave, onAiRequest, p
     }
   }, [onSave, t0, t1, narrative]);
 
-  function loadDemo() {
+  function loadExample() {
     setT0(DEMO_T0);
     setT1(DEMO_T1);
   }
@@ -191,7 +191,7 @@ export function R2dRcaPanel({ incidentTitle, initialData, onSave, onAiRequest, p
             <p className="font-semibold">Önce AI ile skorları oluşturun</p>
             <p className="text-xs opacity-80">Olay açıklamasına göre AI 9 boyut için t₀ ve t₁ skorlarını üretir. Dilerseniz manuel de ayarlayabilirsiniz.</p>
           </div>
-          <Button size="sm" variant="outline" onClick={loadDemo} className="ml-auto shrink-0">Demo Veri</Button>
+          <Button size="sm" variant="outline" onClick={loadExample} className="ml-auto shrink-0">Ornek Veri</Button>
         </div>
       )}
 

@@ -1,5 +1,28 @@
 import { NextResponse } from "next/server";
+import { sendGoogleConnectedWelcomeEmail } from "@/lib/mailer";
+import { createServiceClient } from "@/lib/security/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getAccountContextForUser,
+  resolvePostLoginPath,
+} from "@/lib/account/account-routing";
+
+function isFirstAuthSession(
+  createdAt?: string | null,
+  lastSignInAt?: string | null,
+) {
+  if (!createdAt || !lastSignInAt) return false;
+
+  const createdAtMs = new Date(createdAt).getTime();
+  const lastSignInAtMs = new Date(lastSignInAt).getTime();
+
+  if (Number.isNaN(createdAtMs) || Number.isNaN(lastSignInAtMs)) {
+    return false;
+  }
+
+  // Supabase first sign-in timestamps are typically nearly identical.
+  return Math.abs(lastSignInAtMs - createdAtMs) <= 5 * 60 * 1000;
+}
 
 /**
  * OAuth Callback Route
@@ -25,12 +48,63 @@ export async function GET(request: Request) {
         assuranceData?.nextLevel === "aal2" &&
         assuranceData.currentLevel !== "aal2"
       ) {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const resolvedNext = user
+          ? resolvePostLoginPath(await getAccountContextForUser(user.id))
+          : next;
+
         return NextResponse.redirect(
-          `${origin}/auth/mfa-challenge?next=${encodeURIComponent(next)}`
+          `${origin}/auth/mfa-challenge?next=${encodeURIComponent(resolvedNext)}`
         );
       }
 
-      return NextResponse.redirect(`${origin}${next}`);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const service = createServiceClient();
+      const providers = Array.isArray(user?.app_metadata?.providers)
+        ? user.app_metadata.providers
+        : [];
+
+      if (
+        user?.id &&
+        user.email &&
+        providers.includes("google") &&
+        !user.user_metadata?.google_welcome_sent_at &&
+        isFirstAuthSession(user.created_at, user.last_sign_in_at)
+      ) {
+        try {
+          await sendGoogleConnectedWelcomeEmail({
+            to: user.email,
+            fullName:
+              String(
+                user.user_metadata?.full_name ??
+                  user.user_metadata?.name ??
+                  user.email.split("@")[0] ??
+                  "Kullanici",
+              ) || "Kullanici",
+            loginUrl: `${origin}/login`,
+            onboardingUrl: `${origin}/workspace/onboarding`,
+          });
+
+          await service.auth.admin.updateUserById(user.id, {
+            user_metadata: {
+              ...user.user_metadata,
+              google_welcome_sent_at: new Date().toISOString(),
+            },
+          });
+        } catch (mailError) {
+          console.warn("[auth/callback] google welcome email failed:", mailError);
+        }
+      }
+
+      const resolvedNext = user
+        ? resolvePostLoginPath(await getAccountContextForUser(user.id))
+        : next;
+
+      return NextResponse.redirect(`${origin}${resolvedNext}`);
     }
 
     console.warn("[auth/callback] exchangeCodeForSession error:", error.message);

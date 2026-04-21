@@ -77,7 +77,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 JWT_SECRET=
 
-FRONTEND_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://guvenligimcepte.vercel.app
+FRONTEND_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,https://getrisknova.vercel.app
 ```
 
 ## 5. Gunluk baslatma

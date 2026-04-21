@@ -16,6 +16,11 @@ import { createClient } from "@/lib/supabase/client";
 import { quickSignOut } from "@/lib/auth/quick-sign-out";
 import { getActiveWorkspace, listMyWorkspaces, setActiveWorkspace } from "@/lib/supabase/workspace-api";
 import {
+  hasManagedOsgbAccount,
+  resolveClientAccountSurface,
+  type AccountContextPayload,
+} from "@/lib/account/account-api";
+import {
   listMyNotifications,
   markAllMyNotificationsAsRead,
   markNotificationAsRead,
@@ -24,9 +29,12 @@ import {
 
 type ProtectedShellProps = { children: ReactNode };
 
+type ShellAccountContext = AccountContextPayload;
+
 /* Top bar: core modules */
 const primaryNav = [
   { href: "/dashboard", key: "nav.dashboard" },
+  { href: "/workspace/onboarding", key: "nav.workspace" },
   { href: "/companies", key: "nav.companies" },
   { href: "/risk-analysis", key: "nav.riskAnalysis" },
   { href: "/corrective-actions", key: "nav.correctiveActions" },
@@ -46,9 +54,48 @@ const secondaryNav: NavItem[] = [
   { href: "/settings", key: "nav.settings" },
 ];
 
+const osgbPrimaryNav = [
+  { href: "/osgb", label: "Panel" },
+  { href: "/osgb/firms", label: "Firmalar" },
+  { href: "/osgb/personnel", label: "Personeller" },
+  { href: "/osgb/assignments", label: "Görevlendirmeler" },
+  { href: "/osgb/tasks", label: "İş Takibi" },
+  { href: "/osgb/documents", label: "Dokümanlar" },
+];
+
+const osgbSecondaryNav = [
+  { href: "/risk-analysis", label: "Riskler" },
+  { href: "/osgb/contracts", label: "Sözleşmeler" },
+  { href: "/solution-center", label: "Nova OSGB" },
+  { href: "/reports", label: "Raporlar" },
+  { href: "/settings", label: "Ayarlar" },
+];
+
+const platformAdminPrimaryNav = [
+  { href: "/platform-admin", label: "Platform Yonetimi" },
+  { href: "/platform-admin/demo-builder", label: "Demo Olusturucu" },
+  { href: "/risk-analysis", label: "Risk Analizi" },
+  { href: "/corrective-actions", label: "DOF'ler" },
+  { href: "/incidents", label: "Olaylar" },
+  { href: "/isg-library", label: "ISG Kutuphanesi" },
+];
+
 function isActive(pathname: string, href: string) {
-  if (href === "/dashboard") return pathname === "/dashboard";
+  if (href === "/dashboard" || href === "/osgb" || href === "/platform-admin") return pathname === href;
   return pathname.startsWith(href);
+}
+
+function isWorkspaceOptionalPath(pathname: string) {
+  return (
+    pathname.startsWith("/workspace/onboarding") ||
+    pathname.startsWith("/profile") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/notifications")
+  );
+}
+
+function isWorkspaceLockedHref(href: string) {
+  return href !== "/workspace/onboarding" && href !== "/settings";
 }
 
 /* ------------------------------------------------------------------ */
@@ -263,7 +310,7 @@ function HeaderSignOutButton() {
       type="button"
       onClick={() => void handleClick()}
       disabled={signingOut}
-      className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/12 px-3 text-[14px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex h-11 items-center gap-2 rounded-xl border border-[rgba(231,205,163,0.18)] px-3 text-[14px] font-bold text-[var(--gold-light)] transition-all duration-200 hover:bg-[var(--gold-glow)] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
       aria-label="Oturumu kapat"
       title="Oturumu kapat"
     >
@@ -282,7 +329,7 @@ function HeaderSignOutButton() {
         <polyline points="16 17 21 12 16 7" />
         <line x1="21" y1="12" x2="9" y2="12" />
       </svg>
-      <span className="hidden lg:inline">{signingOut ? "Çıkılıyor..." : "Çıkış"}</span>
+      <span className="hidden 2xl:inline">{signingOut ? "Çıkılıyor..." : "Çıkış"}</span>
     </button>
   );
 }
@@ -295,11 +342,53 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
   const router = useRouter();
   const { t } = useI18n();
   const isAdmin = useIsAdmin();
+  const [accountContext, setAccountContext] = useState<ShellAccountContext | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [hasActiveWorkspace, setHasActiveWorkspace] = useState(false);
 
-  const visibleSecondaryNav = secondaryNav.filter((i) => !i.adminOnly || isAdmin === true);
-  const visibleAllNav = [...primaryNav, ...visibleSecondaryNav];
+  const accountSurface = resolveClientAccountSurface(accountContext);
+  const isPlatformAdminShell =
+    pathname.startsWith("/platform-admin") || accountSurface === "platform-admin";
+  const isIndividualWorkspaceHome =
+    accountSurface === "standard" && accountContext?.accountType === "individual";
+  const isOsgbShell =
+    !isPlatformAdminShell && accountSurface === "osgb-manager";
+  const showWorkspaceSwitcher = !isPlatformAdminShell;
+  const showNotificationBell = !isPlatformAdminShell && !!accountContext?.organizationId;
+  const showChatWidget = true;
+  const disableWorkspaceModules =
+    accountSurface === "standard" &&
+    accountContext?.accountType === "individual" &&
+    !hasActiveWorkspace;
+  const standardPrimaryNav =
+    accountContext?.accountType === "individual"
+      ? primaryNav.map((item) =>
+          item.href === "/companies"
+            ? { href: item.href, label: "İşyeri" }
+            : item,
+        )
+      : primaryNav;
+  const basePrimaryNav = isPlatformAdminShell
+    ? platformAdminPrimaryNav
+    : isOsgbShell
+      ? osgbPrimaryNav
+      : standardPrimaryNav;
+  const baseSecondaryNav = isPlatformAdminShell
+    ? []
+    : isOsgbShell
+      ? osgbSecondaryNav
+      : secondaryNav.filter((i) => !i.adminOnly || isAdmin === true);
+  const visibleAllNav = [...basePrimaryNav, ...baseSecondaryNav];
+  const homeHref = isPlatformAdminShell
+    ? "/platform-admin"
+    : isOsgbShell
+      ? "/osgb"
+      : isIndividualWorkspaceHome
+        ? "/workspace/onboarding"
+        : accountContext?.accountType === "enterprise"
+          ? "/enterprise"
+          : "/companies";
 
   useEffect(() => {
     let cancelled = false;
@@ -342,6 +431,22 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
         return;
       }
 
+      try {
+        const response = await fetch("/api/account/context", {
+          method: "GET",
+          credentials: "include",
+        });
+        const raw = await response.text();
+        const json = raw.trim() ? JSON.parse(raw) as { context?: ShellAccountContext } : null;
+        if (!cancelled) {
+          setAccountContext(json?.context ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setAccountContext(null);
+        }
+      }
+
       setAuthReady(true);
     }
 
@@ -374,10 +479,16 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
   useEffect(() => {
     let cancelled = false;
 
+    const shouldCheckWorkspace =
+      accountSurface === "standard" && accountContext?.accountType === "individual";
+    const requiresWorkspaceContext =
+      shouldCheckWorkspace && !isWorkspaceOptionalPath(pathname);
+
     async function ensureWorkspaceContext() {
       if (!authReady) return;
 
-      if (pathname.startsWith("/workspace/onboarding")) {
+      if (!shouldCheckWorkspace) {
+        setHasActiveWorkspace(true);
         setWorkspaceReady(true);
         return;
       }
@@ -392,6 +503,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
       if (cancelled) return;
 
       if (activeWorkspace?.id) {
+        setHasActiveWorkspace(true);
         setWorkspaceReady(true);
         return;
       }
@@ -403,11 +515,19 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
           if (cancelled) return;
 
           if (ok) {
+            setHasActiveWorkspace(true);
             setWorkspaceReady(true);
             router.refresh();
             return;
           }
         }
+      }
+
+      setHasActiveWorkspace(false);
+
+      if (!requiresWorkspaceContext) {
+        setWorkspaceReady(true);
+        return;
       }
 
       router.replace(`/workspace/onboarding?next=${encodeURIComponent(pathname)}`);
@@ -418,7 +538,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
     return () => {
       cancelled = true;
     };
-  }, [authReady, pathname, router]);
+  }, [accountContext?.accountType, accountSurface, authReady, pathname, router]);
 
   if (!authReady || !workspaceReady) {
     return (
@@ -444,45 +564,70 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
           className="relative z-10"
           style={{ background: "var(--header-bg-solid)", borderBottom: "1px solid var(--header-border)" }}
         >
-          <div className="mx-auto grid h-[92px] w-full max-w-[1480px] grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] items-center gap-4 px-4 sm:px-6 xl:grid-cols-[minmax(340px,1fr)_auto_minmax(340px,1fr)] xl:px-8 2xl:px-10">
+          <div className="mx-auto grid h-[92px] w-full max-w-[1480px] grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)] items-center gap-3 px-4 sm:px-6 xl:grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] xl:gap-4 xl:px-8 2xl:px-10">
             {/* Left: Brand — absolute so it doesn't affect nav centering */}
             <div className="min-w-0 justify-self-start">
-              <Brand href="/dashboard" inverted />
+              <div className="xl:hidden">
+                <Brand href={homeHref} inverted compact />
+              </div>
+              <div className="hidden xl:block">
+                <Brand href={homeHref} inverted />
+              </div>
             </div>
 
             {/* Center: Primary navigation — truly centered in max-w-7xl */}
-            <nav className="hidden min-w-0 items-center justify-center gap-1 justify-self-center lg:flex">
-              {primaryNav.map((item) => {
-                const act = isActive(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "relative inline-flex h-11 min-w-0 items-center rounded-2xl px-3 xl:px-4 text-[14px] xl:text-[15px] font-semibold tracking-[-0.01em] transition-all duration-200",
-                      act
-                        ? "bg-white/8 text-white shadow-[0_10px_30px_rgba(0,0,0,0.18)] ring-1 ring-white/10"
-                        : "text-[var(--header-muted)] hover:bg-[var(--header-hover-bg)] hover:text-white",
-                    )}
-                  >
-                    {t(item.key)}
-                    {act && (
-                      <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-[var(--gold)]" />
-                    )}
-                  </Link>
-                );
-              })}
+            <nav className="hidden min-w-0 items-center justify-center justify-self-center lg:flex">
+              <div className="flex min-w-0 items-center justify-center gap-0.5 xl:gap-1">
+                {basePrimaryNav.map((item) => {
+                  const act = isActive(pathname, item.href);
+                  const locked = disableWorkspaceModules && isWorkspaceLockedHref(item.href);
+                  const classes = cn(
+                    "relative inline-flex h-11 shrink-0 items-center rounded-2xl px-2.5 xl:px-3 2xl:px-4 text-[13px] xl:text-[14px] 2xl:text-[15px] font-bold tracking-[-0.012em] transition-all duration-200",
+                    locked
+                      ? "cursor-not-allowed border border-white/8 bg-white/5 text-[var(--header-muted)] opacity-55"
+                      : act
+                        ? "bg-[var(--gold-glow)] text-[var(--gold-light)] shadow-[0_10px_30px_rgba(0,0,0,0.18)] ring-1 ring-[rgba(231,205,163,0.22)]"
+                        : "text-[var(--gold-light)] hover:bg-[var(--header-hover-bg)] hover:text-white",
+                  );
+
+                  if (locked) {
+                    return (
+                      <span
+                        key={item.href}
+                        className={classes}
+                        aria-disabled="true"
+                        title="Bu modulu acmak icin once calisma alani olustur"
+                      >
+                        {"key" in item ? t(item.key) : item.label}
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <Link key={item.href} href={item.href} className={classes}>
+                      {"key" in item ? t(item.key) : item.label}
+                      {act && (
+                        <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-[var(--gold-light)]" />
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
             </nav>
 
             {/* Right: Actions — absolute so it doesn't affect nav centering */}
             <div className="flex items-center justify-end gap-1 justify-self-end sm:gap-1.5">
-              <WorkspaceSwitcher />
+              {showWorkspaceSwitcher ? (
+                <div className="md:hidden">
+                  <WorkspaceSwitcher />
+                </div>
+              ) : null}
               <LanguageSelector variant="dark" />
-              <NotificationBell />
+              {showNotificationBell ? <NotificationBell /> : null}
               <ThemeToggle />
               <Link
                 href="/profile"
-                className="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-[14px] font-semibold text-[var(--nav-icon-color)] transition-all duration-200 hover:bg-white/10 hover:text-white"
+                className="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-[14px] font-bold text-[var(--gold-light)] transition-all duration-200 hover:bg-[var(--gold-glow)] hover:text-white"
                 aria-label="Profil"
                 title="Profil"
               >
@@ -490,8 +635,22 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
                   <path d="M20 21a8 8 0 0 0-16 0" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>
-                <span className="hidden xl:inline">{t("common.profile")}</span>
+                <span className="hidden 2xl:inline">{t("common.profile")}</span>
               </Link>
+              {isAdmin === true ? (
+                <Link
+                  href="/platform-admin"
+                  className="inline-flex h-11 items-center gap-2 rounded-xl px-3 text-[14px] font-bold text-[var(--gold-light)] transition-all duration-200 hover:bg-[var(--gold-glow)] hover:text-white"
+                  aria-label="Platform Admin"
+                  title="Platform Admin"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4z" />
+                    <path d="M9.5 12.5l1.8 1.8 3.2-4.3" />
+                  </svg>
+                  <span className="hidden 2xl:inline">Admin</span>
+                </Link>
+              ) : null}
               <HeaderSignOutButton />
             </div>
           </div>
@@ -500,24 +659,40 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
         {/* ── Secondary navigation bar (centered, sticky with header) ── */}
         {/* Gold ayraç — 1 ile 2 arası (üst üste, boşluksuz) */}
         <div className="hidden md:block relative z-0" style={{ background: "var(--secondary-nav-bg-solid)", borderBottom: "1px solid var(--secondary-nav-border)" }}>
-          <div className="mx-auto grid h-12 w-full max-w-[1480px] grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] items-center gap-4 px-4 sm:px-6 xl:grid-cols-[minmax(340px,1fr)_auto_minmax(340px,1fr)] xl:px-8 2xl:px-10">
-            <div />
+          <div className="mx-auto grid h-12 w-full max-w-[1480px] grid-cols-[minmax(260px,1fr)_auto_minmax(260px,1fr)] items-center gap-3 px-4 sm:px-6 xl:grid-cols-[minmax(280px,1fr)_auto_minmax(280px,1fr)] xl:gap-4 xl:px-8 2xl:px-10">
+            <div className="flex items-center justify-start">
+              {showWorkspaceSwitcher ? <WorkspaceSwitcher /> : null}
+            </div>
             <div className="min-w-0 justify-self-center overflow-x-auto">
               <div className="flex items-center justify-center gap-1">
-                {visibleSecondaryNav.map((item) => {
+                {baseSecondaryNav.map((item) => {
                   const act = isActive(pathname, item.href);
+                  const locked = disableWorkspaceModules && isWorkspaceLockedHref(item.href);
+                  const classes = cn(
+                    "relative inline-flex shrink-0 items-center rounded-xl px-3 py-2 text-[13px] font-semibold transition-all duration-200 xl:px-4 xl:text-[14px]",
+                    locked
+                      ? "cursor-not-allowed border border-white/8 bg-white/5 text-[var(--secondary-nav-text)] opacity-55"
+                      : act
+                        ? "text-[var(--secondary-nav-active)] bg-[var(--secondary-nav-hover-bg)]"
+                        : "text-[var(--secondary-nav-text)] hover:text-[var(--secondary-nav-hover-text)] hover:bg-[var(--secondary-nav-hover-bg)]",
+                  );
+
+                  if (locked) {
+                    return (
+                      <span
+                        key={item.href}
+                        className={classes}
+                        aria-disabled="true"
+                        title="Bu modulu acmak icin once calisma alani olustur"
+                      >
+                        {"key" in item ? t(item.key) : item.label}
+                      </span>
+                    );
+                  }
+
                   return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "relative inline-flex shrink-0 items-center rounded-xl px-3 py-2 text-[13px] font-semibold transition-all duration-200 xl:px-4 xl:text-[14px]",
-                        act
-                          ? "text-[var(--secondary-nav-active)] bg-[var(--secondary-nav-hover-bg)]"
-                          : "text-[var(--secondary-nav-text)] hover:text-[var(--secondary-nav-hover-text)] hover:bg-[var(--secondary-nav-hover-bg)]",
-                      )}
-                    >
-                      {t(item.key)}
+                    <Link key={item.href} href={item.href} className={classes}>
+                      {"key" in item ? t(item.key) : item.label}
                       {act && (
                         <span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-[var(--secondary-nav-active)]" />
                       )}
@@ -537,18 +712,32 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
           <div className="flex gap-0.5 overflow-x-auto py-0">
             {visibleAllNav.map((item) => {
               const act = isActive(pathname, item.href);
+              const locked = disableWorkspaceModules && isWorkspaceLockedHref(item.href);
+              const classes = cn(
+                "relative inline-flex shrink-0 items-center px-3 py-3 text-sm font-medium transition-colors",
+                locked
+                  ? "cursor-not-allowed opacity-50 text-muted-foreground"
+                  : act
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground",
+              );
+
+              if (locked) {
+                return (
+                  <span
+                    key={item.href}
+                    className={classes}
+                    aria-disabled="true"
+                    title="Bu modulu acmak icin once calisma alani olustur"
+                  >
+                    {"key" in item ? t(item.key) : item.label}
+                  </span>
+                );
+              }
+
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "relative inline-flex shrink-0 items-center px-3 py-3 text-sm font-medium transition-colors",
-                    act
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {t(item.key)}
+                <Link key={item.href} href={item.href} className={classes}>
+                  {"key" in item ? t(item.key) : item.label}
                   {act && (
                     <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-primary" />
                   )}
@@ -566,7 +755,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
 
       {/* ── Chat Widget ── */}
       <ConsentGate />
-      <ChatWidget isAuthenticated />
+      {showChatWidget ? <ChatWidget isAuthenticated /> : null}
     </div>
   );
 }

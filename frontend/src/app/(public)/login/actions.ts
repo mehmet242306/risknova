@@ -15,6 +15,10 @@ import {
   registerSession,
 } from "@/lib/session-tracker";
 import { sendSuspiciousLoginEmail } from "@/lib/mailer";
+import {
+  getAccountContextForUser,
+  resolvePostLoginPath,
+} from "@/lib/account/account-routing";
 
 export async function login(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -214,8 +218,15 @@ export async function login(formData: FormData) {
     assuranceData?.nextLevel === "aal2" &&
     assuranceData.currentLevel !== "aal2"
   ) {
-    redirect(`/auth/mfa-challenge?next=${encodeURIComponent(next)}`);
+    const resolvedNext = signedInUser
+      ? resolvePostLoginPath(await getAccountContextForUser(signedInUser.id))
+      : next;
+    redirect(`/auth/mfa-challenge?next=${encodeURIComponent(resolvedNext)}`);
   }
 
-  redirect(next);
+  if (!signedInUser) {
+    redirect(next);
+  }
+
+  redirect(resolvePostLoginPath(await getAccountContextForUser(signedInUser.id)));
 }

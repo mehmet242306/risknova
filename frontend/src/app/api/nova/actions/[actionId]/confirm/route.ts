@@ -8,6 +8,7 @@ import {
   novaActionConfirmSchema,
   queueNovaActionExecution,
 } from "@/lib/nova/action-endpoint";
+import { assertNovaFeatureEnabled } from "@/lib/nova/governance";
 
 export async function POST(
   request: NextRequest,
@@ -38,6 +39,14 @@ export async function POST(
       return NextResponse.json({ message: "Nova aksiyonu bulunamadi." }, { status: 404 });
     }
 
+    const confirmationGuard = await assertNovaFeatureEnabled({
+      featureKey: "nova.agent.confirmations",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      fallbackMessage: "Nova onay akisi bu tenant icin su anda kapali.",
+    });
+    if (confirmationGuard) return confirmationGuard;
+
     if (
       actionRun.status === "completed" ||
       actionRun.status === "cancelled" ||
@@ -49,6 +58,14 @@ export async function POST(
     if (actionRun.status === "confirmed") {
       return NextResponse.json(buildActionStateResponse(actionRun), { status: 202 });
     }
+
+    const asyncGuard = await assertNovaFeatureEnabled({
+      featureKey: "nova.agent.async_execution",
+      userId: auth.userId,
+      organizationId: auth.organizationId,
+      fallbackMessage: "Nova arka plan isleyicisi bu tenant icin su anda kapali.",
+    });
+    if (asyncGuard) return asyncGuard;
 
     const queued = await queueNovaActionExecution({
       actionRun,

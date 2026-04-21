@@ -369,7 +369,8 @@ async function resolveUserProfile(
 }
 
 /**
- * is_super_admin(uid) RPC çağrısı. Service role kullanır.
+ * Platform-level admin check. Yeni modelde platform_admins ana kaynak,
+ * eski super admin altyapısı ise geriye uyumluluk için fallback olarak tutulur.
  */
 async function checkIsSuperAdmin(
   userId: string
@@ -381,24 +382,34 @@ async function checkIsSuperAdmin(
   }
 
   try {
-    const { data, error } = await withTimeout(
-      serviceClient.rpc("is_super_admin", { uid: userId }),
-      AUTH_TIMEOUT_MS,
-      "rpc_is_super_admin"
-    );
+    const [{ data: platformAdminData, error: platformAdminError }, { data: superAdminData, error: superAdminError }] =
+      await withTimeout(
+        Promise.all([
+          serviceClient.rpc("is_platform_admin", { uid: userId }),
+          serviceClient.rpc("is_super_admin", { uid: userId }),
+        ]),
+        AUTH_TIMEOUT_MS,
+        "rpc_platform_admin"
+      );
 
-    if (error) {
-      logAuth("is_super_admin RPC error", { userId, error });
+    if (platformAdminError || superAdminError) {
+      logAuth("platform/super admin RPC error", {
+        userId,
+        error: platformAdminError ?? superAdminError,
+      });
       return { ok: false };
     }
 
-    return { ok: true, isSuperAdmin: data === true };
+    return {
+      ok: true,
+      isSuperAdmin: platformAdminData === true || superAdminData === true,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.startsWith("timeout_")) {
-      logAuth("is_super_admin RPC timed out", { userId, error: msg });
+      logAuth("platform/super admin RPC timed out", { userId, error: msg });
     } else {
-      logAuth("is_super_admin RPC unexpected error", { userId, error: err });
+      logAuth("platform/super admin RPC unexpected error", { userId, error: err });
     }
     return { ok: false };
   }

@@ -110,6 +110,7 @@ export const novaChatRequestSchema = z.object({
   language: z.string().min(2).max(10).optional().default("tr"),
   session_id: z.string().uuid().nullable().optional(),
   workspace_id: z.string().uuid().nullable().optional(),
+  company_workspace_id: z.string().uuid().nullable().optional(),
   jurisdiction_code: z.string().regex(/^[A-Z]{2}$/).nullable().optional(),
   as_of_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   answer_mode: z.enum(["extractive", "polish"]).optional().default("extractive"),

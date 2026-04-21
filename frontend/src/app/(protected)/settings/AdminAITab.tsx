@@ -88,6 +88,29 @@ function renderMarkdown(text: string) {
 
 /* ── Main Component ── */
 type KnowledgeItem = { id: string; title: string; category: string; keyPointCount: number };
+type NovaFeatureFlagRow = {
+  id: string;
+  feature_key: string;
+  display_name: string;
+  description: string | null;
+  organization_id: string | null;
+  workspace_id: string | null;
+  is_enabled: boolean;
+  rollout_percentage: number;
+  config: Record<string, unknown> | null;
+};
+
+type NovaEvalRunRow = {
+  id: string;
+  suite_key: string;
+  case_key: string;
+  category: string;
+  score: number;
+  passed: boolean;
+  latency_ms: number | null;
+  failure_reason: string | null;
+  created_at: string;
+};
 
 export function AdminAITab() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -105,6 +128,11 @@ export function AdminAITab() {
   const [learnedItems, setLearnedItems] = useState<KnowledgeItem[]>([]);
   const [knowledgeCount, setKnowledgeCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [featureFlags, setFeatureFlags] = useState<NovaFeatureFlagRow[]>([]);
+  const [evalRuns, setEvalRuns] = useState<NovaEvalRunRow[]>([]);
+  const [governanceStatus, setGovernanceStatus] = useState("");
+  const [savingFlagKey, setSavingFlagKey] = useState<string | null>(null);
+  const [runningBenchmarks, setRunningBenchmarks] = useState(false);
 
   // Bilgi tabani sayisini yukle
   useEffect(() => {
@@ -115,6 +143,74 @@ export function AdminAITab() {
       if (count != null) setKnowledgeCount(count);
     })();
   }, [learnedItems]);
+
+  const loadGovernanceData = useCallback(async () => {
+    const supabase = createClient();
+    if (!supabase) return;
+
+    const [{ data: flags }, { data: evalRows }] = await Promise.all([
+      supabase.from("nova_feature_flags").select("*").order("feature_key"),
+      supabase.from("nova_eval_runs").select("*").order("created_at", { ascending: false }).limit(20),
+    ]);
+
+    setFeatureFlags((flags ?? []) as NovaFeatureFlagRow[]);
+    setEvalRuns((evalRows ?? []) as NovaEvalRunRow[]);
+  }, []);
+
+  useEffect(() => {
+    void loadGovernanceData();
+  }, [loadGovernanceData]);
+
+  const updateFeatureFlag = useCallback(async (flag: NovaFeatureFlagRow, patch: Partial<NovaFeatureFlagRow>) => {
+    const supabase = createClient();
+    if (!supabase) return;
+
+    try {
+      setSavingFlagKey(flag.feature_key);
+      setGovernanceStatus("");
+      const { error } = await supabase
+        .from("nova_feature_flags")
+        .update({
+          is_enabled: patch.is_enabled ?? flag.is_enabled,
+          rollout_percentage: patch.rollout_percentage ?? flag.rollout_percentage,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", flag.id);
+
+      if (error) throw error;
+      setGovernanceStatus(`${flag.display_name} guncellendi.`);
+      await loadGovernanceData();
+    } catch (err) {
+      setGovernanceStatus(`Hata: ${err instanceof Error ? err.message : "Bilinmeyen hata"}`);
+    } finally {
+      setSavingFlagKey(null);
+    }
+  }, [loadGovernanceData]);
+
+  const runBenchmarks = useCallback(async () => {
+    try {
+      setRunningBenchmarks(true);
+      setGovernanceStatus("");
+      const response = await fetch("/api/admin-ai/nova-benchmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suiteKey: "core" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload as { error?: string; message?: string }).error ?? (payload as { message?: string }).message ?? "Benchmark kosusu basarisiz");
+      }
+
+      setGovernanceStatus(
+        `Benchmark tamamlandi. ${(payload as { passed?: number }).passed ?? 0}/${(payload as { total?: number }).total ?? 0} vaka gecti.`,
+      );
+      await loadGovernanceData();
+    } catch (err) {
+      setGovernanceStatus(`Hata: ${err instanceof Error ? err.message : "Bilinmeyen hata"}`);
+    } finally {
+      setRunningBenchmarks(false);
+    }
+  }, [loadGovernanceData]);
 
   // URL'den ogren
   const learnFromUrl = useCallback(async () => {
@@ -390,6 +486,134 @@ export function AdminAITab() {
           )}
         </div>
       )}
+
+      <div className="border-b border-border px-5 py-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <section className="rounded-2xl border border-border bg-muted/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Tenant Rollout</h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Nova chat, confirmation, async execution ve benchmark akislari icin canli rollout kontrolu.
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 space-y-3">
+              {featureFlags.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Feature flag verisi bulunamadi.</div>
+              ) : (
+                featureFlags.map((flag) => (
+                  <div key={flag.id} className="rounded-xl border border-border bg-card px-3 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-foreground">{flag.display_name}</div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">{flag.feature_key}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void updateFeatureFlag(flag, { is_enabled: !flag.is_enabled })}
+                        disabled={savingFlagKey !== null}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium ${
+                          flag.is_enabled
+                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                            : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                        }`}
+                      >
+                        {savingFlagKey === flag.feature_key ? "Kaydediliyor..." : flag.is_enabled ? "Acik" : "Kapali"}
+                      </button>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={flag.rollout_percentage}
+                        onChange={(event) => {
+                          const nextValue = Number(event.target.value);
+                          setFeatureFlags((prev) =>
+                            prev.map((item) =>
+                              item.id === flag.id ? { ...item, rollout_percentage: nextValue } : item,
+                            ),
+                          );
+                        }}
+                        className="flex-1"
+                      />
+                      <span className="w-12 text-right text-xs font-medium text-foreground">%{flag.rollout_percentage}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        disabled={savingFlagKey !== null}
+                        onClick={() => {
+                          const currentFlag = featureFlags.find((item) => item.id === flag.id) ?? flag;
+                          void updateFeatureFlag(currentFlag, {
+                            rollout_percentage: currentFlag.rollout_percentage,
+                          });
+                        }}
+                      >
+                        Kaydet
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-muted/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">Eval ve Benchmark</h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Core benchmark suiti ile Nova davranisini kalite ve latency ekseninde olc.
+                </p>
+              </div>
+              <Button type="button" variant="accent" disabled={runningBenchmarks} onClick={runBenchmarks} className="h-8 px-3 text-xs">
+                {runningBenchmarks ? "Kosuyor..." : "Benchmark Calistir"}
+              </Button>
+            </div>
+            {governanceStatus && (
+              <div className={`mt-3 rounded-xl px-3 py-2 text-xs ${
+                governanceStatus.startsWith("Hata")
+                  ? "border border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-200"
+                  : "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+              }`}>
+                {governanceStatus}
+              </div>
+            )}
+            <div className="mt-3 space-y-3">
+              {evalRuns.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Benchmark gecmisi bulunmuyor.</div>
+              ) : (
+                evalRuns.slice(0, 6).map((row) => (
+                  <div key={row.id} className="rounded-xl border border-border bg-card px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-foreground">{row.case_key}</div>
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          {row.category} - {new Date(row.created_at).toLocaleString("tr-TR")}
+                        </div>
+                      </div>
+                      <div className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        row.passed
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          : "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                      }`}>
+                        {row.score}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {row.latency_ms ?? 0} ms
+                      {row.failure_reason ? ` - ${row.failure_reason}` : " - basarili"}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
 
       {/* Messages area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">

@@ -52,6 +52,33 @@ export interface DocumentVersionRecord {
 
 // ---- Documents ----
 
+async function parseApiResponse<T>(response: Response): Promise<T> {
+  const rawText = await response.text();
+  let payload: Record<string, unknown> = {};
+
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+      if (!response.ok) {
+        throw new Error('Sunucudan gecersiz yanit dondu.');
+      }
+    }
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof payload.message === 'string'
+        ? payload.message
+        : typeof payload.error === 'string'
+          ? payload.error
+          : 'Dokuman islemi tamamlanamadi.';
+    throw new Error(message);
+  }
+
+  return payload as T;
+}
+
 export async function fetchDocuments(
   orgId: string,
   workspaceId?: string
@@ -98,44 +125,46 @@ export async function fetchDocument(id: string): Promise<DocumentRecord | null> 
 export async function createDocument(
   doc: Omit<DocumentRecord, 'id' | 'created_at' | 'updated_at' | 'version' | 'approved_by' | 'approved_at' | 'share_token' | 'is_shared' | 'shared_at'>
 ): Promise<DocumentRecord | null> {
-  const supabase = createClient();
-  if (!supabase) return null;
+  const response = await fetch('/api/documents', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      companyWorkspaceId: doc.company_workspace_id,
+      templateId: doc.template_id,
+      groupKey: doc.group_key,
+      title: doc.title,
+      contentJson: doc.content_json,
+      variablesData: doc.variables_data,
+      status: doc.status,
+    }),
+  });
 
-  const { data, error } = await supabase
-    .from('editor_documents')
-    .insert({
-      ...doc,
-      version: 1,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('createDocument error:', error);
-    return null;
-  }
-  return data as DocumentRecord;
+  const payload = await parseApiResponse<{ ok: true; document: DocumentRecord }>(response);
+  return payload.document;
 }
 
 export async function updateDocument(
   id: string,
   updates: Partial<Pick<DocumentRecord, 'title' | 'content_json' | 'variables_data' | 'status' | 'version'>>
 ): Promise<DocumentRecord | null> {
-  const supabase = createClient();
-  if (!supabase) return null;
+  const response = await fetch(`/api/documents/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title: updates.title,
+      contentJson: updates.content_json,
+      variablesData: updates.variables_data,
+      status: updates.status,
+      version: updates.version,
+    }),
+  });
 
-  const { data, error } = await supabase
-    .from('editor_documents')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('updateDocument error:', error);
-    return null;
-  }
-  return data as DocumentRecord;
+  const payload = await parseApiResponse<{ ok: true; document: DocumentRecord }>(response);
+  return payload.document;
 }
 
 export async function deleteDocument(id: string): Promise<boolean> {

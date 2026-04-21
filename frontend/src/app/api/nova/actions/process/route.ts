@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { assertNovaFeatureEnabled } from "@/lib/nova/governance";
 import { requirePermission } from "@/lib/supabase/api-auth";
 import { parseJsonBody } from "@/lib/security/server";
 import { processSelfHealingQueue } from "@/lib/self-healing/queue";
@@ -16,15 +17,29 @@ function isCronAuthorized(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   let workerId = "nova-action-worker";
+  let userId: string | null = null;
+  let organizationId: string | null = null;
 
   if (!isCronAuthorized(request)) {
     const auth = await requirePermission(request, "self_healing.manage");
     if (!auth.ok) return auth.response;
     workerId = `nova-manual-${auth.userId}`;
+    userId = auth.userId;
+    organizationId = auth.organizationId;
   }
 
   const parsed = await parseJsonBody(request, bodySchema);
   if (!parsed.ok) return parsed.response;
+
+  if (userId && organizationId) {
+    const rolloutResponse = await assertNovaFeatureEnabled({
+      featureKey: "nova.agent.async_execution",
+      userId,
+      organizationId,
+      fallbackMessage: "Nova async execution bu tenant icin su anda kapali.",
+    });
+    if (rolloutResponse) return rolloutResponse;
+  }
 
   const result = await processSelfHealingQueue({
     batchSize: parsed.data.batchSize,

@@ -1,0 +1,14 @@
+{
+  "name": "risknova-platform",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev:reset",
+    "dev:frontend": "npm --prefix frontend run dev:reset",
+    "dev:frontend:raw": "npm --prefix frontend run dev",
+    "dev:frontend:reset": "npm --prefix frontend run dev:reset",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "test": "npm --prefix frontend run test"
+  }
+}

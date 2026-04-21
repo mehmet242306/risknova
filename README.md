@@ -19,10 +19,11 @@ ve operasyon yonetim platformu.
 
 ## Kurulum
 ```
-cd frontend
-npm install
 npm run dev
 ```
+
+Bu komut repo kokunden frontend dev sunucusunu baslatir ve eski `next dev`
+surec/lock kalintilarini otomatik temizler.
 
 ## Lisans
 Proprietary - All rights reserved

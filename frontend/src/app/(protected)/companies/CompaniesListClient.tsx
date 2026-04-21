@@ -12,6 +12,11 @@ import type { PremiumIconTone } from "@/components/ui/premium-icon-badge";
 import { defaultCompanyDirectory, loadCompanyDirectory, saveCompanyDirectory, type CompanyRecord } from "@/lib/company-directory";
 import { getOverallRiskState } from "@/lib/workplace-status";
 import { fetchCompaniesFromSupabase, fetchArchivedFromSupabase, fetchDeletedFromSupabase, createCompanyInSupabase, archiveCompanyInSupabase, restoreCompanyInSupabase, deleteCompanyInSupabase, permanentDeleteFromSupabase } from "@/lib/supabase/company-api";
+import {
+  fetchAccountContext,
+  hasManagedOsgbAccount,
+  type AccountContextResponse,
+} from "@/lib/account/account-api";
 
 /* ── localStorage helpers (fallback) ── */
 const AK = "risknova_archived_companies";
@@ -38,9 +43,16 @@ export function CompaniesListClient() {
   const [arCos, setArCos] = useState<CompanyRecord[]>([]);
   const [dlCos, setDlCos] = useState<CompanyRecord[]>([]);
   const [ds, setDs] = useState<"supabase" | "local">("local");
+  const [account, setAccount] = useState<AccountContextResponse | null>(null);
 
   const loadAll = useCallback(async () => {
-    const [a, b, c] = await Promise.all([fetchCompaniesFromSupabase(), fetchArchivedFromSupabase(), fetchDeletedFromSupabase()]);
+    const [a, b, c, accountContext] = await Promise.all([
+      fetchCompaniesFromSupabase(),
+      fetchArchivedFromSupabase(),
+      fetchDeletedFromSupabase(),
+      fetchAccountContext(),
+    ]);
+    setAccount(accountContext);
     if (a !== null) { setCos(a); setArCos(b ?? []); setDlCos(c ?? []); setDs("supabase"); saveCompanyDirectory(a); svA(b ?? []); svD(c ?? []); }
     else { setCos(loadCompanyDirectory()); setArCos(ldA()); setDlCos(ldD()); setDs("local"); }
   }, []);
@@ -75,12 +87,61 @@ export function CompaniesListClient() {
     return { total: cos.length, emp: te, crit: cr, mat: am, oa: cos.reduce((s, c) => s + c.openActions, 0), od: cos.reduce((s, c) => s + c.overdueActions, 0) };
   }, [cos]);
 
-  async function onCreate() { const n = mkEmpty(); const sid = await createCompanyInSupabase(n); if (sid) { await loadAll(); router.push(`/workspace/${sid}`); return; } saveCompanyDirectory([...loadCompanyDirectory(), n]); rl(); router.push(`/workspace/${n.id}`); }
-  function onReset() { saveCompanyDirectory(defaultCompanyDirectory); rl(); }
+  const workspaceUsageText = useMemo(() => {
+    const usage = account?.usage;
+    if (!usage) return null;
+    if (usage.maxActiveWorkspaces === null) {
+      return `${usage.activeWorkspaceCount} aktif firma / workspace`;
+    }
+    return `${usage.activeWorkspaceCount} / ${usage.maxActiveWorkspaces} aktif firma hakkı kullanılıyor`;
+  }, [account]);
+
+  const activeWorkspaceLimitReached = Boolean(
+    account?.usage &&
+      account.usage.maxActiveWorkspaces !== null &&
+      account.usage.activeWorkspaceCount >= account.usage.maxActiveWorkspaces,
+  );
+  const isManagedOsgbAccount = hasManagedOsgbAccount(account?.context);
+  const isSingleWorksiteAccount =
+    account?.context.accountType === "individual" && !isManagedOsgbAccount;
+  const moduleEyebrow = isManagedOsgbAccount
+    ? "OSGB Firmaları"
+    : isSingleWorksiteAccount
+      ? "İşyeri Profili"
+      : "Firmalarım / Kurumlarım";
+  const moduleTitle = isManagedOsgbAccount
+    ? "Firma ve çalışma alanları"
+    : isSingleWorksiteAccount
+      ? "İşyeri ve operasyon içeriği"
+      : "Firmalarım / Kurumlarım";
+  const moduleDescription =
+    workspaceUsageText ??
+    (isSingleWorksiteAccount
+      ? "Aktif çalışma alanındaki işyeri, personel ve diğer operasyon kayıtlarını yönetin."
+      : "Sorumlu olduğunuz firmaları yönetin, çalışma alanlarına erişin.");
+  const entitySingular = isSingleWorksiteAccount ? "işyeri" : "firma";
+  const entityPlural = isSingleWorksiteAccount ? "işyeri" : "firma";
+  const emptyStateTitle = isSingleWorksiteAccount
+    ? "İşyeri kaydı henüz görünmüyor"
+    : "Henüz kayıtlı firma bulunmuyor";
+  const emptyStateDescription = isSingleWorksiteAccount
+    ? "Bu alan aktif çalışma alanındaki işyeri verileriyle dolar. Çalışma alanı kurulumunu tamamladığınızda personel ve diğer kayıtlar burada görünür."
+    : "İlk firmanızı oluşturarak başlayın.";
+
+  async function onCreate() {
+    if (isSingleWorksiteAccount) return;
+    if (activeWorkspaceLimitReached) return;
+    const n = mkEmpty(); const sid = await createCompanyInSupabase(n); if (sid) { await loadAll(); router.push(`/workspace/${sid}`); return; } saveCompanyDirectory([...loadCompanyDirectory(), n]); rl(); router.push(`/workspace/${n.id}`);
+  }
+  function onReset() {
+    if (isSingleWorksiteAccount) return;
+    saveCompanyDirectory(defaultCompanyDirectory);
+    rl();
+  }
   function clr() { setQ(""); setHf(""); setSf(""); setKf(""); }
   async function doArchive(id: string) { if ((await archiveCompanyInSupabase(id)) === true) { await loadAll(); setCaId(null); return; } const t = cos.find(c => c.id === id); if (!t) return; saveCompanyDirectory(cos.filter(c => c.id !== id)); svA([...arCos, t]); rl(); setCaId(null); }
   async function doDelete(id: string) { if ((await deleteCompanyInSupabase(id)) === true) { await loadAll(); setCdId(null); setDct(""); return; } const t = cos.find(c => c.id === id); if (!t) return; saveCompanyDirectory(cos.filter(c => c.id !== id)); svD([...dlCos, t]); rl(); setCdId(null); setDct(""); }
-  async function doRestore(id: string) { if ((await restoreCompanyInSupabase(id)) === true) { await loadAll(); return; } const t = arCos.find(c => c.id === id); if (!t) return; svA(arCos.filter(c => c.id !== id)); saveCompanyDirectory([...cos, t]); rl(); }
+  async function doRestore(id: string) { if (activeWorkspaceLimitReached) return; if ((await restoreCompanyInSupabase(id)) === true) { await loadAll(); return; } const t = arCos.find(c => c.id === id); if (!t) return; svA(arCos.filter(c => c.id !== id)); saveCompanyDirectory([...cos, t]); rl(); }
   async function doPerm(id: string) { if ((await permanentDeleteFromSupabase(id)) === true) { await loadAll(); return; } svD(dlCos.filter(c => c.id !== id)); rl(); }
 
   const hasF = !!(q || hf || sf || kf);
@@ -88,22 +149,59 @@ export function CompaniesListClient() {
 
   if (!mounted) return (
     <div className="space-y-6">
-      <PageHeader eyebrow={"İşyeri Yönetimi"} title="Firmalar" description={"Sorumlu olduğunuz firmaları yönetin."} />
+      <PageHeader eyebrow={moduleEyebrow} title={moduleTitle} description={moduleDescription} />
       <div className="flex items-center justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
     </div>
   );
 
   if (cos.length === 0 && arCos.length === 0 && dlCos.length === 0) return (
     <div className="space-y-6">
-      <PageHeader eyebrow={"İşyeri Yönetimi"} title="Firmalar" description={"Sorumlu olduğunuz firmaları yönetin."} />
-      <EmptyState title={"Henüz kayıtlı firma bulunmuyor"} description={"İlk firmanızı oluşturarak başlayın."} action={<div className="flex flex-wrap justify-center gap-3"><Button onClick={() => void onCreate()}>Yeni Firma</Button><Button variant="outline" onClick={onReset}>Demo Verileri</Button></div>} />
+      <PageHeader eyebrow={moduleEyebrow} title={moduleTitle} description={moduleDescription} />
+      <EmptyState
+        title={emptyStateTitle}
+        description={emptyStateDescription}
+        action={
+          isSingleWorksiteAccount ? (
+            <Button variant="outline" onClick={() => router.push("/workspace/onboarding")}>
+              Çalışma Alanını Tamamla
+            </Button>
+          ) : (
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button onClick={() => void onCreate()} disabled={activeWorkspaceLimitReached}>Yeni Firma</Button>
+              <Button variant="outline" onClick={onReset}>Ornek Veriler</Button>
+            </div>
+          )
+        }
+      />
     </div>
   );
 
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow={"İşyeri Yönetimi"} title="Firmalar" description={"Sorumlu olduğunuz firmaları yönetin, çalışma alanlarına erişin."}
-        actions={<div className="flex flex-wrap items-center gap-2"><Button size="sm" onClick={() => void onCreate()}>Yeni Firma</Button><Button variant="outline" size="sm" onClick={onReset}>Demo Verileri</Button><Badge variant={ds === "supabase" ? "success" : "neutral"} className="text-[10px]">{ds === "supabase" ? "Supabase" : "Yerel"}</Badge></div>} />
+      <PageHeader
+        eyebrow={moduleEyebrow}
+        title={moduleTitle}
+        description={moduleDescription}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {!isSingleWorksiteAccount ? (
+              <>
+                <Button size="sm" onClick={() => void onCreate()} disabled={activeWorkspaceLimitReached}>Yeni Firma</Button>
+                <Button variant="outline" size="sm" onClick={onReset}>Ornek Veriler</Button>
+              </>
+            ) : null}
+            <Badge variant={ds === "supabase" ? "success" : "neutral"} className="text-[10px]">
+              {ds === "supabase" ? "Supabase" : "Yerel"}
+            </Badge>
+          </div>
+        }
+      />
+
+      {activeWorkspaceLimitReached && !isSingleWorksiteAccount ? (
+        <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-foreground">
+          Aktif firma / workspace limitine ulaştın. Yeni kayıt açmak veya arşivden geri yüklemek için önce bir firmayı arşivle ya da paket yükselt.
+        </div>
+      ) : null}
 
       <div className="border-b border-border">
         <div className="flex gap-0">
@@ -120,7 +218,7 @@ export function CompaniesListClient() {
 
       {vm === "active" && (
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
-          {[{ l: "Toplam Firma", v: stats.total, a: false }, { l: "Toplam Çalışan", v: stats.emp, a: false }, { l: "Kritik İşyeri", v: stats.crit, a: stats.crit > 0 }, { l: "Açık Aksiyon", v: stats.oa, a: false }, { l: "Geciken İş", v: stats.od, a: stats.od > 0 }, { l: "Ort. Olgunluk", v: `%${stats.mat}`, a: false }].map(s => (
+          {[{ l: isSingleWorksiteAccount ? "Toplam İşyeri" : "Toplam Firma", v: stats.total, a: false }, { l: "Toplam Çalışan", v: stats.emp, a: false }, { l: "Kritik İşyeri", v: stats.crit, a: stats.crit > 0 }, { l: "Açık Aksiyon", v: stats.oa, a: false }, { l: "Geciken İş", v: stats.od, a: stats.od > 0 }, { l: "Ort. Olgunluk", v: `%${stats.mat}`, a: false }].map(s => (
             <div key={s.l} className="rounded-xl border border-border bg-card p-3.5 shadow-[var(--shadow-soft)]">
               <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{s.l}</p>
               <p className={`mt-1 text-xl font-semibold tabular-nums ${s.a ? "text-danger" : "text-foreground"}`}>{s.v}</p>
@@ -141,7 +239,7 @@ export function CompaniesListClient() {
           <div className="flex flex-col gap-1"><label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{"Sıralama"}</label><select value={sk} onChange={e => setSk(e.target.value as SK)} className={selC}><option value="name">{"Ada Göre"}</option><option value="employees">{"Çalışan"}</option><option value="risk">Risk</option><option value="overdue">Geciken</option></select></div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <p className="text-xs text-muted-foreground">{filtered.length} / {src.length} firma</p>
+          <p className="text-xs text-muted-foreground">{filtered.length} / {src.length} {entityPlural}</p>
           {hasF && <button type="button" onClick={clr} className="text-xs font-medium text-primary hover:underline">Filtreleri temizle</button>}
         </div>
       </div>
@@ -209,13 +307,13 @@ export function CompaniesListClient() {
               </div>
             );
           })}</div>
-        ) : (<EmptyState title={"Eşleşen firma bulunamadı"} description={"Arama kriterlerinize uygun firma yok."} action={<Button variant="outline" onClick={clr}>Filtreleri Temizle</Button>} />)
+        ) : (<EmptyState title={`Eşleşen ${entitySingular} bulunamadı`} description={"Arama kriterlerinize uygun kayıt yok."} action={<Button variant="outline" onClick={clr}>Filtreleri Temizle</Button>} />)
       ) : null}
 
       {vm === "archived" ? (
         filtered.length > 0 ? (
           <div className="space-y-4">
-            <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3"><p className="text-sm font-medium text-foreground">{"Arşivlenen firmalar. Geri yükleme yapabilirsiniz."}</p></div>
+            <div className="rounded-xl border border-warning/30 bg-warning/5 px-4 py-3"><p className="text-sm font-medium text-foreground">{isSingleWorksiteAccount ? "Arşivlenen işyeri kayıtları. Geri yükleme yapabilirsiniz." : "Arşivlenen firmalar. Geri yükleme yapabilirsiniz."}</p></div>
             <div className="grid gap-4 xl:grid-cols-2">{filtered.map(c => (
               <div key={c.id} className="rounded-xl border border-warning/30 bg-card p-4 shadow-[var(--shadow-soft)]">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -225,13 +323,13 @@ export function CompaniesListClient() {
               </div>
             ))}</div>
           </div>
-        ) : (<EmptyState title={"Arşivde firma bulunmuyor"} description={"Henüz arşivlenmiş firma yok."} />)
+        ) : (<EmptyState title={`Arşivde ${entitySingular} bulunmuyor`} description={`Henüz arşivlenmiş ${entitySingular} yok.`} />)
       ) : null}
 
       {vm === "deleted" ? (
         filtered.length > 0 ? (
           <div className="space-y-4">
-            <div className="rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"><p className="text-sm font-medium text-foreground">{"Silinen firmalar. Kalıcı silme geri alınamaz."}</p></div>
+            <div className="rounded-xl border border-danger/30 bg-danger/5 px-4 py-3"><p className="text-sm font-medium text-foreground">{isSingleWorksiteAccount ? "Silinen işyeri kayıtları. Kalıcı silme geri alınamaz." : "Silinen firmalar. Kalıcı silme geri alınamaz."}</p></div>
             <div className="grid gap-4 xl:grid-cols-2">{filtered.map(c => (
               <div key={c.id} className="rounded-xl border border-danger/30 bg-card p-4 shadow-[var(--shadow-soft)]">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -241,7 +339,7 @@ export function CompaniesListClient() {
               </div>
             ))}</div>
           </div>
-        ) : (<EmptyState title={"Silinen firma bulunmuyor"} description={"Henüz silinmiş firma yok."} />)
+        ) : (<EmptyState title={`Silinen ${entitySingular} bulunmuyor`} description={`Henüz silinmiş ${entitySingular} yok.`} />)
       ) : null}
     </div>
   );

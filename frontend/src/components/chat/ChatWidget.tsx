@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
 import { getNovaUiCopy, resolveNovaRuntimeErrorMessage } from "@/lib/nova-ui";
+import { fetchAccountContext } from "@/lib/account/account-api";
 import type {
   NovaAgentResponse,
   NovaActionHint,
@@ -69,47 +70,10 @@ type Message = {
   isError?: boolean;
 };
 
-type WidgetPosition = {
-  x: number;
-  y: number;
-};
-
-const WIDGET_POSITION_KEY = "risknova.chatWidgetPosition";
-const EDGE_OFFSET = 24;
-
-function clampPosition(x: number, y: number, width: number, height: number): WidgetPosition {
-  if (typeof window === "undefined") {
-    return { x, y };
-  }
-
-  const maxX = Math.max(EDGE_OFFSET, window.innerWidth - width - EDGE_OFFSET);
-  const maxY = Math.max(EDGE_OFFSET + 72, window.innerHeight - height - EDGE_OFFSET);
-
-  return {
-    x: Math.min(Math.max(EDGE_OFFSET, x), maxX),
-    y: Math.min(Math.max(EDGE_OFFSET + 72, y), maxY),
-  };
-}
-
-function getDefaultPosition(open: boolean): WidgetPosition {
-  if (typeof window === "undefined") {
-    return { x: EDGE_OFFSET, y: EDGE_OFFSET + 72 };
-  }
-
-  const width = open ? Math.min(380, window.innerWidth - EDGE_OFFSET * 2) : 56;
-  const height = open ? Math.min(600, window.innerHeight - 96) : 56;
-
-  return clampPosition(
-    window.innerWidth - width - EDGE_OFFSET,
-    window.innerHeight - height - EDGE_OFFSET,
-    width,
-    height,
-  );
-}
-
 export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { locale } = useI18n();
   const ui = getNovaUiCopy(locale);
   const [open, setOpen] = useState(false);
@@ -118,32 +82,130 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
   const [typing, setTyping] = useState(false);
   const [actionInFlightId, setActionInFlightId] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [accountType, setAccountType] = useState<"individual" | "osgb" | "enterprise" | null>(null);
+  const [accountSurface, setAccountSurface] = useState<"platform-admin" | "osgb-manager" | "standard">("standard");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [position, setPosition] = useState<WidgetPosition>(() => getDefaultPosition(false));
-  const [dragging, setDragging] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const proactiveLoadedRef = useRef(false);
-  const dragOffsetRef = useRef<WidgetPosition>({ x: 0, y: 0 });
-  const pointerStartRef = useRef<WidgetPosition | null>(null);
-  const pendingClosedDragRef = useRef(false);
-  const draggedClosedButtonRef = useRef(false);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const dragPointerIdRef = useRef<number | null>(null);
   const actionPollCancelledRef = useRef(false);
   const supabase = createClient();
-  const authenticatedWelcomeActions = useMemo<WidgetAction[]>(() => ([
-    { label: ui.quickActions.workspace, path: "/solution-center", icon: "N" },
-    { label: ui.quickActions.planner, path: "/planner", icon: "P" },
-    { label: ui.quickActions.newIncident, path: "/incidents/new", icon: "O" },
-    { label: ui.quickActions.documents, path: "/solution-center/documents", icon: "D" },
-  ]), [ui.quickActions.documents, ui.quickActions.newIncident, ui.quickActions.planner, ui.quickActions.workspace]);
+  const currentQueryString = searchParams.toString();
+  const currentPage = `${pathname}${currentQueryString ? `?${currentQueryString}` : ""}`;
+  const companyWorkspaceId = useMemo(() => {
+    const workspaceId = searchParams.get("workspaceId");
+    return workspaceId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(workspaceId)
+      ? workspaceId
+      : null;
+  }, [searchParams]);
+  const isOsgbSurface =
+    pathname.startsWith("/osgb") ||
+    currentPage.toLowerCase().includes("surface=osgb-manager") ||
+    accountSurface === "osgb-manager";
+  const isPlatformAdminSurface =
+    pathname.startsWith("/platform-admin") ||
+    currentPage.toLowerCase().includes("surface=platform-admin") ||
+    accountSurface === "platform-admin";
+  const isEnterpriseSurface =
+    pathname.startsWith("/enterprise") ||
+    currentPage.toLowerCase().includes("surface=enterprise") ||
+    accountType === "enterprise";
+  const assistantName = isPlatformAdminSurface
+    ? "Nova Platform"
+    : isOsgbSurface
+    ? "Nova OSGB"
+    : isEnterpriseSurface
+      ? "Nova Kurumsal"
+      : "Nova";
+  const assistantSubtitle = isPlatformAdminSurface
+    ? "Platform ic operasyon asistani"
+    : isOsgbSurface
+    ? "OSGB yonetim asistani"
+    : isEnterpriseSurface
+      ? "Kurumsal AI asistani"
+      : ui.widget.subtitle;
+  const authenticatedWelcomeActions = useMemo<WidgetAction[]>(() => {
+    if (isPlatformAdminSurface) {
+      return [
+        { label: "Nova Platform", path: "/settings?tab=admin_ai", icon: "N" },
+        { label: "Hata Loglari", path: "/settings?tab=error_logs", icon: "H" },
+        { label: "Belgeler", path: "/settings?tab=admin_documents", icon: "D" },
+        { label: "Audit", path: "/settings?tab=audit_logs", icon: "A" },
+      ];
+    }
+
+    if (isOsgbSurface) {
+      const managerHref = companyWorkspaceId
+        ? `/solution-center?surface=osgb-manager&workspaceId=${companyWorkspaceId}`
+        : "/solution-center?surface=osgb-manager";
+      const tasksHref = companyWorkspaceId
+        ? `/osgb/tasks?workspaceId=${companyWorkspaceId}`
+        : "/osgb/tasks";
+      const assignmentsHref = companyWorkspaceId
+        ? `/osgb/assignments?workspaceId=${companyWorkspaceId}`
+        : "/osgb/assignments";
+      const documentsHref = companyWorkspaceId
+        ? `/osgb/documents?workspaceId=${companyWorkspaceId}`
+        : "/osgb/documents";
+
+      return [
+        { label: "Nova OSGB", path: managerHref, icon: "N" },
+        { label: "Gorevler", path: tasksHref, icon: "G" },
+        { label: "Atamalar", path: assignmentsHref, icon: "A" },
+        { label: "Dokumanlar", path: documentsHref, icon: "D" },
+      ];
+    }
+
+    if (isEnterpriseSurface) {
+      const enterpriseHref = companyWorkspaceId
+        ? `/solution-center?surface=enterprise&workspaceId=${companyWorkspaceId}`
+        : "/solution-center?surface=enterprise";
+
+      return [
+        { label: "Nova Kurumsal", path: enterpriseHref, icon: "N" },
+        { label: "Dokumanlar", path: "/solution-center/documents", icon: "D" },
+        { label: "Raporlar", path: "/reports", icon: "R" },
+        { label: "Firmalar", path: "/companies", icon: "F" },
+      ];
+    }
+
+    return [
+      { label: ui.quickActions.workspace, path: "/solution-center", icon: "N" },
+      { label: ui.quickActions.planner, path: "/planner", icon: "P" },
+      { label: ui.quickActions.newIncident, path: "/incidents/new", icon: "O" },
+      { label: ui.quickActions.documents, path: "/solution-center/documents", icon: "D" },
+    ];
+  }, [
+    companyWorkspaceId,
+    isEnterpriseSurface,
+    isOsgbSurface,
+    isPlatformAdminSurface,
+    ui.quickActions.documents,
+    ui.quickActions.newIncident,
+    ui.quickActions.planner,
+    ui.quickActions.workspace,
+  ]);
   const publicEntryActions = useMemo<WidgetAction[]>(() => ([
     { label: ui.quickActions.login, path: "/login", icon: "G" },
     { label: ui.quickActions.register, path: "/register", icon: "K" },
   ]), [ui.quickActions.login, ui.quickActions.register]);
-  const welcomeText = isAuthenticated ? ui.widget.welcomeAuthenticated : ui.widget.welcomePublic;
+  const welcomeText = isAuthenticated
+    ? isPlatformAdminSurface
+      ? "Merhaba! Ben Nova Platform. Bu yuzeyde site sagligi, hata akislari, belge omurgasi ve ic operasyon risklerini ozetlerim."
+      : ui.widget.welcomeAuthenticated
+    : ui.widget.welcomePublic;
   const welcomeActions = isAuthenticated ? authenticatedWelcomeActions : publicEntryActions;
+
+  function isAccessErrorMessage(text: string): boolean {
+    const normalized = text.toLowerCase();
+    return (
+      normalized.includes("err_auth_006") ||
+      normalized.includes("gerekli yetki") ||
+      normalized.includes("yetkili") ||
+      normalized.includes("erisim") ||
+      normalized.includes("erişim")
+    );
+  }
 
   function buildBotMessageFromAgentResponse(data: NovaAgentResponse): Message {
     const answer = data?.answer || ui.widget.unavailable;
@@ -189,27 +251,19 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
   useEffect(() => {
     if (!isAuthenticated || !supabase) return;
 
-    async function fetchOrgId() {
+    async function fetchAccountScope() {
       try {
-        const { data: { session } } = await supabase!.auth.getSession();
-        const user = session?.user ?? null;
-        if (!user) return;
-
-        const { data } = await supabase!
-          .from("user_profiles")
-          .select("organization_id")
-          .eq("auth_user_id", user.id)
-          .maybeSingle();
-
-        if (data?.organization_id) {
-          setOrganizationId(data.organization_id);
-        }
+        const response = await fetchAccountContext();
+        if (!response?.context) return;
+        setOrganizationId(response.context.organizationId ?? null);
+        setAccountType(response.context.accountType ?? null);
+        setAccountSurface(response.surface ?? "standard");
       } catch {
         return;
       }
     }
 
-    fetchOrgId();
+    void fetchAccountScope();
   }, [isAuthenticated, supabase]);
 
   // Welcome message on first open
@@ -218,98 +272,6 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       actionPollCancelledRef.current = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = window.localStorage.getItem(WIDGET_POSITION_KEY);
-    if (!raw) {
-      setPosition(getDefaultPosition(open));
-      return;
-    }
-
-    try {
-      const saved = JSON.parse(raw) as WidgetPosition;
-      const width = open ? Math.min(380, window.innerWidth - EDGE_OFFSET * 2) : 56;
-      const height = open ? Math.min(600, window.innerHeight - 96) : 56;
-      setPosition(clampPosition(saved.x, saved.y, width, height));
-    } catch {
-      setPosition(getDefaultPosition(open));
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(WIDGET_POSITION_KEY, JSON.stringify(position));
-  }, [position]);
-
-  useEffect(() => {
-    function handleWindowResize() {
-      const width = open ? Math.min(380, window.innerWidth - EDGE_OFFSET * 2) : 56;
-      const height = open ? Math.min(600, window.innerHeight - 96) : 56;
-      setPosition((current) => clampPosition(current.x, current.y, width, height));
-    }
-
-    window.addEventListener("resize", handleWindowResize);
-    return () => window.removeEventListener("resize", handleWindowResize);
-  }, [open]);
-
-  useEffect(() => {
-    if (!dragging) return;
-
-    function handlePointerMove(event: PointerEvent) {
-      if (dragPointerIdRef.current !== null && event.pointerId !== dragPointerIdRef.current) return;
-      const width = open ? Math.min(380, window.innerWidth - EDGE_OFFSET * 2) : 56;
-      const height = open ? Math.min(600, window.innerHeight - 96) : 56;
-      const nextX = event.clientX - dragOffsetRef.current.x;
-      const nextY = event.clientY - dragOffsetRef.current.y;
-      setPosition(clampPosition(nextX, nextY, width, height));
-    }
-
-    function handlePointerUp() {
-      dragPointerIdRef.current = null;
-      pendingClosedDragRef.current = false;
-      pointerStartRef.current = null;
-      setDragging(false);
-    }
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [dragging, open]);
-
-  useEffect(() => {
-    function handlePointerMove(event: PointerEvent) {
-      if (!pendingClosedDragRef.current) return;
-      if (dragPointerIdRef.current !== null && event.pointerId !== dragPointerIdRef.current) return;
-      const start = pointerStartRef.current;
-      if (!start) return;
-
-      const distance = Math.hypot(event.clientX - start.x, event.clientY - start.y);
-      if (!dragging && distance > 6) {
-        draggedClosedButtonRef.current = true;
-        setDragging(true);
-      }
-    }
-
-    function handlePointerUp() {
-      if (!pendingClosedDragRef.current) return;
-      pendingClosedDragRef.current = false;
-      pointerStartRef.current = null;
-      dragPointerIdRef.current = null;
-    }
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
-
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [dragging]);
 
   useEffect(() => {
     if (open && messages.length === 0) {
@@ -387,7 +349,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
     setInput("");
     setTyping(true);
 
-    // Public users: no fake/demo response layer
+    // Public users: no lightweight response layer
     if (!isAuthenticated) {
       setTimeout(() => {
         const botMsg: Message = {
@@ -444,7 +406,8 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           mode: "agent",
           context_surface: "widget",
           history,
-          current_page: pathname,
+          current_page: currentPage,
+          company_workspace_id: companyWorkspaceId,
         }),
       });
 
@@ -616,76 +579,63 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
     }
   }
 
-  function beginDrag(event: ReactPointerEvent<HTMLElement>) {
-    const target = event.target as HTMLElement;
-    if (open && target.closest("button")) return;
-
-    dragPointerIdRef.current = event.pointerId;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-
-    const dragTarget = open ? panelRef.current : event.currentTarget;
-    if (!dragTarget) return;
-    const rect = dragTarget.getBoundingClientRect();
-    dragOffsetRef.current = {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-    };
-
-    if (open) {
-      setDragging(true);
-      return;
-    }
-
-    pointerStartRef.current = { x: event.clientX, y: event.clientY };
-    pendingClosedDragRef.current = true;
-    draggedClosedButtonRef.current = false;
-  }
-
   return (
     <>
       {/* Floating Button */}
       {!open && (
         <button
           type="button"
-          onPointerDown={beginDrag}
-          onClick={() => {
-            if (draggedClosedButtonRef.current) {
-              draggedClosedButtonRef.current = false;
-              return;
-            }
-            if (dragging) return;
-            setOpen(true);
-          }}
-          className="group fixed z-50 inline-flex size-14 cursor-grab items-center justify-center rounded-full bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] text-white shadow-[0_8px_32px_rgba(184,134,11,0.4)] transition-all hover:scale-110 hover:shadow-[0_12px_40px_rgba(184,134,11,0.5)] active:cursor-grabbing"
-          style={{ left: position.x, top: position.y }}
+          onClick={() => setOpen(true)}
+          className="group fixed bottom-10 right-10 z-50 inline-flex h-[3.7rem] w-[4.05rem] items-center justify-center rounded-[1.7rem] border border-amber-200/45 bg-[linear-gradient(135deg,#B87910_0%,#D39B17_46%,#F4C33F_100%)] text-white shadow-[0_16px_34px_rgba(188,132,20,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03] hover:shadow-[0_22px_46px_rgba(188,132,20,0.38)]"
           aria-label={ui.widget.openAriaLabel}
-          title="Nova'yi ac veya surukleyerek tası"
+          title="Nova'yi ac"
         >
-          <span className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_50%,#FBBF24_100%)] opacity-40 animate-ping" style={{ animationDuration: "2.5s" }} />
-          <span className="absolute -inset-1 rounded-full border-2 border-amber-400/30 animate-pulse" style={{ animationDuration: "3s" }} />
-          <MessageCircle className="relative size-6 transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+          <span
+            className="pointer-events-none absolute -inset-8 rounded-full bg-[conic-gradient(from_0deg,rgba(255,255,255,0)_0deg,rgba(250,215,120,0.9)_68deg,rgba(255,255,255,0)_126deg,rgba(214,161,26,0.65)_212deg,rgba(255,255,255,0)_286deg,rgba(250,215,120,0.88)_360deg)] opacity-90 blur-[15px] animate-spin [animation-duration:6.8s]"
+          />
+          <span
+            className="pointer-events-none absolute -inset-7 rounded-full bg-[radial-gradient(circle,rgba(247,203,86,0.62)_0%,rgba(221,166,33,0.34)_30%,rgba(188,132,20,0.16)_54%,rgba(188,132,20,0)_78%)] blur-3xl"
+            style={{ animation: "pulse 2.1s ease-in-out infinite" }}
+          />
+          <span
+            className="pointer-events-none absolute -inset-5 rounded-full border border-amber-100/55 opacity-95 animate-ping [animation-duration:2.9s]"
+            style={{ boxShadow: "0 0 36px rgba(243,191,56,0.34)" }}
+          />
+          <span
+            className="pointer-events-none absolute -inset-3 rounded-full border border-amber-50/70 opacity-90 animate-ping [animation-duration:2.2s]"
+            style={{ animationDelay: "0.7s" }}
+          />
+          <span
+            className="pointer-events-none absolute -inset-6 rounded-full border border-amber-200/40 opacity-80"
+            style={{ animation: "pulse 3.8s ease-in-out infinite" }}
+          />
+          <span
+            className="pointer-events-none absolute -inset-2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(255,255,255,0)_68%)] blur-xl"
+            style={{ animation: "pulse 1.8s ease-in-out infinite" }}
+          />
+          <span className="pointer-events-none absolute inset-[2px] rounded-[1.55rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.02)_38%,rgba(0,0,0,0.05)_100%)]" />
+          <span
+            className="pointer-events-none absolute bottom-[0.32rem] right-[0.46rem] h-[0.92rem] w-[0.92rem] rotate-45 rounded-[0.32rem] border-r border-b border-amber-200/45 bg-[linear-gradient(135deg,#C78B11_0%,#E1AB24_55%,#F4C33F_100%)] shadow-[0_8px_16px_rgba(188,132,20,0.16)]"
+          />
+          <MessageCircle className="relative z-10 size-[1.35rem] -translate-y-[1px] transition-transform duration-300 group-hover:scale-110" />
         </button>
       )}
 
       {/* Chat Panel */}
       {open && (
         <div
-          ref={panelRef}
-          className="fixed z-50 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_60px_rgba(0,0,0,0.2)]"
-          style={{ left: position.x, top: position.y, height: "min(600px, calc(100vh - 6rem))" }}
+          className="fixed bottom-7 right-7 z-50 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_28px_70px_rgba(0,0,0,0.26)]"
+          style={{ height: "min(600px, calc(100vh - 6rem))" }}
         >
           {/* Header */}
-          <div
-            className="flex cursor-grab items-center justify-between border-b border-border bg-[var(--header-bg-solid)] px-4 py-3 active:cursor-grabbing"
-            onPointerDown={beginDrag}
-          >
+          <div className="flex items-center justify-between border-b border-border bg-[var(--header-bg-solid)] px-4 py-3">
             <div className="flex items-center gap-3">
               <span className="inline-flex size-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)]">
                 <Sparkles className="size-4 text-white" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-white">Nova</p>
-                <p className="text-xs text-white/50">{ui.widget.subtitle}</p>
+                <p className="text-sm font-semibold text-white">{assistantName}</p>
+                <p className="text-xs text-white/50">{assistantSubtitle}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -734,14 +684,16 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                     msg.role === "user"
                       ? "bg-primary text-primary-foreground rounded-tr-sm"
                       : msg.isError
-                        ? "bg-red-500/10 text-red-400 rounded-tl-sm border border-red-500/20"
+                        ? isAccessErrorMessage(msg.text)
+                          ? "rounded-tl-sm border border-amber-300/35 bg-amber-50 text-amber-900"
+                          : "rounded-tl-sm border border-red-500/20 bg-red-500/10 text-red-400"
                         : "bg-muted text-foreground rounded-tl-sm"
                   }`}>
                     {msg.text.split("\n").map((line, i) => (
                       <span key={i}>
                         {line.startsWith("**") && line.endsWith("**")
                           ? <strong>{line.slice(2, -2)}</strong>
-                          : line.startsWith("• ")
+                          : line.startsWith("* ")
                             ? <span className="block pl-2">{line}</span>
                             : line.startsWith("- ")
                               ? <span className="block pl-2">{line}</span>
@@ -765,7 +717,7 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                               {src.doc_title || src.law}
                             </span>
                             {src.article_number && (
-                              <span className="ml-1">— {src.article_number}</span>
+                              <span className="ml-1">- {src.article_number}</span>
                             )}
                           </div>
                         ))}

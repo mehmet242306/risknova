@@ -28,7 +28,7 @@ class Settings:
     def __post_init__(self):
         raw_origins = os.getenv(
             "FRONTEND_ORIGINS",
-            "http://localhost:3000,http://localhost:3001,https://guvenligimcepte.vercel.app",
+            "http://localhost:3000,http://localhost:3001,https://getrisknova.vercel.app",
         )
         self.frontend_origins = _split_origins(raw_origins)
 

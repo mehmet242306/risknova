@@ -17,17 +17,46 @@ export default async function LoginPage({
 
   return (
     <AuthShell
-      eyebrow="Giriş"
-      title="Hesabına giriş yap"
-      description="Risk analizi, saha takibi ve raporlama süreçlerini tek platformda yönetmeye devam et."
+      eyebrow="Giris"
+      title="Hesabina giris yap"
+      description="RiskNova hesabina giris yap. Platform admin kullanicilari her zaman once yonetim paneline, diger kullanicilar ise hesap tipine uygun ekrana yonlendirilir."
+      highlights={[
+        {
+          title: "Bireysel giris",
+          description:
+            "Kendi firmalarini, kurumlarini ve workspace alanlarini yoneten bireysel profesyoneller icin.",
+        },
+        {
+          title: "OSGB girisi",
+          description:
+            "Firma, personel, gorevlendirme ve risk sureclerini yoneten OSGB ekipleri icin.",
+        },
+        {
+          title: "Platform yonetimi",
+          description:
+            "Platform admin rolu public bir hesap tipi degildir; giris sonrasi otomatik olarak admin paneline tasinir.",
+        },
+      ]}
+      spotlight={
+        <div className="space-y-3 text-sm leading-7 text-white/92">
+          <p>
+            Giris ekrani tum kullanicilar icin ortaktir. Ayrim, giris sonrasinda
+            hesap baglamina gore yapilir.
+          </p>
+          <p>
+            Platform Admin public onboarding secenegi degildir. Bireysel, OSGB ve
+            Kurumsal disinda ayri bir musteri hesap tipi gosterilmez.
+          </p>
+        </div>
+      }
       footer={
         <p className="text-sm leading-7 text-muted-foreground">
-          Hesabın yok mu?{" "}
+          Hesabin yok mu?{" "}
           <Link
             href="/register"
             className="font-medium text-primary underline underline-offset-4"
           >
-            Kayıt ol
+            Kayit ol
           </Link>
         </p>
       }
@@ -40,7 +69,7 @@ export default async function LoginPage({
 
       {reset ? (
         <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
-          Şifren güncellendi. Yeni şifrenle giriş yapabilirsin.
+          Sifren guncellendi. Yeni sifrenle giris yapabilirsin.
         </div>
       ) : null}
 
@@ -65,8 +94,8 @@ export default async function LoginPage({
           type="password"
           required
           autoComplete="current-password"
-          label="Şifre"
-          placeholder="Şifreni gir"
+          label="Sifre"
+          placeholder="Sifreni gir"
         />
 
         <div className="text-right">
@@ -74,12 +103,12 @@ export default async function LoginPage({
             href="/forgot-password"
             className="text-sm font-medium text-primary underline underline-offset-4"
           >
-            Şifremi unuttum
+            Sifremi unuttum
           </Link>
         </div>
 
         <Button type="submit" formAction={login} className="w-full" size="lg">
-          Giriş Yap
+          Giris Yap
         </Button>
       </form>
     </AuthShell>

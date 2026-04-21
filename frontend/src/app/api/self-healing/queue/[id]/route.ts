@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { recordNovaOutboxEvent } from "@/lib/nova/governance";
 import { requirePermission } from "@/lib/supabase/api-auth";
 import { createServiceClient, logSecurityEventWithContext, parseJsonBody } from "@/lib/security/server";
 
@@ -54,6 +55,36 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const { data: linkedOutbox } = await supabase
+      .from("nova_outbox")
+      .select("id, action_run_id")
+      .eq("task_queue_id", id)
+      .maybeSingle();
+
+    if (linkedOutbox?.id) {
+      await supabase
+        .from("nova_outbox")
+        .update({
+          status: "queued",
+          last_error: null,
+          completed_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", linkedOutbox.id);
+
+      await recordNovaOutboxEvent({
+        outboxId: linkedOutbox.id,
+        actionRunId: linkedOutbox.action_run_id,
+        taskQueueId: id,
+        actorUserId: auth.userId,
+        eventType: "task_requeued",
+        message: "Task queue kaydi manuel olarak yeniden kuyruga alindi.",
+        metadata: {
+          task_type: currentTask.task_type,
+        },
+      }).catch(() => undefined);
+    }
+
     await logSecurityEventWithContext({
       eventType: "self_healing.queue.requeued",
       userId: auth.userId,
@@ -83,6 +114,35 @@ export async function POST(
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const { data: linkedOutbox } = await supabase
+    .from("nova_outbox")
+    .select("id, action_run_id")
+    .eq("task_queue_id", id)
+    .maybeSingle();
+
+  if (linkedOutbox?.id) {
+    await supabase
+      .from("nova_outbox")
+      .update({
+        status: "cancelled",
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", linkedOutbox.id);
+
+    await recordNovaOutboxEvent({
+      outboxId: linkedOutbox.id,
+      actionRunId: linkedOutbox.action_run_id,
+      taskQueueId: id,
+      actorUserId: auth.userId,
+      eventType: "task_cancelled",
+      message: "Task queue kaydi manuel olarak iptal edildi.",
+      metadata: {
+        task_type: currentTask.task_type,
+      },
+    }).catch(() => undefined);
   }
 
   await logSecurityEventWithContext({

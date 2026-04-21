@@ -10,18 +10,37 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
+type AuthHighlight = {
+  title: string;
+  description: string;
+};
+
 type AuthShellProps = {
   eyebrow: string;
   title: string;
   description: string;
   children: ReactNode;
   footer: ReactNode;
+  highlights?: AuthHighlight[];
+  spotlight?: ReactNode;
 };
 
-const benefits = [
-  "Kurumsal ve modern kullanım deneyimi",
-  "Mobil, tablet ve masaüstünde uyumlu arayüz",
-  "Risk intelligence modülüne hazır ürün zemini",
+const defaultHighlights: AuthHighlight[] = [
+  {
+    title: "Bireysel",
+    description:
+      "Bagimsiz uzman, hekim, DSP ve bireysel profesyoneller icin hizli baslangic akisi.",
+  },
+  {
+    title: "OSGB",
+    description:
+      "Firma, personel, gorevlendirme ve is takibini tek panelde toplayan ekip modeli.",
+  },
+  {
+    title: "Kurumsal",
+    description:
+      "Cok lokasyonlu ve ozel ihtiyacli yapilar icin iletisim odakli enterprise akis.",
+  },
 ];
 
 export function AuthShell({
@@ -30,6 +49,8 @@ export function AuthShell({
   description,
   children,
   footer,
+  highlights = defaultHighlights,
+  spotlight,
 }: AuthShellProps) {
   return (
     <main className="app-shell">
@@ -58,29 +79,32 @@ export function AuthShell({
 
             <CardContent className="space-y-8 px-8 pb-8 sm:px-10 sm:pb-10">
               <div className="grid gap-3 sm:grid-cols-3">
-                {benefits.map((item) => (
+                {highlights.map((item) => (
                   <div
-                    key={item}
+                    key={item.title}
                     className="rounded-2xl border border-amber-500/15 bg-white/8 p-4 text-sm leading-6 text-white backdrop-blur-sm"
                   >
-                    {item}
+                    <div className="font-semibold text-white">{item.title}</div>
+                    <div className="mt-1 text-white/82">{item.description}</div>
                   </div>
                 ))}
               </div>
 
               <div className="rounded-3xl border border-amber-500/10 bg-black/20 p-5">
-                <p className="text-sm leading-7 text-white/92">
-                  RiskNova, yalnızca bir panel değil; risk analizi, yorumlama,
-                  kayıt ve operasyon takibini aynı ürün dili içinde birleştiren
-                  profesyonel bir İSG SaaS altyapısıdır.
-                </p>
+                {spotlight ?? (
+                  <p className="text-sm leading-7 text-white/92">
+                    RiskNova, yalnizca bir panel degil; risk analizi, saha
+                    operasyonu, dokuman akislari ve ekip koordinasyonunu tek urun
+                    dili icinde birlestiren profesyonel bir ISG altyapisidir.
+                  </p>
+                )}
 
                 <div className="mt-4">
                   <Link
                     href="/"
                     className="text-sm font-medium text-amber-200 underline underline-offset-4"
                   >
-                    Ana sayfaya dön
+                    Ana sayfaya don
                   </Link>
                 </div>
               </div>
@@ -90,7 +114,7 @@ export function AuthShell({
           <Card className="self-stretch">
             <CardHeader className="p-8 pb-4 sm:p-10 sm:pb-6">
               <Badge variant="accent" className="w-fit">
-                Güvenli erişim
+                Guvenli erisim
               </Badge>
 
               <div className="space-y-2">
