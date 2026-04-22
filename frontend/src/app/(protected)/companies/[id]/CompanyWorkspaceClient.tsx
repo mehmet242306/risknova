@@ -582,7 +582,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
           {tab === "documents" && <DocumentsTab company={company} companyId={companyId} />}
           {tab === "ohs_file" && <OhsFileTab companyWorkspaceId={companyId} companyName={company.name} />}
           {tab === "organization" && <OrganizationPanel companyId={companyId} />}
-          {tab === "history" && <HistoryTab />}
+          {tab === "history" && <HistoryTab companyWorkspaceId={companyId} />}
         </main>
       </div>
 

@@ -2032,30 +2032,188 @@ export function OrganizationTab({ company, setInviteOpen }: { company: CompanyRe
 }
 
 /* ── HISTORY ── */
-export function HistoryTab() {
-  const items = [
-    { d: "Mehmet Y.", r: "İSG Uzmanı", a: "Risk analizi güncellendi", t: "2 saat önce" },
-    { d: "Ayşe K.", r: "İşveren Vekili", a: "Acil durum planı onaylandı", t: "Dün" },
-    { d: "Sistem", r: "Otomatik", a: "Periyodik kontrol hatırlatması", t: "2 gün önce" },
-    { d: "Ali R.", r: "İSG Uzmanı", a: "Saha denetimi tamamlandı", t: "1 hafta önce" },
-  ];
+type WorkspaceActivityRow = {
+  id: string;
+  source: string;
+  action_code: string | null;
+  entity_type: string;
+  entity_id: string | null;
+  actor_name: string | null;
+  actor_email: string | null;
+  payload: Record<string, unknown> | null;
+  severity: string;
+  created_at: string;
+};
+
+const ACTIVITY_ACTION_LABELS: Record<string, string> = {
+  "workspace.created": "Çalışma alanı oluşturuldu",
+  "workspace.archived": "Çalışma alanı arşivlendi",
+  "workspace.restored": "Çalışma alanı geri yüklendi",
+  "workspace.assignment.created": "Uzman atandı",
+  "workspace.assignment.updated": "Uzman ataması güncellendi",
+  "workspace.assignment.deleted": "Uzman ataması silindi",
+  "risk_assessment.created": "Risk analizi oluşturuldu",
+  "risk_assessment.updated": "Risk analizi güncellendi",
+  "risk_assessments.insert": "Risk analizi oluşturuldu",
+  "risk_assessments.update": "Risk analizi güncellendi",
+  "risk_assessments.delete": "Risk analizi silindi",
+  "editor_documents.insert": "Döküman oluşturuldu",
+  "editor_documents.update": "Döküman güncellendi",
+  "editor_documents.delete": "Döküman silindi",
+  "company_trainings.insert": "Eğitim eklendi",
+  "company_trainings.update": "Eğitim güncellendi",
+  "incidents.insert": "Olay kaydı oluşturuldu",
+  "incidents.update": "Olay kaydı güncellendi",
+};
+
+const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
+  risk_assessments: "Risk Analizi",
+  editor_documents: "Döküman",
+  incidents: "Olay",
+  company_trainings: "Eğitim",
+  company_committee_meetings: "Komite Toplantısı",
+  company_periodic_controls: "Periyodik Kontrol",
+  isg_tasks: "Görev",
+  workspace: "Çalışma Alanı",
+  company_workspaces: "Çalışma Alanı",
+  company_identity: "Firma Kimliği",
+};
+
+function formatActivityRelative(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diff = now - then;
+  if (diff < 60_000) return "Az önce";
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins} dakika önce`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} saat önce`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} gün önce`;
+  return new Intl.DateTimeFormat("tr-TR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+}
+
+function formatActivityActionLabel(row: WorkspaceActivityRow): string {
+  if (row.action_code && ACTIVITY_ACTION_LABELS[row.action_code]) {
+    return ACTIVITY_ACTION_LABELS[row.action_code];
+  }
+  if (row.action_code) {
+    return row.action_code.replace(/[._]/g, " ");
+  }
+  return "Değişiklik";
+}
+
+function formatActivityEntityLabel(entityType: string | null | undefined): string {
+  if (!entityType) return "";
+  return ACTIVITY_ENTITY_LABELS[entityType] || entityType.replace(/_/g, " ");
+}
+
+export function HistoryTab({ companyWorkspaceId }: { companyWorkspaceId?: string }) {
+  const [rows, setRows] = useState<WorkspaceActivityRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!companyWorkspaceId) {
+      setLoading(false);
+      setRows([]);
+      setError(null);
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      const supabase = createClient();
+      if (!supabase) {
+        if (!cancelled) {
+          setLoading(false);
+          setRows([]);
+          setError("Veritabanı bağlantısı kurulamadı.");
+        }
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      const { data, error: rpcError } = await supabase.rpc("list_company_workspace_activity", {
+        p_company_workspace_id: companyWorkspaceId,
+        p_limit: 100,
+      });
+      if (cancelled) return;
+      if (rpcError) {
+        setRows([]);
+        setError(rpcError.message);
+      } else {
+        setRows((data ?? []) as WorkspaceActivityRow[]);
+      }
+      setLoading(false);
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [companyWorkspaceId]);
+
   return (
-    <Sec title="Geçmiş ve Denetim İzi" desc="Firma üzerindeki tüm işlemler ve değişiklik geçmişi.">
-      <div className="space-y-3">
-        {items.map((item, i) => (
-          <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{item.d.charAt(0)}</div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-foreground">{item.d}</p>
-                <span className="text-[10px] text-muted-foreground">{item.t}</span>
+    <Sec title="Geçmiş ve Denetim İzi" desc="Firma üzerindeki işlemler ve değişiklik geçmişi — otomatik olarak toplanır.">
+      {!companyWorkspaceId ? (
+        <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+          Firma çalışma alanı seçilmedi.
+        </div>
+      ) : loading ? (
+        <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+          Geçmiş yükleniyor...
+        </div>
+      ) : error ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-200">
+          {error}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-6 text-center text-sm text-muted-foreground">
+          Henüz bir geçmiş kaydı yok. Firma üzerinde değişiklik yaptıkça burada listelenecektir.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((row) => {
+            const label = row.actor_name || row.actor_email || "Sistem işlemi";
+            const initial = label.charAt(0).toUpperCase();
+            const actionLabel = formatActivityActionLabel(row);
+            const entityLabel = formatActivityEntityLabel(row.entity_type);
+            return (
+              <div
+                key={`${row.source}-${row.id}`}
+                className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-3"
+              >
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  {initial}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-foreground">{label}</p>
+                    <span className="shrink-0 text-[10px] text-muted-foreground" title={new Date(row.created_at).toISOString()}>
+                      {formatActivityRelative(row.created_at)}
+                    </span>
+                  </div>
+                  {row.actor_email && row.actor_email !== label && (
+                    <p className="text-[10px] text-muted-foreground">{row.actor_email}</p>
+                  )}
+                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-foreground">
+                    <span className="inline-flex items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      {actionLabel}
+                    </span>
+                    {entityLabel && (
+                      <span className="text-muted-foreground">· {entityLabel}</span>
+                    )}
+                    {row.entity_id && (
+                      <span className="truncate text-[10px] text-muted-foreground" title={row.entity_id}>
+                        {row.entity_id.slice(0, 8)}
+                      </span>
+                    )}
+                  </p>
+                </div>
               </div>
-              <p className="text-[10px] text-muted-foreground">{item.r}</p>
-              <p className="mt-0.5 text-xs text-foreground">{item.a}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </Sec>
   );
 }
