@@ -38,6 +38,8 @@
     "digitalTwin": "Digital Twin",
     "reports": "Reports",
     "settings": "Settings",
+    "liveScan": "Live Field Scan",
+    "personalDocs": "My Documents",
     "features": "Features",
     "howItWorks": "How It Works"
   },

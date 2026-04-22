@@ -48,8 +48,10 @@ const secondaryNav: NavItem[] = [
   { href: "/score-history", key: "nav.scoreHistory" },
   { href: "/planner", key: "nav.planner" },
   // { href: "/timesheet", key: "nav.timesheet" }, // Planner içindeki Puantaj sekmesinde
+  { href: "/live-scan", key: "nav.liveScan" },
   { href: "/solution-center", key: "nav.solutionCenter" },
   { href: "/digital-twin", key: "nav.digitalTwin", adminOnly: true },
+  { href: "/documents/personal", key: "nav.personalDocs" },
   { href: "/reports", key: "nav.reports" },
   { href: "/settings", key: "nav.settings" },
 ];
