@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { SubcategorySidebar, type SidebarItem } from "../SubcategorySidebar";
 import type { SessionActions } from "../../_hooks/useInspectionSession";
 import { MODE_COPY } from "../../_lib/constants";
-import { createTemplate } from "@/lib/supabase/checklist-api";
+import { createClient } from "@/lib/supabase/client";
 
 type Props = {
   actions: SessionActions;
@@ -49,6 +49,7 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
     reports: false,
   });
   const [creating, setCreating] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const sidebarItems: SidebarItem[] = [
     { id: "studio", title: "Checklist stüdyosu", description: "Yeni taslak üret", badge: "Aktif" },
@@ -62,22 +63,49 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
 
   const handleCreate = async () => {
     setCreating(true);
-    const novaTitle = inferTitleFromPurpose(purpose);
-    const created = await createTemplate({
-      title: novaTitle,
-      description: "Nova tarafından üretilen checklist taslağı. Yayınlamadan önce gözden geçirin.",
-      source: "nova",
-      mode,
-      status: "draft",
-      novaPurpose: purpose,
-      novaSources: sources as unknown as Record<string, boolean>,
-      metadata: { siteLabel },
-    });
-    setCreating(false);
-    if (created) {
-      await actions.refreshTemplates();
-      onTemplateCreated(created.id);
+    setErrorMsg(null);
+
+    // Map UI source keys to edge function source keys
+    const mappedSources: string[] = [];
+    if (sources.risks) mappedSources.push("existing_risks");
+    if (sources.previousFindings) mappedSources.push("past_findings");
+    if (sources.openActions) mappedSources.push("open_actions");
+    if (sources.dof) mappedSources.push("dof");
+    if (sources.library) mappedSources.push("library");
+    if (sources.reports) mappedSources.push("reports");
+
+    const supabase = createClient();
+    if (!supabase) {
+      setErrorMsg("Supabase istemcisi oluşturulamadı.");
+      setCreating(false);
+      return;
     }
+
+    const { data, error } = await supabase.functions.invoke("nova-checklist-generator", {
+      body: {
+        purpose,
+        mode,
+        sources: mappedSources,
+        context: siteLabel ? { location: siteLabel } : undefined,
+      },
+    });
+
+    setCreating(false);
+
+    if (error) {
+      console.warn("nova-checklist-generator invoke failed:", error);
+      setErrorMsg(error.message ?? "Nova taslak üretemedi. Tekrar deneyin.");
+      return;
+    }
+
+    const checklistId = (data as { checklist_id?: string } | null)?.checklist_id;
+    if (!checklistId) {
+      setErrorMsg("Nova yanıtı beklenen formatta değil.");
+      return;
+    }
+
+    await actions.refreshTemplates();
+    onTemplateCreated(checklistId);
   };
 
   return (
@@ -95,8 +123,13 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
             <div className="mb-4 flex items-center gap-2">
               <Sparkles size={18} className="text-[var(--gold)]" />
               <h3 className="text-lg font-semibold text-foreground">Checklist Stüdyosu</h3>
-              <Badge variant="warning">AI üretimi S4'te</Badge>
+              <Badge variant="success">Nova AI aktif</Badge>
             </div>
+            {errorMsg ? (
+              <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-800/40 dark:bg-red-950/20 dark:text-red-200">
+                {errorMsg}
+              </div>
+            ) : null}
 
             <div className="space-y-4">
               <div>
@@ -176,7 +209,7 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Şu an bu işlem boş taslak oluşturur. S4'te Nova AI edge function'ı bağlandığında otomatik soru üretimi aktifleşir.
+                Nova AI (claude-sonnet-4-6) org verilerini tarayıp bağlama uygun sorular üretir. İşlem 5-15 saniye sürebilir.
               </p>
             </div>
           </div>
@@ -194,12 +227,3 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
   );
 }
 
-function inferTitleFromPurpose(purpose: string): string {
-  const n = purpose.toLocaleLowerCase("tr-TR");
-  if (n.includes("yangın")) return "Yangın Güvenliği Saha Taraması";
-  if (n.includes("elektrik")) return "Elektrik Güvenliği Checklist Taslağı";
-  if (n.includes("kkd")) return "KKD Davranış Gözlemi Taslağı";
-  if (n.includes("kimyasal")) return "Kimyasal Depo Kontrol Taslağı";
-  if (n.includes("makine")) return "Makine Emniyeti İnceleme Taslağı";
-  return "Nova ile oluşturulan saha denetimi taslağı";
-}
