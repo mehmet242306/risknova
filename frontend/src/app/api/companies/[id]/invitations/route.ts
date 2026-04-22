@@ -6,8 +6,9 @@ import { createServiceClient, parseJsonBody } from "@/lib/security/server";
 
 const bodySchema = z.object({
   email: z.string().trim().email("Gecerli bir e-posta girin."),
+  // owner is intentionally excluded — ownership is transferred, not invited.
   invitedRole: z
-    .enum(["owner", "admin", "staff", "viewer"])
+    .enum(["admin", "manager", "editor", "viewer"])
     .optional()
     .default("viewer"),
   message: z.string().trim().max(2000).optional().nullable(),
@@ -20,8 +21,10 @@ function roleLabel(role: string): string {
       return "Sahip";
     case "admin":
       return "Yonetici";
-    case "staff":
-      return "Calisan";
+    case "manager":
+      return "Mudur";
+    case "editor":
+      return "Editor";
     case "viewer":
       return "Goruntuleyici";
     default:

@@ -35,6 +35,12 @@ function categoryIcon(name: string): React.ElementType {
   return User;
 }
 import { createClient } from "@/lib/supabase/client";
+import {
+  ACCESS_ROLE_LABELS,
+  INVITABLE_ROLES,
+  type AccessRole,
+} from "@/lib/company-role-adapter";
+import { CompanyMembersList } from "@/components/companies/CompanyMembersList";
 
 /* ── Types ── */
 type TeamCategory = {
@@ -299,7 +305,7 @@ function Modal({ title, onClose, children, footer }: { title: string; onClose: (
 }
 
 /* ── Invite Member Panel (company_invitations flow) ── */
-type InviteRole = "owner" | "admin" | "staff" | "viewer";
+type InviteRole = Extract<AccessRole, "admin" | "manager" | "editor" | "viewer">;
 
 function InviteMemberPanel({ companyId }: { companyId: string }) {
   const [open, setOpen] = useState(false);
@@ -434,10 +440,11 @@ function InviteMemberPanel({ companyId }: { companyId: string }) {
               onChange={(e) => setRole(e.target.value as InviteRole)}
               className="h-9 w-full rounded-lg border border-border bg-card px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 dark:bg-slate-800"
             >
-              <option value="viewer">Görüntüleyici</option>
-              <option value="staff">Çalışan</option>
-              <option value="admin">Yönetici</option>
-              <option value="owner">Sahip</option>
+              {INVITABLE_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {ACCESS_ROLE_LABELS[r]}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -787,6 +794,9 @@ export function TeamManagementTab({
     <div className="space-y-5">
       {/* ── Company invitation (e-posta ile davet) ── */}
       <InviteMemberPanel companyId={companyId} />
+
+      {/* ── Firma üyeleri ve erişim rolleri (5'li rol adapter) ── */}
+      <CompanyMembersList companyId={companyId} />
 
       {/* ── Header bar ── */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.7rem] border border-border/80 bg-card px-6 py-5 shadow-[var(--shadow-card)]">
