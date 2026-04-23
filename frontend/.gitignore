@@ -18,6 +18,14 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# dev scratch output (build/lint/tsc/dev console dumps)
+build-*.txt
+build_output.txt
+lint-*.txt
+tsc-output*.txt
+dev-output.txt
+*.log
+
 # database
 *.db
 *.sqlite

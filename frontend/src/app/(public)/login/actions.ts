@@ -141,8 +141,11 @@ export async function login(formData: FormData) {
 
   const accessToken = data.session?.access_token;
   const signedInUser = data.user;
-  const backendBaseUrl =
-    process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
+  // BACKEND_API_URL env'i açıkça tanımlı değilse, geliştirme ortamında
+  // FastAPI backend çalışmıyor kabul et ve audit log çağrısını komple atla.
+  // Eski davranış: default http://127.0.0.1:8000 → her login ECONNREFUSED
+  // + tam stack trace dökerek log kirliliği oluşturuyordu.
+  const backendBaseUrl = process.env.BACKEND_API_URL?.trim() || null;
 
   if (signedInUser && accessToken) {
     try {
@@ -194,7 +197,7 @@ export async function login(formData: FormData) {
     });
   }
 
-  if (accessToken) {
+  if (accessToken && backendBaseUrl) {
     try {
       await fetch(`${backendBaseUrl}/api/v1/audit-events/login`, {
         method: "POST",
@@ -204,7 +207,15 @@ export async function login(formData: FormData) {
         cache: "no-store",
       });
     } catch (auditError) {
-      console.error("Login audit log request failed:", auditError);
+      // Backend down (ECONNREFUSED) expected in dev w/o FastAPI — log terse,
+      // don't spam stack trace. Other errors still surface as warnings.
+      const err = auditError as NodeJS.ErrnoException & { cause?: { code?: string } };
+      const code = err?.cause?.code ?? err?.code;
+      if (code === "ECONNREFUSED" || code === "ENOTFOUND") {
+        console.warn(`[audit] Login event skipped — backend unreachable (${code}).`);
+      } else {
+        console.warn("[audit] Login event request failed:", err?.message ?? err);
+      }
     }
   }
 
