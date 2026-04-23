@@ -76,6 +76,7 @@ export type InspectionAnswerRecord = {
   responseStatus: ResponseStatus | null;
   note: string | null;
   photoUrls: string[];
+  voiceNoteUrl: string | null;
   actionTitle: string | null;
   actionResponsibleUserId: string | null;
   actionDeadline: string | null;
@@ -160,6 +161,7 @@ function mapAnswerRow(row: LooseRow): InspectionAnswerRecord {
     responseStatus: (row.response_status as ResponseStatus | null) ?? null,
     note: (row.note as string | null) ?? null,
     photoUrls: (row.photo_urls as string[] | null) ?? [],
+    voiceNoteUrl: (row.voice_note_url as string | null) ?? null,
     actionTitle: (row.action_title as string | null) ?? null,
     actionResponsibleUserId: (row.action_responsible_user_id as string | null) ?? null,
     actionDeadline: (row.action_deadline as string | null) ?? null,
@@ -422,6 +424,7 @@ export type UpsertAnswerInput = {
   responseStatus?: ResponseStatus | null;
   note?: string | null;
   photoUrls?: string[];
+  voiceNoteUrl?: string | null;
   actionTitle?: string | null;
   actionResponsibleUserId?: string | null;
   actionDeadline?: string | null;
@@ -450,6 +453,7 @@ export async function upsertAnswer(
   if (input.responseStatus !== undefined) payload.response_status = input.responseStatus;
   if (input.note !== undefined) payload.note = input.note;
   if (input.photoUrls !== undefined) payload.photo_urls = input.photoUrls;
+  if (input.voiceNoteUrl !== undefined) payload.voice_note_url = input.voiceNoteUrl;
   if (input.actionTitle !== undefined) payload.action_title = input.actionTitle;
   if (input.actionResponsibleUserId !== undefined)
     payload.action_responsible_user_id = input.actionResponsibleUserId;

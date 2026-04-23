@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Camera, CheckCircle2, Target } from "lucide-react";
+import { CheckCircle2, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { SubcategorySidebar, type SidebarItem } from "../SubcategorySidebar";
+import { EvidenceWidget } from "../EvidenceWidget";
 import type { SessionState, SessionActions } from "../../_hooks/useInspectionSession";
 import { RESPONSE_COPY } from "../../_lib/constants";
 import type { ResponseStatus } from "@/lib/supabase/inspection-api";
@@ -106,6 +107,7 @@ export function ActiveInspectionTab({ state, actions }: Props) {
               total={visibleQuestions.length}
               question={question}
               answer={answers[question.id]}
+              runId={activeRun.id}
               saving={savingAnswer}
               onSetStatus={(status) =>
                 actions.saveAnswer({ questionId: question.id, responseStatus: status })
@@ -124,6 +126,7 @@ type QuestionCardProps = {
   total: number;
   question: NonNullable<SessionState["activeTemplate"]>["questions"][number];
   answer: SessionState["answers"][string] | undefined;
+  runId: string;
   saving: boolean;
   onSetStatus: (status: ResponseStatus) => void;
   onUpdateField: (patch: {
@@ -131,6 +134,8 @@ type QuestionCardProps = {
     actionTitle?: string;
     actionDeadline?: string | null;
     naReason?: string;
+    photoUrls?: string[];
+    voiceNoteUrl?: string | null;
   }) => void;
 };
 
@@ -139,6 +144,7 @@ function QuestionCard({
   total,
   question,
   answer,
+  runId,
   saving,
   onSetStatus,
   onUpdateField,
@@ -215,12 +221,19 @@ function QuestionCard({
                 onBlur={(e) => onUpdateField({ actionDeadline: e.currentTarget.value || null })}
               />
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Camera className="h-4 w-4" />
-              <span>
-                {answer?.photoUrls?.length ?? 0} fotoğraf yüklendi (yükleme UI'ı bir sonraki sürümde)
-              </span>
-            </div>
+            {answer?.id ? (
+              <EvidenceWidget
+                runId={runId}
+                answerId={answer.id}
+                photoUrls={answer.photoUrls}
+                voiceNoteUrl={answer.voiceNoteUrl}
+                onPhotosChange={(paths) => onUpdateField({ photoUrls: paths })}
+                onVoiceNoteChange={(path) => onUpdateField({ voiceNoteUrl: path })}
+                disabled={saving}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">Kanıt yüklemek için cevabın kaydedilmesi bekleniyor...</p>
+            )}
           </div>
         ) : null}
 

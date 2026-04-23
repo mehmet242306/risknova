@@ -27,26 +27,47 @@ export async function uploadInspectionPhoto(
   answerId: string,
   file: File,
 ): Promise<UploadResult | null> {
+  return uploadToBucket(runId, answerId, file, "photo");
+}
+
+export async function uploadInspectionAudio(
+  runId: string,
+  answerId: string,
+  blob: Blob,
+  extension = "webm",
+): Promise<UploadResult | null> {
+  const file = new File([blob], `voice_note.${extension}`, {
+    type: blob.type || `audio/${extension}`,
+  });
+  return uploadToBucket(runId, answerId, file, "voice");
+}
+
+async function uploadToBucket(
+  runId: string,
+  answerId: string,
+  file: File,
+  prefix: "photo" | "voice",
+): Promise<UploadResult | null> {
   const supabase = createClient();
   if (!supabase) return null;
   const auth = await resolveOrganizationId();
   if (!auth) {
-    console.warn("uploadInspectionPhoto: no auth / organization");
+    console.warn(`upload (${prefix}): no auth / organization`);
     return null;
   }
 
-  const ext = safeFileName(file.name);
-  const path = `${auth.orgId}/${runId}/${answerId}/${crypto.randomUUID()}_${ext}`;
+  const safe = safeFileName(file.name);
+  const path = `${auth.orgId}/${runId}/${answerId}/${prefix}_${crypto.randomUUID()}_${safe}`;
   const buffer = await file.arrayBuffer();
 
   const { error: uploadErr } = await supabase.storage
     .from(BUCKET)
     .upload(path, buffer, {
-      contentType: file.type || "image/jpeg",
+      contentType: file.type || (prefix === "photo" ? "image/jpeg" : "audio/webm"),
       upsert: false,
     });
   if (uploadErr) {
-    console.warn("uploadInspectionPhoto:", uploadErr.message);
+    console.warn(`upload (${prefix}):`, uploadErr.message);
     return null;
   }
 
@@ -54,7 +75,7 @@ export async function uploadInspectionPhoto(
     .from(BUCKET)
     .createSignedUrl(path, 3600);
   if (signedErr) {
-    console.warn("uploadInspectionPhoto signedUrl:", signedErr.message);
+    console.warn(`upload (${prefix}) signedUrl:`, signedErr.message);
   }
 
   return { path, signedUrl: signedData?.signedUrl ?? null };
