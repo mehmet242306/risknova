@@ -137,15 +137,32 @@ export function DashboardClient() {
     );
   }
 
-  const s = stats!;
+  // Guard: stats may be null when session/profile couldn't be loaded
+  // (e.g. demo-expired user briefly landing here before DemoSessionGuard
+  // kicks in). Return empty shell; the guard will redirect shortly.
+  if (!stats) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center rounded-[2rem] border border-dashed border-border bg-muted/10 px-8 py-16 text-center">
+        <div className="space-y-2">
+          <p className="text-base font-semibold text-foreground">Oturum yükleniyor...</p>
+          <p className="text-sm text-muted-foreground">
+            Oturumunuz doğrulanıyor. Birkaç saniye sürebilir; devam etmezse lütfen yeniden giriş yapın.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const s = stats;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar';
+  const firstName = (s.userName || '').split(' ')[0] || 'Kullanıcı';
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Kontrol Merkezi"
-        title={`${greeting}, ${s.userName.split(' ')[0] || 'Kullanıcı'}`}
+        title={`${greeting}, ${firstName}`}
         description="Tüm İSG süreçlerinizi tek ekrandan takip edin. Risk analizleri, dokümanlar, olaylar ve görevler burada."
         className="overflow-hidden border-white/60 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(255,249,240,0.94))] shadow-[var(--shadow-elevated)] dark:border-white/8 dark:bg-[linear-gradient(135deg,rgba(17,26,43,0.96),rgba(11,17,31,0.98))]"
         meta={

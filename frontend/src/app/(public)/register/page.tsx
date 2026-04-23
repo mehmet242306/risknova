@@ -54,11 +54,14 @@ function AccountTypePreview() {
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; checkEmail?: string }>;
+  searchParams: Promise<{ error?: string; checkEmail?: string; fromDemo?: string }>;
 }) {
   const params = await searchParams;
   const error = params?.error;
   const checkEmail = params?.checkEmail === "1";
+  const fromDemo = params?.fromDemo;
+  const demoExpired = fromDemo === "demo-expired" || fromDemo === "1";
+  const demoDisabled = fromDemo === "demo-disabled";
 
   return (
     <AuthShell
@@ -106,6 +109,20 @@ export default async function RegisterPage({
         </p>
       }
     >
+      {demoExpired || demoDisabled ? (
+        <div className="rounded-2xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 px-4 py-4 text-sm leading-6 text-[#4f2f06] dark:text-[#f6d79b]">
+          <p className="mb-1 text-base font-semibold">
+            RiskNova'yı denediğin için teşekkürler! 🎉
+          </p>
+          <p>
+            {demoDisabled
+              ? "Demo erişimin kapatıldı."
+              : "Demo erişimin sona erdi."}{" "}
+            Kaldığın yerden devam etmek ve tüm özelliklere tam erişim için hemen kendi hesabını oluştur — Bireysel, OSGB veya Kurumsal akıştan sana uygun olanı seç.
+          </p>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}

@@ -19,17 +19,18 @@ export function DemoSessionGuard() {
 
     let disposed = false;
 
-    async function handleBlockedSession() {
+    async function handleBlockedSession(status: "expired" | "disabled") {
       if (signingOutRef.current || disposed) return;
       signingOutRef.current = true;
 
       try {
         await supabaseClient.auth.signOut();
       } finally {
-        router.replace(
-          "/login?error=" +
-            encodeURIComponent("Demo erisimi sona erdi. Lutfen yeni demo erisimi isteyin."),
-        );
+        // Kullanıcıyı kayıt akışına yönlendir — login'e error pop-up göstermek yerine
+        // "teşekkürler + hesap oluştur" deneyimine çıkar. Süresi dolmuş mu yoksa
+        // disable edilmiş mi ayırt edebilmek için query param taşınır.
+        const from = status === "disabled" ? "demo-disabled" : "demo-expired";
+        router.replace(`/register?fromDemo=${from}`);
       }
     }
 
@@ -45,7 +46,7 @@ export function DemoSessionGuard() {
       });
 
       if (access.isBlocked) {
-        await handleBlockedSession();
+        await handleBlockedSession(access.status === "disabled" ? "disabled" : "expired");
       }
     }
 
