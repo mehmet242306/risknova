@@ -89,27 +89,51 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
       return;
     }
 
-    const { data, error } = await supabase.functions.invoke("nova-checklist-generator", {
-      body: {
-        purpose,
-        mode,
-        sources: mappedSources,
-        context: siteLabel ? { location: siteLabel } : undefined,
-      },
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    setCreating(false);
-
-    if (error) {
-      console.warn("nova-checklist-generator invoke failed:", error);
-      setErrorMsg(error.message ?? "Nova taslak üretemedi. Tekrar deneyin.");
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const apiKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !apiKey) {
+      setErrorMsg("Supabase URL/apikey env eksik.");
+      setCreating(false);
       return;
     }
 
-    const checklistId = (data as { checklist_id?: string } | null)?.checklist_id;
+    let res: Response;
+    try {
+      res = await fetch(`${supabaseUrl}/functions/v1/nova-checklist-generator`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          apikey: apiKey,
+        },
+        body: JSON.stringify({
+          purpose,
+          mode,
+          sources: mappedSources,
+          context: siteLabel ? { location: siteLabel } : undefined,
+        }),
+      });
+    } catch (err) {
+      setCreating(false);
+      setErrorMsg(`Ağ hatası: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    setCreating(false);
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn(`nova-checklist-generator ${res.status}:`, text);
+      setErrorMsg(`Nova hatası ${res.status}: ${text.slice(0, 240) || "yanıt boş"}`);
+      return;
+    }
+
+    const data = (await res.json().catch(() => null)) as
+      | { checklist_id?: string }
+      | null;
+    const checklistId = data?.checklist_id;
     if (!checklistId) {
       setErrorMsg("Nova yanıtı beklenen formatta değil.");
       return;
