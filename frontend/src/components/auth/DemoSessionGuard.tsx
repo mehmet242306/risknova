@@ -23,15 +23,14 @@ export function DemoSessionGuard() {
       if (signingOutRef.current || disposed) return;
       signingOutRef.current = true;
 
-      try {
-        await supabaseClient.auth.signOut();
-      } finally {
-        // Kullanıcıyı kayıt akışına yönlendir — login'e error pop-up göstermek yerine
-        // "teşekkürler + hesap oluştur" deneyimine çıkar. Süresi dolmuş mu yoksa
-        // disable edilmiş mi ayırt edebilmek için query param taşınır.
-        const from = status === "disabled" ? "demo-disabled" : "demo-expired";
-        router.replace(`/register?fromDemo=${from}`);
-      }
+      // ÖNEMLİ: signOut()'u burada ÇAĞIRMA. protected-shell'in
+      // onAuthStateChange('SIGNED_OUT') handler'ı bunu yakalayıp /login'e
+      // yönlendirir — bizim /register redirect'imizi ezer. Önce navigate et;
+      // /register public route olduğu için protected-shell unmount olur
+      // (dinleyici temizlenir), sonra /register sayfasındaki
+      // DemoSessionCleaner güvenle signOut çağırır.
+      const from = status === "disabled" ? "demo-disabled" : "demo-expired";
+      router.replace(`/register?fromDemo=${from}`);
     }
 
     async function checkSession() {
