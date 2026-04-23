@@ -49,6 +49,7 @@ export async function updateSession(request: NextRequest) {
     pathname === "/reset-password";
   const canBypassDemoGuard =
     pathname === "/login" ||
+    pathname === "/register" ||
     pathname === "/reset-password" ||
     pathname.startsWith("/auth");
 
@@ -74,9 +75,15 @@ export async function updateSession(request: NextRequest) {
       );
     }
 
+    // Süresi dolmuş demo kullanıcısını /login'e atıp hata toast'ı göstermek
+    // yerine /register'a yönlendir — teşekkür + CTA banner'ı ile kayıt akışına
+    // dönüştür. /register canBypassDemoGuard'a eklendi, yoksa loop olurdu.
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("error", errorMessage);
+    url.pathname = "/register";
+    url.searchParams.set(
+      "fromDemo",
+      demoAccess.status === "disabled" ? "demo-disabled" : "demo-expired",
+    );
     return NextResponse.redirect(url);
   }
 

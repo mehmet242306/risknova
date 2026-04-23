@@ -3,6 +3,7 @@ import { AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
+import { DemoSessionCleaner } from "@/components/auth/DemoSessionCleaner";
 import { signup } from "./actions";
 
 function AccountTypePreview() {
@@ -110,17 +111,20 @@ export default async function RegisterPage({
       }
     >
       {demoExpired || demoDisabled ? (
-        <div className="rounded-2xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 px-4 py-4 text-sm leading-6 text-[#4f2f06] dark:text-[#f6d79b]">
-          <p className="mb-1 text-base font-semibold">
-            RiskNova'yı denediğin için teşekkürler! 🎉
-          </p>
-          <p>
-            {demoDisabled
-              ? "Demo erişimin kapatıldı."
-              : "Demo erişimin sona erdi."}{" "}
-            Kaldığın yerden devam etmek ve tüm özelliklere tam erişim için hemen kendi hesabını oluştur — Bireysel, OSGB veya Kurumsal akıştan sana uygun olanı seç.
-          </p>
-        </div>
+        <>
+          <DemoSessionCleaner />
+          <div className="rounded-2xl border border-[var(--gold)]/40 bg-[var(--gold)]/10 px-4 py-4 text-sm leading-6 text-[#4f2f06] dark:text-[#f6d79b]">
+            <p className="mb-1 text-base font-semibold">
+              RiskNova'yı denediğin için teşekkürler! 🎉
+            </p>
+            <p>
+              {demoDisabled
+                ? "Demo erişimin kapatıldı."
+                : "Demo erişimin sona erdi."}{" "}
+              Kaldığın yerden devam etmek ve tüm özelliklere tam erişim için hemen kendi hesabını oluştur — Bireysel, OSGB veya Kurumsal akıştan sana uygun olanı seç.
+            </p>
+          </div>
+        </>
       ) : null}
 
       {error ? (
