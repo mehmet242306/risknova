@@ -369,7 +369,7 @@ async function callClaude(
 ): Promise<{ parsed: { title: string; description: string; questions: NovaQuestion[] }; usage: Anthropic.Messages.Usage }> {
   const response = await anthropic.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     temperature: 0.3,
     system: [
       {
@@ -397,7 +397,14 @@ async function callClaude(
   try {
     parsed = JSON.parse(cleaned);
   } catch (_e) {
-    throw new Error(`Claude response not valid JSON: ${cleaned.slice(0, 200)}`);
+    const truncated = response.stop_reason === "max_tokens";
+    const tail = cleaned.slice(-120);
+    const head = cleaned.slice(0, 120);
+    throw new Error(
+      truncated
+        ? `Yanıt token limitine takıldı (stop=max_tokens, ${response.usage.output_tokens} token üretildi). max_tokens artırıldı ama yine yetmedi — daha küçük mod (quick) deneyin. Son parça: ...${tail}`
+        : `JSON parse başarısız (stop=${response.stop_reason}, ${cleaned.length} char). Baş: ${head} ... Son: ${tail}`,
+    );
   }
 
   const p = parsed as {

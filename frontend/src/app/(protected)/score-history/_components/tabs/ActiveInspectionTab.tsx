@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Camera, CheckCircle2, ChevronLeft, ChevronRight, Target } from "lucide-react";
+import { Camera, CheckCircle2, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -20,7 +19,6 @@ type Props = {
 export function ActiveInspectionTab({ state, actions }: Props) {
   const { activeTemplate, activeRun, answers, savingAnswer } = state;
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
-  const [focusIndex, setFocusIndex] = useState(0);
 
   const questions = activeTemplate?.questions ?? [];
   const grouped = useMemo(() => {
@@ -60,8 +58,6 @@ export function ActiveInspectionTab({ state, actions }: Props) {
     return questions.filter((q) => q.section === selectedSection);
   }, [questions, selectedSection]);
 
-  const focusQuestion = visibleQuestions[focusIndex];
-
   if (!activeTemplate) {
     return (
       <div className="mt-4 rounded-[1.5rem] border border-dashed border-border bg-muted/20 px-8 py-16 text-center">
@@ -94,26 +90,30 @@ export function ActiveInspectionTab({ state, actions }: Props) {
         activeItemId={selectedSection ?? "__all__"}
         onSelect={(id) => {
           setSelectedSection(id.startsWith("section:") ? id.replace("section:", "") : "__all__");
-          setFocusIndex(0);
         }}
       />
 
-      <div className="space-y-4">
-        {focusQuestion ? (
-          <QuestionCard
-            index={focusIndex}
-            total={visibleQuestions.length}
-            question={focusQuestion}
-            answer={answers[focusQuestion.id]}
-            saving={savingAnswer}
-            onPrev={() => setFocusIndex((i) => Math.max(0, i - 1))}
-            onNext={() => setFocusIndex((i) => Math.min(visibleQuestions.length - 1, i + 1))}
-            onSetStatus={(status) =>
-              actions.saveAnswer({ questionId: focusQuestion.id, responseStatus: status })
-            }
-            onUpdateField={(patch) => actions.saveAnswer({ questionId: focusQuestion.id, ...patch })}
-          />
-        ) : null}
+      <div className="space-y-3">
+        {visibleQuestions.length === 0 ? (
+          <div className="rounded-[1.5rem] border border-dashed border-border bg-muted/20 px-8 py-12 text-center text-sm text-muted-foreground">
+            Bu bölümde soru yok.
+          </div>
+        ) : (
+          visibleQuestions.map((question, index) => (
+            <QuestionCard
+              key={question.id}
+              index={index}
+              total={visibleQuestions.length}
+              question={question}
+              answer={answers[question.id]}
+              saving={savingAnswer}
+              onSetStatus={(status) =>
+                actions.saveAnswer({ questionId: question.id, responseStatus: status })
+              }
+              onUpdateField={(patch) => actions.saveAnswer({ questionId: question.id, ...patch })}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -125,8 +125,6 @@ type QuestionCardProps = {
   question: NonNullable<SessionState["activeTemplate"]>["questions"][number];
   answer: SessionState["answers"][string] | undefined;
   saving: boolean;
-  onPrev: () => void;
-  onNext: () => void;
   onSetStatus: (status: ResponseStatus) => void;
   onUpdateField: (patch: {
     note?: string;
@@ -142,8 +140,6 @@ function QuestionCard({
   question,
   answer,
   saving,
-  onPrev,
-  onNext,
   onSetStatus,
   onUpdateField,
 }: QuestionCardProps) {
@@ -153,25 +149,15 @@ function QuestionCard({
 
   return (
     <div className="rounded-[1.5rem] border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-      <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--gold)]/15 text-[11px] font-semibold text-[var(--gold)]">
-            {index + 1}
-          </span>
-          <span>Soru {index + 1} / {total}</span>
-          <span>·</span>
-          <span>{question.section}</span>
-          <span>·</span>
-          <span>{question.category}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onPrev} disabled={index === 0}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onNext} disabled={index >= total - 1}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+      <div className="flex items-center gap-2 border-b border-border pb-3 text-xs text-muted-foreground">
+        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--gold)]/15 text-[11px] font-semibold text-[var(--gold)]">
+          {index + 1}
+        </span>
+        <span>Soru {index + 1} / {total}</span>
+        <span>·</span>
+        <span>{question.section}</span>
+        <span>·</span>
+        <span>{question.category}</span>
       </div>
 
       <div className="space-y-3 pt-4">
