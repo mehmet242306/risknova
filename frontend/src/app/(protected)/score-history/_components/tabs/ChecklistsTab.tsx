@@ -140,7 +140,7 @@ export function ChecklistsTab({
                   Bu şablonda henüz soru yok. Nova stüdyosundan soru üretebilirsiniz.
                 </p>
               ) : (
-                activeTemplate.questions.slice(0, 8).map((q, index) => (
+                activeTemplate.questions.map((q, index) => (
                   <div
                     key={q.id}
                     className={cn(
@@ -159,11 +159,6 @@ export function ChecklistsTab({
                   </div>
                 ))
               )}
-              {activeTemplate.questions.length > 8 ? (
-                <p className="text-center text-xs text-muted-foreground">
-                  +{activeTemplate.questions.length - 8} soru daha. Tam listeyi "Aktif İnceleme" sekmesinde görün.
-                </p>
-              ) : null}
             </div>
           </div>
         )}

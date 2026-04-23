@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Mic, Play, Square, Trash2, Upload, X } from "lucide-react";
+import { Camera, Mic, Square, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 import {
   signInspectionPhotoUrls,
   uploadInspectionAudio,
@@ -15,8 +16,9 @@ type Props = {
   answerId: string;
   photoUrls: string[];
   voiceNoteUrl: string | null;
+  voiceTranscript: string | null;
   onPhotosChange: (paths: string[]) => void;
-  onVoiceNoteChange: (path: string | null) => void;
+  onVoiceNoteChange: (path: string | null, transcript?: string | null) => void;
   disabled?: boolean;
 };
 
@@ -25,6 +27,7 @@ export function EvidenceWidget({
   answerId,
   photoUrls,
   voiceNoteUrl,
+  voiceTranscript,
   onPhotosChange,
   onVoiceNoteChange,
   disabled,
@@ -42,11 +45,51 @@ export function EvidenceWidget({
         runId={runId}
         answerId={answerId}
         path={voiceNoteUrl}
+        transcript={voiceTranscript}
         onChange={onVoiceNoteChange}
         disabled={disabled}
       />
     </div>
   );
+}
+
+async function transcribeVoiceNote(
+  voiceNotePath: string,
+  answerId: string,
+): Promise<{ transcript: string; language?: string } | { error: string }> {
+  const supabase = createClient();
+  if (!supabase) return { error: "no_client" };
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) return { error: "no_session" };
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const apikey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !apikey) return { error: "env_missing" };
+
+  const res = await fetch(`${url}/functions/v1/nova-transcribe-voice`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+      apikey,
+    },
+    body: JSON.stringify({
+      voice_note_path: voiceNotePath,
+      answer_id: answerId,
+      language: "tr",
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return { error: `${res.status}: ${text.slice(0, 200) || "yanıt boş"}` };
+  }
+  const data = (await res.json()) as { transcript?: string; language?: string };
+  if (!data.transcript) return { error: "transkript alınamadı" };
+  return { transcript: data.transcript, language: data.language };
 }
 
 // -----------------------------------------------------------------------------
@@ -183,17 +226,20 @@ function VoiceSection({
   runId,
   answerId,
   path,
+  transcript,
   onChange,
   disabled,
 }: {
   runId: string;
   answerId: string;
   path: string | null;
-  onChange: (path: string | null) => void;
+  transcript: string | null;
+  onChange: (path: string | null, transcript?: string | null) => void;
   disabled?: boolean;
 }) {
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -250,7 +296,17 @@ function VoiceSection({
           setError("Ses notu yüklenemedi.");
           return;
         }
-        onChange(result.path);
+        // Save path immediately (optimistic), transcript arrives async
+        onChange(result.path, null);
+        // Trigger transcription in background
+        setTranscribing(true);
+        const tx = await transcribeVoiceNote(result.path, answerId);
+        setTranscribing(false);
+        if ("error" in tx) {
+          setError(`Transkripsiyon: ${tx.error}`);
+        } else {
+          onChange(result.path, tx.transcript);
+        }
       };
       recorder.start();
       recorderRef.current = recorder;
@@ -280,8 +336,21 @@ function VoiceSection({
   };
 
   const removeVoiceNote = () => {
-    onChange(null);
+    onChange(null, null);
     setSignedUrl(null);
+  };
+
+  const retranscribe = async () => {
+    if (!path) return;
+    setError(null);
+    setTranscribing(true);
+    const tx = await transcribeVoiceNote(path, answerId);
+    setTranscribing(false);
+    if ("error" in tx) {
+      setError(`Transkripsiyon: ${tx.error}`);
+    } else {
+      onChange(path, tx.transcript);
+    }
   };
 
   const mmss = (s: number) =>
@@ -335,6 +404,44 @@ function VoiceSection({
           src={signedUrl}
           className={cn("h-10 w-full", disabled && "opacity-60")}
         />
+      ) : null}
+      {path ? (
+        <div className="mt-2 rounded-lg border border-border bg-muted/30 p-2">
+          <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span>Transkript</span>
+            {transcribing ? (
+              <span className="text-[var(--gold)]">AI yazıyor...</span>
+            ) : transcript ? (
+              <button
+                type="button"
+                onClick={retranscribe}
+                disabled={disabled}
+                className="text-[10px] underline hover:text-foreground"
+              >
+                Yeniden transkribe et
+              </button>
+            ) : null}
+          </div>
+          {transcribing ? (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--gold)]" />
+              <span>Ses metne çevriliyor (OpenAI Whisper)...</span>
+            </div>
+          ) : transcript ? (
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-foreground">
+              {transcript}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={retranscribe}
+              disabled={disabled}
+              className="text-xs text-[var(--gold)] underline"
+            >
+              Transkript oluştur
+            </button>
+          )}
+        </div>
       ) : null}
     </div>
   );

@@ -51,6 +51,8 @@ export type SessionActions = {
     note?: string;
     photoUrls?: string[];
     voiceNoteUrl?: string | null;
+    voiceTranscript?: string | null;
+    voiceTranscriptLang?: string | null;
     actionTitle?: string;
     actionDeadline?: string | null;
     actionResponsibleUserId?: string | null;
@@ -207,6 +209,8 @@ export function useInspectionSession(): [SessionState, SessionActions] {
         note: args.note,
         photoUrls: args.photoUrls,
         voiceNoteUrl: args.voiceNoteUrl,
+        voiceTranscript: args.voiceTranscript,
+        voiceTranscriptLang: args.voiceTranscriptLang,
         actionTitle: args.actionTitle,
         actionDeadline: args.actionDeadline ?? undefined,
         actionResponsibleUserId: args.actionResponsibleUserId ?? undefined,

@@ -77,6 +77,9 @@ export type InspectionAnswerRecord = {
   note: string | null;
   photoUrls: string[];
   voiceNoteUrl: string | null;
+  voiceTranscript: string | null;
+  voiceTranscriptLang: string | null;
+  voiceTranscriptAt: string | null;
   actionTitle: string | null;
   actionResponsibleUserId: string | null;
   actionDeadline: string | null;
@@ -162,6 +165,9 @@ function mapAnswerRow(row: LooseRow): InspectionAnswerRecord {
     note: (row.note as string | null) ?? null,
     photoUrls: (row.photo_urls as string[] | null) ?? [],
     voiceNoteUrl: (row.voice_note_url as string | null) ?? null,
+    voiceTranscript: (row.voice_transcript as string | null) ?? null,
+    voiceTranscriptLang: (row.voice_transcript_lang as string | null) ?? null,
+    voiceTranscriptAt: (row.voice_transcript_at as string | null) ?? null,
     actionTitle: (row.action_title as string | null) ?? null,
     actionResponsibleUserId: (row.action_responsible_user_id as string | null) ?? null,
     actionDeadline: (row.action_deadline as string | null) ?? null,
@@ -425,6 +431,8 @@ export type UpsertAnswerInput = {
   note?: string | null;
   photoUrls?: string[];
   voiceNoteUrl?: string | null;
+  voiceTranscript?: string | null;
+  voiceTranscriptLang?: string | null;
   actionTitle?: string | null;
   actionResponsibleUserId?: string | null;
   actionDeadline?: string | null;
@@ -454,6 +462,14 @@ export async function upsertAnswer(
   if (input.note !== undefined) payload.note = input.note;
   if (input.photoUrls !== undefined) payload.photo_urls = input.photoUrls;
   if (input.voiceNoteUrl !== undefined) payload.voice_note_url = input.voiceNoteUrl;
+  if (input.voiceTranscript !== undefined) {
+    payload.voice_transcript = input.voiceTranscript;
+    payload.voice_transcript_at = input.voiceTranscript
+      ? new Date().toISOString()
+      : null;
+  }
+  if (input.voiceTranscriptLang !== undefined)
+    payload.voice_transcript_lang = input.voiceTranscriptLang;
   if (input.actionTitle !== undefined) payload.action_title = input.actionTitle;
   if (input.actionResponsibleUserId !== undefined)
     payload.action_responsible_user_id = input.actionResponsibleUserId;

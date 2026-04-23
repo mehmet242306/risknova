@@ -136,6 +136,7 @@ type QuestionCardProps = {
     naReason?: string;
     photoUrls?: string[];
     voiceNoteUrl?: string | null;
+    voiceTranscript?: string | null;
   }) => void;
 };
 
@@ -221,19 +222,23 @@ function QuestionCard({
                 onBlur={(e) => onUpdateField({ actionDeadline: e.currentTarget.value || null })}
               />
             </div>
-            {answer?.id ? (
-              <EvidenceWidget
-                runId={runId}
-                answerId={answer.id}
-                photoUrls={answer.photoUrls}
-                voiceNoteUrl={answer.voiceNoteUrl}
-                onPhotosChange={(paths) => onUpdateField({ photoUrls: paths })}
-                onVoiceNoteChange={(path) => onUpdateField({ voiceNoteUrl: path })}
-                disabled={saving}
-              />
-            ) : (
-              <p className="text-xs text-muted-foreground">Kanıt yüklemek için cevabın kaydedilmesi bekleniyor...</p>
-            )}
+          </div>
+        ) : null}
+
+        {answer?.id ? (
+          <div className="mt-3">
+            <EvidenceWidget
+              runId={runId}
+              answerId={answer.id}
+              photoUrls={answer.photoUrls}
+              voiceNoteUrl={answer.voiceNoteUrl}
+              voiceTranscript={answer.voiceTranscript}
+              onPhotosChange={(paths) => onUpdateField({ photoUrls: paths })}
+              onVoiceNoteChange={(path, transcript) =>
+                onUpdateField({ voiceNoteUrl: path, voiceTranscript: transcript ?? null })
+              }
+              disabled={saving}
+            />
           </div>
         ) : null}
 
