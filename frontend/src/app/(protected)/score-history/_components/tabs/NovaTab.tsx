@@ -81,12 +81,23 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
       return;
     }
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setErrorMsg("Oturum bulunamadı. Lütfen yeniden giriş yapın.");
+      setCreating(false);
+      return;
+    }
+
     const { data, error } = await supabase.functions.invoke("nova-checklist-generator", {
       body: {
         purpose,
         mode,
         sources: mappedSources,
         context: siteLabel ? { location: siteLabel } : undefined,
+      },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
       },
     });
 
