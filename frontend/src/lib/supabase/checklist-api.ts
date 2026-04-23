@@ -521,3 +521,111 @@ export async function insertQuestionsBulk(
   }
   return (data ?? []).map(mapQuestionRow);
 }
+
+// -----------------------------------------------------------------------------
+// STARTER PACK — ilk açılış için 6 hazır şablon + 10 soru seed'i
+// -----------------------------------------------------------------------------
+// Idempotent: org'da zaten starter pack metadata flag varsa tekrar yüklemez.
+// Kullanıcı kendi org'unun checklist kütüphanesini kurmak için 1 kez çağırır.
+
+export type SeedStarterResult = {
+  created: number;
+  skipped: boolean;
+  reason?: string;
+};
+
+export async function hasStarterPack(): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+  const auth = await resolveOrganizationId();
+  if (!auth) return false;
+
+  const { data, error } = await supabase
+    .from("inspection_checklist_templates")
+    .select("id")
+    .eq("organization_id", auth.orgId)
+    .contains("metadata", { starter_pack_version: 1 })
+    .limit(1);
+  if (error) {
+    console.warn("hasStarterPack:", error.message);
+    return false;
+  }
+  return (data ?? []).length > 0;
+}
+
+export async function seedStarterTemplates(opts?: {
+  companyWorkspaceId?: string | null;
+}): Promise<SeedStarterResult> {
+  const supabase = createClient();
+  if (!supabase) return { created: 0, skipped: true, reason: "no_client" };
+  const auth = await resolveOrganizationId();
+  if (!auth) return { created: 0, skipped: true, reason: "no_auth" };
+
+  const already = await hasStarterPack();
+  if (already) return { created: 0, skipped: true, reason: "already_seeded" };
+
+  const { QUESTION_SEEDS, STARTER_TEMPLATES, STARTER_PACK_VERSION } = await import(
+    "@/app/(protected)/score-history/_data/starter-templates"
+  );
+
+  let created = 0;
+  for (const tmpl of STARTER_TEMPLATES) {
+    const { data: insertedTmpl, error: tmplErr } = await supabase
+      .from("inspection_checklist_templates")
+      .insert({
+        organization_id: auth.orgId,
+        company_workspace_id: opts?.companyWorkspaceId ?? null,
+        title: tmpl.title,
+        description: tmpl.description,
+        source: "library",
+        mode: tmpl.mode,
+        status: "published",
+        nova_sources: {},
+        metadata: {
+          starter_pack_version: STARTER_PACK_VERSION,
+          starter_slug: tmpl.slug,
+          seeded_at: new Date().toISOString(),
+        },
+        created_by: auth.userId,
+      })
+      .select("id")
+      .single();
+
+    if (tmplErr || !insertedTmpl) {
+      console.warn("seedStarterTemplates template:", tmplErr?.message);
+      continue;
+    }
+
+    const questionRows = tmpl.questionIndexes.map((idx, order) => {
+      const seed = QUESTION_SEEDS[idx];
+      return {
+        template_id: insertedTmpl.id as string,
+        sort_order: order,
+        section: seed.section,
+        category: seed.category,
+        text: seed.text,
+        priority: seed.priority ?? "medium",
+        rule_hint: seed.ruleHint ?? null,
+        rule_uygunsuz: seed.ruleUygunsuz ?? null,
+        rule_kritik: seed.ruleKritik ?? null,
+        suggested_action_title: seed.suggestedActionTitle ?? null,
+        suggested_action_description: seed.suggestedActionDescription ?? null,
+        source_badges: ["Başlangıç paketi"],
+        why_suggested: seed.whySuggested ?? null,
+        linked_risk_hint: seed.linkedRiskHint ?? null,
+        open_action_hint: seed.openActionHint ?? null,
+      };
+    });
+
+    const { error: qErr } = await supabase
+      .from("inspection_checklist_questions")
+      .insert(questionRows);
+    if (qErr) {
+      console.warn(`seedStarterTemplates questions (${tmpl.slug}):`, qErr.message);
+      continue;
+    }
+    created += 1;
+  }
+
+  return { created, skipped: false };
+}

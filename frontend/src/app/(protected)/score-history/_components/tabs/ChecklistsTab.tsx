@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
-import { ClipboardCheck, Play, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ClipboardCheck, Play, PackageOpen, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SubcategorySidebar, type SidebarItem } from "../SubcategorySidebar";
 import type { SessionState, SessionActions } from "../../_hooks/useInspectionSession";
 import { SOURCE_LABELS } from "../../_lib/constants";
+import { seedStarterTemplates } from "@/lib/supabase/checklist-api";
 
 type Props = {
   state: SessionState;
@@ -21,6 +22,7 @@ type Props = {
 
 export function ChecklistsTab({
   state,
+  actions,
   selectedTemplateId,
   onSelectTemplate,
   onStartOfficial,
@@ -28,6 +30,25 @@ export function ChecklistsTab({
   onOpenStudio,
 }: Props) {
   const { templates, activeTemplate, loadingTemplates, loadingActive } = state;
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<string | null>(null);
+
+  const handleSeedStarter = async () => {
+    setSeeding(true);
+    setSeedMsg(null);
+    const result = await seedStarterTemplates();
+    setSeeding(false);
+    if (result.skipped) {
+      setSeedMsg(
+        result.reason === "already_seeded"
+          ? "Başlangıç paketi zaten yüklü."
+          : "Başlangıç paketi yüklenemedi.",
+      );
+      return;
+    }
+    setSeedMsg(`${result.created} şablon yüklendi.`);
+    await actions.refreshTemplates();
+  };
 
   const sidebarItems = useMemo<SidebarItem[]>(
     () =>
@@ -67,7 +88,14 @@ export function ChecklistsTab({
 
       <div className="rounded-[1.5rem] border border-border bg-card p-5">
         {!activeTemplate ? (
-          <EmptyState loading={loadingActive} onOpenStudio={onOpenStudio} />
+          <EmptyState
+            loading={loadingActive || loadingTemplates}
+            hasTemplates={templates.length > 0}
+            seeding={seeding}
+            seedMessage={seedMsg}
+            onSeedStarter={handleSeedStarter}
+            onOpenStudio={onOpenStudio}
+          />
         ) : (
           <div className="space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -144,28 +172,78 @@ export function ChecklistsTab({
   );
 }
 
-function EmptyState({ loading, onOpenStudio }: { loading: boolean; onOpenStudio: () => void }) {
+type EmptyStateProps = {
+  loading: boolean;
+  hasTemplates: boolean;
+  seeding: boolean;
+  seedMessage: string | null;
+  onSeedStarter: () => void;
+  onOpenStudio: () => void;
+};
+
+function EmptyState({
+  loading,
+  hasTemplates,
+  seeding,
+  seedMessage,
+  onSeedStarter,
+  onOpenStudio,
+}: EmptyStateProps) {
+  if (loading) {
+    return (
+      <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center">
+        <div className="rounded-full bg-[var(--gold)]/10 p-4">
+          <ClipboardCheck size={32} className="text-[var(--gold)]" />
+        </div>
+        <p className="text-sm text-muted-foreground">Şablon yükleniyor...</p>
+      </div>
+    );
+  }
+
+  if (!hasTemplates) {
+    return (
+      <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center">
+        <div className="rounded-full bg-[var(--gold)]/10 p-4">
+          <PackageOpen size={32} className="text-[var(--gold)]" />
+        </div>
+        <p className="text-base font-semibold text-foreground">
+          Organizasyonunuzda henüz checklist yok
+        </p>
+        <p className="max-w-lg text-sm text-muted-foreground">
+          Başlangıç paketini yükleyerek 6 hazır şablonla (Ortam gözetimi, Yangın, Elektrik, KKD, Makine, Kimyasal) hemen kullanıma başlayabilir veya Nova AI ile kendi özel checklist'inizi üretebilirsiniz.
+        </p>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
+          <Button onClick={onSeedStarter} disabled={seeding}>
+            <PackageOpen className="mr-2 h-4 w-4" />
+            {seeding ? "Yükleniyor..." : "Başlangıç paketini yükle"}
+          </Button>
+          <Button variant="outline" onClick={onOpenStudio}>
+            <Sparkles className="mr-2 h-4 w-4" />
+            Nova ile oluştur
+          </Button>
+        </div>
+        {seedMessage ? (
+          <p className="mt-2 text-xs text-muted-foreground">{seedMessage}</p>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 text-center">
       <div className="rounded-full bg-[var(--gold)]/10 p-4">
         <ClipboardCheck size={32} className="text-[var(--gold)]" />
       </div>
-      {loading ? (
-        <p className="text-sm text-muted-foreground">Şablon yükleniyor...</p>
-      ) : (
-        <>
-          <p className="text-base font-semibold text-foreground">
-            Bir checklist seçin veya yenisini oluşturun
-          </p>
-          <p className="max-w-md text-sm text-muted-foreground">
-            Sol listeden bir şablon seçerek ayrıntılarını görebilir, denetimi başlatabilir veya Nova ile kendi checklist'inizi üretebilirsiniz.
-          </p>
-          <Button variant="outline" size="sm" className="mt-2" onClick={onOpenStudio}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            Nova stüdyosunu aç
-          </Button>
-        </>
-      )}
+      <p className="text-base font-semibold text-foreground">
+        Bir checklist seçin veya yenisini oluşturun
+      </p>
+      <p className="max-w-md text-sm text-muted-foreground">
+        Sol listeden bir şablon seçerek ayrıntılarını görebilir, denetimi başlatabilir veya Nova ile kendi checklist'inizi üretebilirsiniz.
+      </p>
+      <Button variant="outline" size="sm" className="mt-2" onClick={onOpenStudio}>
+        <Sparkles className="mr-2 h-4 w-4" />
+        Nova stüdyosunu aç
+      </Button>
     </div>
   );
 }
