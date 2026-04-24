@@ -197,6 +197,65 @@ function statusBadgeVariant(status: string): "success" | "warning" | "danger" | 
   if (status === "active") return "success"; if (status === "on_leave") return "warning"; if (status === "suspended" || status === "terminated") return "danger"; return "neutral";
 }
 
+/* ── Sorting ── */
+type SortKey =
+  | "employeeCode"
+  | "fullName"
+  | "department"
+  | "positionTitle"
+  | "location"
+  | "employmentStatus"
+  | "employmentType";
+type SortDir = "asc" | "desc";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  employeeCode: "Sicil",
+  fullName: "Ad Soyad",
+  department: "Bölüm",
+  positionTitle: "Pozisyon",
+  location: "Lokasyon",
+  employmentStatus: "Durum",
+  employmentType: "İstihdam",
+};
+
+function sortValueFor(p: PersonnelRecord, key: SortKey): string {
+  switch (key) {
+    case "employeeCode":
+      return p.employeeCode || "";
+    case "fullName":
+      return `${p.firstName || ""} ${p.lastName || ""}`.trim();
+    case "department":
+      return p.department || "";
+    case "positionTitle":
+      return p.positionTitle || "";
+    case "location":
+      return p.location || "";
+    case "employmentStatus":
+      return STATUS_LABELS[p.employmentStatus] || p.employmentStatus || "";
+    case "employmentType":
+      return TYPE_LABELS[p.employmentType] || p.employmentType || "";
+  }
+}
+
+// Türkçe locale-aware karşılaştırma: "Ç", "Ğ", "İ", "Ö", "Ş", "Ü" doğru sıralanır.
+// Sicil gibi numerik alanlar için {numeric: true} kullanıyoruz ki "9" < "10" olsun.
+const trCollator = new Intl.Collator("tr", { numeric: true, sensitivity: "base" });
+
+function sortPersonnel(rows: PersonnelRecord[], key: SortKey, dir: SortDir): PersonnelRecord[] {
+  const mul = dir === "asc" ? 1 : -1;
+  const out = [...rows];
+  out.sort((a, b) => {
+    const av = sortValueFor(a, key);
+    const bv = sortValueFor(b, key);
+    // Boş değerler her zaman sona.
+    if (!av && !bv) return 0;
+    if (!av) return 1;
+    if (!bv) return -1;
+    return trCollator.compare(av, bv) * mul;
+  });
+  return out;
+}
+
 /* ── Main component ── */
 type Props = { companyId: string; companyName: string; departments: string[]; locations: string[] };
 
@@ -218,6 +277,8 @@ export function PersonnelManagementPanel({ companyId, companyName, departments, 
   const [bulkBusy, setBulkBusy] = useState(false);
   const [policyModal, setPolicyModal] = useState<{ personnelId: string; name: string } | null>(null);
   const [policyBusy, setPolicyBusy] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("fullName");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   useEffect(() => {
     let cancelled = false;
@@ -259,6 +320,20 @@ export function PersonnelManagementPanel({ companyId, companyName, departments, 
   const locs = locations.filter(Boolean);
   void locs;
   const activeCount = useMemo(() => ppl.filter((p) => p.employmentStatus === "active").length, [ppl]);
+
+  const sortedPpl = useMemo(() => sortPersonnel(ppl, sortKey, sortDir), [ppl, sortKey, sortDir]);
+
+  const onSortClick = useCallback(
+    (key: SortKey) => {
+      if (key === sortKey) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortKey(key);
+        setSortDir("asc");
+      }
+    },
+    [sortKey],
+  );
 
   const dl = useCallback(() => { dlCSV(mkCSV(), `${companyName.replace(/\s+/g, "_")}_personel_sablonu.csv`); }, [companyName]);
 
@@ -372,6 +447,30 @@ export function PersonnelManagementPanel({ companyId, companyName, departments, 
                       {bulkBusy ? "Siliniyor..." : `Seçilenleri Sil (${selectedIds.size})`}
                     </Button>
                   )}
+                  <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-secondary/30 px-2 py-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground" htmlFor="personnel-sort">
+                      Sırala
+                    </label>
+                    <select
+                      id="personnel-sort"
+                      value={sortKey}
+                      onChange={(e) => { setSortKey(e.target.value as SortKey); }}
+                      className="rounded-lg border border-border bg-card px-2 py-1 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+                        <option key={k} value={k}>{SORT_LABELS[k]}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                      title={sortDir === "asc" ? "Artan (A→Z)" : "Azalan (Z→A)"}
+                      aria-label={sortDir === "asc" ? "Artan sıralama" : "Azalan sıralama"}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border bg-card text-xs font-bold text-foreground transition hover:bg-secondary"
+                    >
+                      {sortDir === "asc" ? "A→Z" : "Z→A"}
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2.5">
                   <Button variant="outline" onClick={dl} className="h-10 rounded-xl px-4 text-sm font-semibold"><Download size={15} className="mr-2" />Şablonu İndir</Button>
@@ -383,11 +482,42 @@ export function PersonnelManagementPanel({ companyId, companyName, departments, 
                 <table className="w-full min-w-[1100px] text-sm">
                   <thead><tr className="border-b border-border bg-secondary/50">
                     <th className="w-10 px-3 py-2.5 text-center"><input type="checkbox" checked={selectedIds.size === ppl.length && ppl.length > 0} onChange={toggleSelectAll} className="h-4 w-4 rounded border-border accent-primary" /></th>
-                    {["Sicil","Ad Soyad","TC Kimlik","Bölüm","Pozisyon","Lokasyon","Durum","İstihdam","İşlem"].map((h) => (
-                      <th key={h} className="px-3 py-2.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{h}</th>
-                    ))}
+                    {([
+                      { label: "Sicil", key: "employeeCode" as SortKey },
+                      { label: "Ad Soyad", key: "fullName" as SortKey },
+                      { label: "TC Kimlik", key: null },
+                      { label: "Bölüm", key: "department" as SortKey },
+                      { label: "Pozisyon", key: "positionTitle" as SortKey },
+                      { label: "Lokasyon", key: "location" as SortKey },
+                      { label: "Durum", key: "employmentStatus" as SortKey },
+                      { label: "İstihdam", key: "employmentType" as SortKey },
+                      { label: "İşlem", key: null },
+                    ] as Array<{ label: string; key: SortKey | null }>).map((h) => {
+                      const isSortable = h.key !== null;
+                      const isActive = isSortable && sortKey === h.key;
+                      const indicator = isActive ? (sortDir === "asc" ? "▲" : "▼") : "";
+                      return (
+                        <th key={h.label} className="px-3 py-2.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          {isSortable ? (
+                            <button
+                              type="button"
+                              onClick={() => onSortClick(h.key as SortKey)}
+                              className={`inline-flex items-center gap-1 transition-colors hover:text-foreground ${isActive ? "text-foreground" : ""}`}
+                              aria-label={`${h.label} sütununa göre sırala`}
+                            >
+                              {h.label}
+                              <span className={`text-[9px] ${isActive ? "opacity-100" : "opacity-30"}`}>
+                                {indicator || "↕"}
+                              </span>
+                            </button>
+                          ) : (
+                            h.label
+                          )}
+                        </th>
+                      );
+                    })}
                   </tr></thead>
-                  <tbody>{ppl.map((p) => (
+                  <tbody>{sortedPpl.map((p) => (
                     <tr key={p.id} className={`border-b border-border transition-colors hover:bg-secondary/30 ${selectedIds.has(p.id) ? "bg-primary/5" : ""}`}>
                       <td className="w-10 px-3 py-2.5 text-center"><input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelect(p.id)} className="h-4 w-4 rounded border-border accent-primary" /></td>
                       <td className="px-3 py-2.5 font-medium text-foreground">{p.employeeCode || "\u2014"}</td>
