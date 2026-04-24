@@ -1108,8 +1108,21 @@ function isOperationalCommandQuery(query: string): boolean {
   return /(olustur|oluştur|planla|ekle|kaydet|ac|aç|git|yonlendir|yönlendir|create|plan|open|navigate)/i.test(query)
 }
 
+function hasExplicitLegalAnchor(query: string): boolean {
+  const normalized = normalizeTurkishAscii(query)
+  return Boolean(
+    parseLawNumberFromQuery(query) ||
+    parseArticleReferenceFromQuery(query) ||
+    /\b\d{4}-\d{2}-\d{2}\b/.test(query) ||
+    /\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/.test(normalized) ||
+    /\b(yururluk|yururluk tarihi|effective date|official gazette|resmi gazete)\b/i.test(normalized)
+  )
+}
+
 function shouldUseDeterministicLegalMode(query: string): boolean {
-  return detectNovaIntentAdvanced(query) === 'regulation' && !isOperationalCommandQuery(query)
+  return detectNovaIntentAdvanced(query) === 'regulation' &&
+    !isOperationalCommandQuery(query) &&
+    hasExplicitLegalAnchor(query)
 }
 
 function summarizeLegalContentExtractively(content: string, maxLength = 260): string {
@@ -1344,6 +1357,62 @@ async function polishDeterministicLegalAnswer(params: {
     : { mode: 'polished', answer }
 }
 
+async function buildModelBackedLegalGuidanceAnswer(params: {
+  anthropic: Anthropic
+  query: string
+  language: NovaLanguage
+}): Promise<{ answer: string }> {
+  const isEnglish = params.language === 'en'
+  const system = isEnglish
+    ? [
+        'You are Nova, an occupational health and safety assistant.',
+        'The legislation index did not return a reliable citation match for this question.',
+        'Still answer the user with practical OHS guidance instead of refusing.',
+        'Rules:',
+        '- Do not stop with a refusal just because the current index had no citation match.',
+        '- Do not invent law numbers, article numbers, dates, or fake quotations.',
+        '- If a legal citation is uncertain, say that the official citation could not be verified from the current index, then continue with a useful answer.',
+        '- For Turkish OHS staffing questions, explain the answer first through monthly service time per employee, then give an approximate full-time-equivalent interpretation if useful.',
+        '- Keep the answer concise, practical, and directly helpful.',
+      ].join('\n')
+    : [
+        'Sen Nova adli is sagligi ve guvenligi asistanisin.',
+        'Bu soru icin mevzuat indeksinden guvenilir bir atif eslesmesi donmedi.',
+        'Buna ragmen kullaniciya reddetmeden pratik ISG rehberligi ver.',
+        'Kurallar:',
+        '- Sirf mevcut indeks eslesmesi cikmadi diye cevap vermeyi kesme.',
+        '- Kanun numarasi, madde numarasi, tarih veya dogrudan alinti uydurma.',
+        '- Resmi atfi mevcut indeksle dogrulayamiyorsan bunu bir kez kisaca belirt, sonra kullanisli cevaba devam et.',
+        '- Turk ISG gorevlendirme sorularinda cevabi once calisan basina aylik hizmet suresi mantigi ile acikla; faydaliysa bunu yaklasik tam zamanli uzman ihtiyacina cevir.',
+        '- Cevabi kisa, pratik ve dogrudan yardimci olacak sekilde yaz.',
+      ].join('\n')
+
+  const response = await requestClaude(
+    params.anthropic,
+    {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 700,
+      temperature: 0.1,
+      system,
+      messages: [{ role: 'user', content: params.query }],
+    },
+    'solution_chat_legal_guidance_fallback',
+  )
+
+  const textBlock = response?.content?.find((block: any) => block.type === 'text')
+  const answer = typeof textBlock?.text === 'string' ? textBlock.text.trim() : ''
+
+  if (answer) {
+    return { answer }
+  }
+
+  return {
+    answer: isEnglish
+      ? 'I could not verify an official citation from the current legislation index, but as a practical rule you should first calculate the monthly OHS service time required per employee and then convert that workload into the number of OHS professionals needed.'
+      : 'Resmi atfi mevcut mevzuat indeksinden dogrulayamadim; ancak pratik olarak once calisan basina gerekli aylik ISG hizmet suresini hesaplayip, sonra bu is yukunu gereken profesyonel sayisina cevirmek gerekir.',
+  }
+}
+
 async function buildDeterministicLegalAnswer(
   query: string,
   context: ToolContext,
@@ -1440,6 +1509,29 @@ async function buildDeterministicLegalAnswer(
   }
 
   const reranked = rerankLegalHits(query, reciprocalRankFusion([lexicalHits, denseHits])).slice(0, 8)
+  if (reranked.length === 0) {
+    const fallback = await buildModelBackedLegalGuidanceAnswer({
+      anthropic,
+      query,
+      language: context.session.answer_language,
+    })
+
+    return {
+      answer: fallback.answer,
+      confidence: 0.56,
+      sources: [],
+      retrievalMode: 'model_guidance_fallback',
+      trace: {
+        as_of_date: context.session.as_of_date,
+        jurisdiction_code: context.session.jurisdiction_code,
+        exact: [],
+        sparse: lexicalHits.slice(0, 15),
+        dense: denseHits.slice(0, 15),
+        reranked: [],
+      },
+    }
+  }
+
   let composed = composeDeterministicLegalAnswer({
     query,
     hits: reranked,

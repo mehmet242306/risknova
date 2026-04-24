@@ -6,7 +6,6 @@ import { requireAuth } from "@/lib/supabase/api-auth";
 import {
   enforceRateLimit,
   logSecurityEvent,
-  parseJsonBody,
   resolveAiDailyLimit,
 } from "@/lib/security/server";
 import {
@@ -774,8 +773,17 @@ export async function POST(request: NextRequest) {
     });
     if (rateLimitResponse) return rateLimitResponse;
 
-    const parsedBody = await parseJsonBody(request, analyzeRiskSchema);
-    if (!parsedBody.ok) return parsedBody.response;
+    const rawBody = await request.json().catch(() => null);
+    const parsedBody = analyzeRiskSchema.safeParse(rawBody);
+    if (!parsedBody.success) {
+      return NextResponse.json(
+        {
+          error: "Gecersiz gorsel verisi.",
+          details: z.treeifyError(parsedBody.error),
+        },
+        { status: 400 },
+      );
+    }
 
     const { imageBase64, mimeType, method } = parsedBody.data;
 

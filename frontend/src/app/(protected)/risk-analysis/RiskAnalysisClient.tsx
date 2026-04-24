@@ -2202,7 +2202,7 @@ JSON formatında döndür:
         />
 
         {/* ── Firma Seçimi ── */}
-        <div className="surface-card rounded-[1.75rem] border border-border p-6 shadow-[var(--shadow-card)]">
+        <div className="surface-card rounded-[1.75rem] border border-border p-4 shadow-[var(--shadow-card)] sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex-1">
               <label className="mb-2 block text-sm font-semibold text-foreground">Firma / Kurum Seçin</label>
@@ -2222,7 +2222,7 @@ JSON formatında döndür:
               variant="accent"
               disabled={!selectedCompanyId}
               onClick={startNewAnalysis}
-              className="h-12 rounded-xl px-8 text-base font-bold shadow-lg"
+              className="h-12 w-full rounded-xl px-5 text-sm font-bold shadow-lg sm:w-auto sm:px-8 sm:text-base"
             >
               + Yeni Analiz Başlat
             </Button>
@@ -2231,7 +2231,7 @@ JSON formatında döndür:
 
         {/* ── Analiz Geçmişi ── */}
         {selectedCompanyId && (
-          <div className="surface-card rounded-[1.75rem] border border-border p-6 shadow-[var(--shadow-card)]">
+          <div className="surface-card rounded-[1.75rem] border border-border p-4 shadow-[var(--shadow-card)] sm:p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">

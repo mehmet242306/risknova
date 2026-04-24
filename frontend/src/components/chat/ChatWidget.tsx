@@ -1,10 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useI18n } from "@/lib/i18n";
+import {
+  analyzeNovaImage,
+  buildNovaPromptWithImage,
+  type NovaImageAnalysis,
+} from "@/lib/nova/multimodal";
+import {
+  collectSpeechTranscript,
+  getBrowserSpeechRecognition,
+  toSpeechRecognitionLocale,
+  type BrowserSpeechRecognition,
+} from "@/lib/nova/browser-speech";
 import { getNovaUiCopy, resolveNovaRuntimeErrorMessage } from "@/lib/nova-ui";
+import { postNovaAgentRequest } from "@/lib/nova/client";
+import { resolveNovaApiEndpoint, resolveNovaRequestMode } from "@/lib/nova/request-mode";
 import { fetchAccountContext } from "@/lib/account/account-api";
 import type {
   NovaAgentResponse,
@@ -25,6 +44,9 @@ import {
   X,
   Minus,
   Send,
+  ImagePlus,
+  Mic,
+  Square,
   Sparkles,
   Bot,
   User,
@@ -70,6 +92,118 @@ type Message = {
   isError?: boolean;
 };
 
+type PanelPosition = {
+  left: number;
+  top: number;
+};
+
+type PanelDragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+};
+
+type WidgetHistoryItem = {
+  id: string;
+  queryText: string;
+  aiResponse: string;
+  createdAt: string;
+  source: "local" | "server";
+};
+
+const PANEL_EDGE_GAP = 12;
+const WIDGET_HISTORY_STORAGE_KEY = "risknova:nova-widget-history";
+const MAX_WIDGET_HISTORY_ITEMS = 30;
+
+function clampPanelPosition(position: PanelPosition, width: number, height: number): PanelPosition {
+  if (typeof window === "undefined") return position;
+
+  const maxLeft = Math.max(PANEL_EDGE_GAP, window.innerWidth - width - PANEL_EDGE_GAP);
+  const maxTop = Math.max(PANEL_EDGE_GAP, window.innerHeight - height - PANEL_EDGE_GAP);
+
+  return {
+    left: Math.min(Math.max(PANEL_EDGE_GAP, position.left), maxLeft),
+    top: Math.min(Math.max(PANEL_EDGE_GAP, position.top), maxTop),
+  };
+}
+
+function defaultPanelPosition(width: number, height: number): PanelPosition {
+  if (typeof window === "undefined") {
+    return { left: PANEL_EDGE_GAP, top: PANEL_EDGE_GAP };
+  }
+
+  return clampPanelPosition(
+    {
+      left: window.innerWidth - width - 24,
+      top: window.innerHeight - height - 24,
+    },
+    width,
+    height,
+  );
+}
+
+function readLocalWidgetHistory(): WidgetHistoryItem[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(WIDGET_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Partial<WidgetHistoryItem>[];
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item) => ({
+        id: String(item.id || crypto.randomUUID()),
+        queryText: String(item.queryText || "").trim(),
+        aiResponse: String(item.aiResponse || "").trim(),
+        createdAt: String(item.createdAt || new Date().toISOString()),
+        source: "local" as const,
+      }))
+      .filter((item) => item.queryText && item.aiResponse)
+      .slice(0, MAX_WIDGET_HISTORY_ITEMS);
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalWidgetHistory(items: WidgetHistoryItem[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      WIDGET_HISTORY_STORAGE_KEY,
+      JSON.stringify(items.slice(0, MAX_WIDGET_HISTORY_ITEMS)),
+    );
+  } catch {
+    // History must never block Nova from showing a response.
+  }
+}
+
+function rememberLocalWidgetHistory(queryText: string, aiResponse: string) {
+  const cleanQuery = queryText.trim();
+  const cleanAnswer = aiResponse.trim();
+  if (!cleanQuery || !cleanAnswer) return;
+
+  const nextItem: WidgetHistoryItem = {
+    id: crypto.randomUUID(),
+    queryText: cleanQuery,
+    aiResponse: cleanAnswer,
+    createdAt: new Date().toISOString(),
+    source: "local",
+  };
+
+  const next = [
+    nextItem,
+    ...readLocalWidgetHistory().filter(
+      (item) => item.queryText !== cleanQuery || item.aiResponse !== cleanAnswer,
+    ),
+  ];
+  writeLocalWidgetHistory(next);
+}
+
 export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -85,10 +219,35 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
   const [accountType, setAccountType] = useState<"individual" | "osgb" | "enterprise" | null>(null);
   const [accountSurface, setAccountSurface] = useState<"platform-admin" | "osgb-manager" | "standard">("standard");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const [imageAnalysis, setImageAnalysis] = useState<NovaImageAnalysis | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
+  const [voiceTranscribing, setVoiceTranscribing] = useState(false);
+  const [activeTab, setActiveTab] = useState<"chat" | "history">("chat");
+  const [historyItems, setHistoryItems] = useState<WidgetHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [panelPosition, setPanelPosition] = useState<PanelPosition | null>(null);
+  const [launcherPosition, setLauncherPosition] = useState<PanelPosition | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const panelDragRef = useRef<PanelDragState | null>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const launcherDragRef = useRef<PanelDragState | null>(null);
+  const launcherMovedRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const proactiveLoadedRef = useRef(false);
   const actionPollCancelledRef = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<number | null>(null);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const speechTranscriptRef = useRef("");
+  const speechInterimTranscriptRef = useRef("");
   const supabase = createClient();
   const currentQueryString = searchParams.toString();
   const currentPage = `${pathname}${currentQueryString ? `?${currentQueryString}` : ""}`;
@@ -270,8 +429,20 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
   useEffect(() => {
     return () => {
       actionPollCancelledRef.current = true;
+      if (recordingTimerRef.current) {
+        window.clearInterval(recordingTimerRef.current);
+      }
+      if (recordingStreamRef.current) {
+        for (const track of recordingStreamRef.current.getTracks()) track.stop();
+      }
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.abort();
+      }
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
     };
-  }, []);
+  }, [imagePreviewUrl]);
 
   useEffect(() => {
     if (open && messages.length === 0) {
@@ -334,20 +505,471 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
     if (open) setTimeout(() => inputRef.current?.focus(), 200);
   }, [open]);
 
+  async function refreshHistory() {
+    setHistoryLoading(true);
+    const localItems = readLocalWidgetHistory();
+
+    try {
+      if (!isAuthenticated || !supabase) {
+        setHistoryItems(localItems);
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setHistoryItems(localItems);
+        return;
+      }
+
+      const { data } = await supabase
+        .from("solution_queries")
+        .select("id, query_text, ai_response, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(25);
+
+      const serverItems: WidgetHistoryItem[] = Array.isArray(data)
+        ? data
+            .map((item) => ({
+              id: String(item.id),
+              queryText: String(item.query_text || "").trim(),
+              aiResponse: String(item.ai_response || "").trim(),
+              createdAt: String(item.created_at || new Date().toISOString()),
+              source: "server" as const,
+            }))
+            .filter((item) => item.queryText && item.aiResponse)
+        : [];
+
+      const seen = new Set<string>();
+      const merged = [...localItems, ...serverItems]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .filter((item) => {
+          const key = `${item.queryText}\n${item.aiResponse}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, MAX_WIDGET_HISTORY_ITEMS);
+
+      setHistoryItems(merged);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!open || activeTab !== "history") return;
+    void refreshHistory();
+  }, [open, activeTab, isAuthenticated]);
+
+  useEffect(() => {
+    if (!open) {
+      panelDragRef.current = null;
+      return;
+    }
+
+    function keepPanelInViewport() {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const rect = panel.getBoundingClientRect();
+      setPanelPosition((current) =>
+        clampPanelPosition(
+          current ?? defaultPanelPosition(rect.width, rect.height),
+          rect.width,
+          rect.height,
+        ),
+      );
+    }
+
+    const timer = window.setTimeout(keepPanelInViewport, 0);
+    window.addEventListener("resize", keepPanelInViewport);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", keepPanelInViewport);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    function keepLauncherInViewport() {
+      const launcher = launcherRef.current;
+      if (!launcher || !launcherPosition) return;
+      const rect = launcher.getBoundingClientRect();
+      setLauncherPosition(clampPanelPosition(launcherPosition, rect.width, rect.height));
+    }
+
+    window.addEventListener("resize", keepLauncherInViewport);
+    return () => window.removeEventListener("resize", keepLauncherInViewport);
+  }, [launcherPosition]);
+
+  const openWidget = () => {
+    const launcher = launcherRef.current;
+    if (launcher) {
+      const rect = launcher.getBoundingClientRect();
+      setPanelPosition(
+        defaultPanelPosition(
+          Math.min(window.innerWidth - PANEL_EDGE_GAP * 2, 340),
+          Math.min(window.innerHeight - PANEL_EDGE_GAP * 2, 520),
+        ),
+      );
+
+      if (launcherPosition) {
+        const panelWidth = Math.min(window.innerWidth - PANEL_EDGE_GAP * 2, 340);
+        const panelHeight = Math.min(window.innerHeight - PANEL_EDGE_GAP * 2, 520);
+        setPanelPosition(
+          clampPanelPosition(
+            {
+              left: rect.left - panelWidth + rect.width,
+              top: rect.top - panelHeight + rect.height,
+            },
+            panelWidth,
+            panelHeight,
+          ),
+        );
+      }
+    }
+
+    setActiveTab("chat");
+    setOpen(true);
+  };
+
+  const startPanelDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("button, a, input, textarea, select")) return;
+
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const rect = panel.getBoundingClientRect();
+    panelDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPanelPosition({ left: rect.left, top: rect.top });
+  };
+
+  const dragPanel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = panelDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    setPanelPosition(
+      clampPanelPosition(
+        {
+          left: event.clientX - drag.offsetX,
+          top: event.clientY - drag.offsetY,
+        },
+        drag.width,
+        drag.height,
+      ),
+    );
+  };
+
+  const stopPanelDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (panelDragRef.current?.pointerId !== event.pointerId) return;
+
+    panelDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const startLauncherDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const launcher = launcherRef.current;
+    if (!launcher) return;
+
+    const rect = launcher.getBoundingClientRect();
+    launcherMovedRef.current = false;
+    launcherDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setLauncherPosition({ left: rect.left, top: rect.top });
+  };
+
+  const dragLauncher = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = launcherDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const nextPosition = clampPanelPosition(
+      {
+        left: event.clientX - drag.offsetX,
+        top: event.clientY - drag.offsetY,
+      },
+      drag.width,
+      drag.height,
+    );
+
+    if (Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4) {
+      launcherMovedRef.current = true;
+    }
+
+    setLauncherPosition(nextPosition);
+  };
+
+  const stopLauncherDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (launcherDragRef.current?.pointerId !== event.pointerId) return;
+
+    launcherDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  function restoreHistoryItem(item: WidgetHistoryItem) {
+    setMessages((prev) => [
+      ...prev.filter((message) => message.id !== "welcome"),
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        text: item.queryText,
+        timestamp: new Date(item.createdAt),
+      },
+      {
+        id: crypto.randomUUID(),
+        role: "bot",
+        text: item.aiResponse,
+        timestamp: new Date(item.createdAt),
+      },
+    ]);
+    setActiveTab("chat");
+  }
+
+  function formatHistoryDate(dateStr: string) {
+    return new Date(dateStr).toLocaleDateString("tr-TR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  const clearAttachedImage = () => {
+    setImageAnalysis(null);
+    setComposerError(null);
+    setImagePreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  };
+
+  const handleImageSelected = async (file: File | null) => {
+    if (!file) return;
+    setComposerError(null);
+    setImageUploading(true);
+    try {
+      const analysis = await analyzeNovaImage(file);
+      setImageAnalysis(analysis);
+      setImagePreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(file);
+      });
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : "Gorsel Nova icin okunamadi.");
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  const transcribeVoiceBlob = async (blob: Blob) => {
+    const formData = new FormData();
+    formData.append("file", new File([blob], "nova-voice.webm", { type: blob.type || "audio/webm" }));
+    formData.append("language", locale || "tr");
+
+    const response = await fetch("/api/nova/transcribe", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = (await response.json().catch(() => ({}))) as { transcript?: string; message?: string };
+    if (!response.ok) {
+      throw new Error(payload.message || "Ses metne cevrilemedi.");
+    }
+    return String(payload.transcript || "").trim();
+  };
+
+  const stopRecording = () => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+      return;
+    }
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
+    }
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    setRecording(false);
+  };
+
+  const startRecording = async () => {
+    setComposerError(null);
+    const BrowserSpeechRecognition = getBrowserSpeechRecognition();
+    if (BrowserSpeechRecognition) {
+      try {
+        const recognition = new BrowserSpeechRecognition();
+        let speechHadError = false;
+        speechTranscriptRef.current = "";
+        speechInterimTranscriptRef.current = "";
+        recognition.lang = toSpeechRecognitionLocale(locale);
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+        recognition.onresult = (event) => {
+          const finalTranscript = collectSpeechTranscript(event, { finalOnly: true });
+          const anyTranscript = collectSpeechTranscript(event, { finalOnly: false });
+          if (finalTranscript) {
+            speechTranscriptRef.current = [speechTranscriptRef.current, finalTranscript]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+          }
+          if (anyTranscript) {
+            speechInterimTranscriptRef.current = anyTranscript;
+          }
+        };
+        recognition.onerror = (event) => {
+          speechHadError = true;
+          const errorCode = event.error || "speech-error";
+          setComposerError(
+            errorCode === "not-allowed"
+              ? "Mikrofon izni reddedildi."
+              : "Ses anlasilamadi. Lutfen tekrar deneyin.",
+          );
+        };
+        recognition.onend = () => {
+          speechRecognitionRef.current = null;
+          if (recordingTimerRef.current) {
+            window.clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+          }
+          setRecording(false);
+          const transcript = (speechTranscriptRef.current || speechInterimTranscriptRef.current).trim();
+          speechTranscriptRef.current = "";
+          speechInterimTranscriptRef.current = "";
+          if (transcript) {
+            setComposerError(null);
+            setInput((current) => (current.trim() ? `${current.trim()} ${transcript}` : transcript));
+          } else if (!speechHadError) {
+            setComposerError("Ses anlasilamadi. Lutfen biraz daha net tekrar deneyin.");
+          }
+        };
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+        setRecordingElapsed(0);
+        setRecording(true);
+        recordingTimerRef.current = window.setInterval(() => {
+          setRecordingElapsed((current) => current + 1);
+        }, 1000);
+        return;
+      } catch {
+        speechRecognitionRef.current = null;
+      }
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setComposerError("Tarayici ses kaydini desteklemiyor.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = async () => {
+        if (recordingStreamRef.current) {
+          for (const track of recordingStreamRef.current.getTracks()) track.stop();
+        }
+        recordingStreamRef.current = null;
+
+        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+        recordingChunksRef.current = [];
+        if (blob.size === 0) return;
+
+        setVoiceTranscribing(true);
+        try {
+          const transcript = await transcribeVoiceBlob(blob);
+          if (transcript) {
+            setInput((current) => (current.trim() ? `${current.trim()} ${transcript}` : transcript));
+          }
+        } catch (error) {
+          setComposerError(error instanceof Error ? error.message : "Sesli mesaj islenemedi.");
+        } finally {
+          setVoiceTranscribing(false);
+        }
+      };
+      recorder.start();
+      recorderRef.current = recorder;
+      setRecordingElapsed(0);
+      setRecording(true);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingElapsed((current) => current + 1);
+      }, 1000);
+    } catch (error) {
+      setComposerError(
+        error instanceof Error && error.name === "NotAllowedError"
+          ? "Mikrofon izni reddedildi."
+          : error instanceof Error
+            ? error.message
+            : "Mikrofon baslatilamadi.",
+      );
+    }
+  };
+
+  const formatRecordingElapsed = (seconds: number) =>
+    `${Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+
   async function handleSend() {
     const text = input.trim();
-    if (!text || typing) return;
+    const composedPrompt = buildNovaPromptWithImage(text, imageAnalysis);
+    if (!composedPrompt || typing || imageUploading || voiceTranscribing) return;
+    const visiblePrompt =
+      text ||
+      (imageAnalysis
+        ? `Gorsel uzerinden ISG yorumu istendi (${imageAnalysis.fileName}).`
+        : "");
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      text,
+      text: visiblePrompt,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setTyping(true);
+    setComposerError(null);
 
     // Public users: no lightweight response layer
     if (!isAuthenticated) {
@@ -391,41 +1013,35 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
         content: m.text,
       }));
 
-      const response = await fetch("/api/nova/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: text,
+      const requestMode = resolveNovaRequestMode(composedPrompt);
+      const data = await postNovaAgentRequest(
+        resolveNovaApiEndpoint(composedPrompt),
+        {
+          message: composedPrompt,
           session_id: sessionId,
           language: locale,
           as_of_date: new Date().toISOString().slice(0, 10),
           answer_mode: "extractive",
           access_token: session?.access_token ?? null,
-          mode: "agent",
+          mode: requestMode,
           context_surface: "widget",
           history,
           current_page: currentPage,
           company_workspace_id: companyWorkspaceId,
-        }),
-      });
-
-      const data: NovaAgentResponse = await response.json().catch(() => ({
-        type: "safety_block",
-        answer: ui.widget.unavailable,
-      }));
-
-      if (!response.ok) {
-        throw { context: new Response(JSON.stringify(data), { status: response.status }) };
-      }
+        },
+      );
 
       // Preserve session
       if (data?.session_id && !sessionId) {
         setSessionId(data.session_id);
       }
 
-      setMessages((prev) => [...prev, buildBotMessageFromAgentResponse(data)]);
+      const botMessage = buildBotMessageFromAgentResponse(data);
+      rememberLocalWidgetHistory(visiblePrompt, botMessage.text);
+      setMessages((prev) => [...prev, botMessage]);
+      if (imageAnalysis) {
+        clearAttachedImage();
+      }
     } catch (err: unknown) {
       const errorText = await resolveNovaRuntimeErrorMessage(locale, err);
       const errorMsg: Message = {
@@ -584,58 +1200,94 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
       {/* Floating Button */}
       {!open && (
         <button
+          ref={launcherRef}
           type="button"
-          onClick={() => setOpen(true)}
-          className="group fixed bottom-10 right-10 z-50 inline-flex h-[3.7rem] w-[4.05rem] items-center justify-center rounded-[1.7rem] border border-amber-200/45 bg-[linear-gradient(135deg,#B87910_0%,#D39B17_46%,#F4C33F_100%)] text-white shadow-[0_16px_34px_rgba(188,132,20,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03] hover:shadow-[0_22px_46px_rgba(188,132,20,0.38)]"
+          onClick={(event) => {
+            if (launcherMovedRef.current) {
+              event.preventDefault();
+              launcherMovedRef.current = false;
+              return;
+            }
+            openWidget();
+          }}
+          onPointerDown={startLauncherDrag}
+          onPointerMove={dragLauncher}
+          onPointerUp={stopLauncherDrag}
+          onPointerCancel={stopLauncherDrag}
+          className={`group fixed z-50 inline-flex h-12 w-[3.25rem] touch-none cursor-move items-center justify-center rounded-[1.15rem] border border-amber-200/45 bg-[linear-gradient(135deg,#B87910_0%,#D39B17_46%,#F4C33F_100%)] text-white shadow-[0_12px_26px_rgba(188,132,20,0.28)] transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.03] hover:shadow-[0_18px_36px_rgba(188,132,20,0.35)] sm:h-[3.25rem] sm:w-[3.5rem] sm:rounded-[1.3rem] ${launcherPosition ? "" : "bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-3 sm:bottom-7 sm:right-7"}`}
+          style={
+            launcherPosition
+              ? {
+                  left: launcherPosition.left,
+                  top: launcherPosition.top,
+                }
+              : undefined
+          }
           aria-label={ui.widget.openAriaLabel}
-          title="Nova'yi ac"
+          title="Nova'yi tasimak icin surukleyin, acmak icin tiklayin"
         >
           <span
-            className="pointer-events-none absolute -inset-8 rounded-full bg-[conic-gradient(from_0deg,rgba(255,255,255,0)_0deg,rgba(250,215,120,0.9)_68deg,rgba(255,255,255,0)_126deg,rgba(214,161,26,0.65)_212deg,rgba(255,255,255,0)_286deg,rgba(250,215,120,0.88)_360deg)] opacity-90 blur-[15px] animate-spin [animation-duration:6.8s]"
+            className="pointer-events-none absolute -inset-6 rounded-full bg-[conic-gradient(from_0deg,rgba(255,255,255,0)_0deg,rgba(250,215,120,0.78)_68deg,rgba(255,255,255,0)_126deg,rgba(214,161,26,0.5)_212deg,rgba(255,255,255,0)_286deg,rgba(250,215,120,0.76)_360deg)] opacity-80 blur-[13px] animate-spin [animation-duration:6.8s]"
           />
           <span
-            className="pointer-events-none absolute -inset-7 rounded-full bg-[radial-gradient(circle,rgba(247,203,86,0.62)_0%,rgba(221,166,33,0.34)_30%,rgba(188,132,20,0.16)_54%,rgba(188,132,20,0)_78%)] blur-3xl"
+            className="pointer-events-none absolute -inset-5 rounded-full bg-[radial-gradient(circle,rgba(247,203,86,0.52)_0%,rgba(221,166,33,0.28)_30%,rgba(188,132,20,0.12)_54%,rgba(188,132,20,0)_78%)] blur-2xl"
             style={{ animation: "pulse 2.1s ease-in-out infinite" }}
           />
           <span
-            className="pointer-events-none absolute -inset-5 rounded-full border border-amber-100/55 opacity-95 animate-ping [animation-duration:2.9s]"
-            style={{ boxShadow: "0 0 36px rgba(243,191,56,0.34)" }}
+            className="pointer-events-none absolute -inset-4 rounded-full border border-amber-100/45 opacity-80 animate-ping [animation-duration:2.9s]"
+            style={{ boxShadow: "0 0 26px rgba(243,191,56,0.28)" }}
           />
           <span
-            className="pointer-events-none absolute -inset-3 rounded-full border border-amber-50/70 opacity-90 animate-ping [animation-duration:2.2s]"
+            className="pointer-events-none absolute -inset-2 rounded-full border border-amber-50/60 opacity-80 animate-ping [animation-duration:2.2s]"
             style={{ animationDelay: "0.7s" }}
           />
           <span
-            className="pointer-events-none absolute -inset-6 rounded-full border border-amber-200/40 opacity-80"
+            className="pointer-events-none absolute -inset-4 rounded-full border border-amber-200/35 opacity-70"
             style={{ animation: "pulse 3.8s ease-in-out infinite" }}
           />
           <span
             className="pointer-events-none absolute -inset-2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.36)_0%,rgba(255,255,255,0.08)_42%,rgba(255,255,255,0)_68%)] blur-xl"
             style={{ animation: "pulse 1.8s ease-in-out infinite" }}
           />
-          <span className="pointer-events-none absolute inset-[2px] rounded-[1.55rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.02)_38%,rgba(0,0,0,0.05)_100%)]" />
+          <span className="pointer-events-none absolute inset-[2px] rounded-[1.05rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.14)_0%,rgba(255,255,255,0.02)_38%,rgba(0,0,0,0.05)_100%)] sm:rounded-[1.2rem]" />
           <span
-            className="pointer-events-none absolute bottom-[0.32rem] right-[0.46rem] h-[0.92rem] w-[0.92rem] rotate-45 rounded-[0.32rem] border-r border-b border-amber-200/45 bg-[linear-gradient(135deg,#C78B11_0%,#E1AB24_55%,#F4C33F_100%)] shadow-[0_8px_16px_rgba(188,132,20,0.16)]"
+            className="pointer-events-none absolute bottom-[0.26rem] right-[0.36rem] h-3 w-3 rotate-45 rounded-[0.24rem] border-r border-b border-amber-200/45 bg-[linear-gradient(135deg,#C78B11_0%,#E1AB24_55%,#F4C33F_100%)] shadow-[0_8px_16px_rgba(188,132,20,0.16)]"
           />
-          <MessageCircle className="relative z-10 size-[1.35rem] -translate-y-[1px] transition-transform duration-300 group-hover:scale-110" />
+          <MessageCircle className="relative z-10 size-5 -translate-y-[1px] transition-transform duration-300 group-hover:scale-110" />
         </button>
       )}
 
       {/* Chat Panel */}
       {open && (
         <div
-          className="fixed bottom-7 right-7 z-50 flex w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_28px_70px_rgba(0,0,0,0.26)]"
-          style={{ height: "min(600px, calc(100vh - 6rem))" }}
+          ref={panelRef}
+          className={`fixed z-50 flex w-[min(calc(100vw-1.5rem),340px)] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_22px_56px_rgba(0,0,0,0.24)] ${panelPosition ? "" : "bottom-[calc(env(safe-area-inset-bottom)+0.85rem)] right-3 sm:bottom-6 sm:right-6"}`}
+          style={{
+            height: "min(520px, calc(100dvh - 3.25rem))",
+            ...(panelPosition
+              ? {
+                  left: panelPosition.left,
+                  top: panelPosition.top,
+                }
+              : null),
+          }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-border bg-[var(--header-bg-solid)] px-4 py-3">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex size-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)]">
-                <Sparkles className="size-4 text-white" />
+          <div
+            className="flex touch-none select-none items-center justify-between border-b border-border bg-[var(--header-bg-solid)] px-3 py-2.5"
+            onPointerDown={startPanelDrag}
+            onPointerMove={dragPanel}
+            onPointerUp={stopPanelDrag}
+            onPointerCancel={stopPanelDrag}
+            title="Nova penceresini tasimak icin surukleyin"
+          >
+            <div className="flex min-w-0 cursor-move items-center gap-2.5">
+              <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)]">
+                <Sparkles className="size-3.5 text-white" />
               </span>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-white">{assistantName}</p>
-                <p className="text-xs text-white/50">{assistantSubtitle}</p>
+                <p className="truncate text-[11px] text-white/50">{assistantSubtitle}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -644,9 +1296,9 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                 onClick={() => setOpen(false)}
                 aria-label={ui.widget.minimizeAriaLabel}
                 title={ui.widget.minimizeAriaLabel}
-                className="inline-flex size-8 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
+                className="inline-flex size-7 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
               >
-                <Minus className="size-4" />
+                <Minus className="size-3.5" />
               </button>
               <button
                 type="button"
@@ -658,15 +1310,45 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                 }}
                 aria-label={ui.widget.closeAriaLabel}
                 title={ui.widget.closeAriaLabel}
-                className="inline-flex size-8 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
+                className="inline-flex size-7 items-center justify-center rounded-lg text-white/50 hover:bg-white/10 hover:text-white"
               >
-                <X className="size-4" />
+                <X className="size-3.5" />
               </button>
             </div>
           </div>
 
+          <div className="grid grid-cols-2 border-b border-border bg-card p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("chat")}
+              className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                activeTab === "chat"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              Sohbet
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("history");
+                void refreshHistory();
+              }}
+              className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                activeTab === "history"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              Gecmis
+            </button>
+          </div>
+
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {activeTab === "chat" ? (
+            <>
+          <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
             {messages.map((msg) => (
               <div key={msg.id} className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
                 {/* Avatar */}
@@ -891,7 +1573,87 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
           </div>
 
           {/* Input */}
-          <div className="border-t border-border bg-card p-3">
+          <div className="border-t border-border bg-card p-2.5">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                void handleImageSelected(file);
+              }}
+            />
+            {isAuthenticated ? (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={typing || imageUploading || voiceTranscribing}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 disabled:opacity-50"
+                >
+                  <ImagePlus className="size-3.5" />
+                  {imageUploading ? "Gorsel analiz ediliyor..." : "Gorsel"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void (recording ? stopRecording() : startRecording())}
+                  disabled={typing || imageUploading || voiceTranscribing}
+                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1.5 text-[11px] font-medium text-foreground transition-colors hover:border-primary/30 hover:bg-primary/5 disabled:opacity-50"
+                >
+                  {recording ? <Square className="size-3.5" /> : <Mic className="size-3.5" />}
+                  {recording ? "Durdur" : "Ses"}
+                </button>
+                {recording ? (
+                  <span className="text-[11px] font-medium text-primary">
+                    {formatRecordingElapsed(recordingElapsed)}
+                  </span>
+                ) : null}
+                {voiceTranscribing ? (
+                  <span className="text-[11px] text-muted-foreground">Ses metne cevriliyor...</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {imageAnalysis ? (
+              <div className="mb-2 rounded-xl border border-border bg-muted/30 p-2">
+                <div className="flex items-start gap-2">
+                  {imagePreviewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={imagePreviewUrl}
+                      alt={imageAnalysis.fileName}
+                      className="h-12 w-12 rounded-lg object-cover"
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-semibold text-foreground">{imageAnalysis.fileName}</div>
+                        <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                          {imageAnalysis.imageDescription || imageAnalysis.areaSummary || "Gorsel Nova icin hazirlandi."}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={clearAttachedImage}
+                        className="inline-flex size-7 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                        aria-label="Gorseli kaldir"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {composerError ? (
+              <div className="mb-2 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-2 text-[11px] text-red-500">
+                {composerError}
+              </div>
+            ) : null}
+
             <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-2">
               <input
                 ref={inputRef}
@@ -903,14 +1665,74 @@ export function ChatWidget({ isAuthenticated = false }: { isAuthenticated?: bool
                     ? ui.widget.authenticatedPlaceholder
                     : ui.widget.publicPlaceholder
                 }
-                className="h-10 flex-1 rounded-xl border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                className="h-9 flex-1 rounded-xl border border-border bg-input px-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
               />
-              <button type="submit" disabled={!input.trim() || typing}
-                className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)] text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100">
+              <button type="submit" disabled={(!input.trim() && !imageAnalysis) || typing || imageUploading || voiceTranscribing}
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#B8860B_0%,#D4A017_100%)] text-white transition-all hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100">
                 <Send className="size-4" />
               </button>
             </form>
           </div>
+            </>
+          ) : (
+            <div className="flex-1 overflow-y-auto px-3 py-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Gecmis sohbetler</p>
+                  <p className="text-[11px] text-muted-foreground">Son Nova sorularinizi buradan acabilirsiniz.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void refreshHistory()}
+                  disabled={historyLoading}
+                  className="rounded-lg border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                >
+                  Yenile
+                </button>
+              </div>
+
+              {historyLoading ? (
+                <div className="space-y-2">
+                  {[0, 1, 2].map((item) => (
+                    <div key={item} className="h-20 animate-pulse rounded-xl bg-muted" />
+                  ))}
+                </div>
+              ) : historyItems.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-4 text-center">
+                  <p className="text-sm font-semibold text-foreground">Henuz gecmis yok</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Nova ile konustukca sohbetler burada gorunecek.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {historyItems.map((item) => (
+                    <button
+                      key={`${item.source}-${item.id}`}
+                      type="button"
+                      onClick={() => restoreHistoryItem(item)}
+                      className="w-full rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="line-clamp-2 text-xs font-semibold leading-5 text-foreground">
+                          {item.queryText}
+                        </p>
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          {item.source === "server" ? "Kayit" : "Widget"}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted-foreground">
+                        {item.aiResponse}
+                      </p>
+                      <p className="mt-2 text-[10px] font-medium text-primary">
+                        {formatHistoryDate(item.createdAt)}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </>

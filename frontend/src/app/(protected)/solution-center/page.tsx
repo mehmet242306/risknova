@@ -10,6 +10,19 @@ import { getActiveWorkspace, type WorkspaceRow } from "@/lib/supabase/workspace-
 import { downloadDocument, type DocumentBlock } from "@/lib/document-generator";
 import { useI18n } from "@/lib/i18n";
 import { getNovaUiCopy, resolveNovaRuntimeErrorMessage } from "@/lib/nova-ui";
+import { postNovaAgentRequest } from "@/lib/nova/client";
+import {
+  analyzeNovaImage,
+  buildNovaPromptWithImage,
+  type NovaImageAnalysis,
+} from "@/lib/nova/multimodal";
+import {
+  collectSpeechTranscript,
+  getBrowserSpeechRecognition,
+  toSpeechRecognitionLocale,
+  type BrowserSpeechRecognition,
+} from "@/lib/nova/browser-speech";
+import { resolveNovaApiEndpoint, resolveNovaRequestMode } from "@/lib/nova/request-mode";
 import type {
   NovaAgentResponse,
   NovaActionHint,
@@ -25,6 +38,7 @@ import {
   type NovaFollowUpAction,
   type NovaWorkflowSummary,
 } from "@/lib/supabase/nova-workflows";
+import { ImagePlus, Mic, Square, X } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -1027,15 +1041,30 @@ export default function SolutionCenterPage() {
   const [proactiveBrief, setProactiveBrief] = useState<NovaProactiveBrief | null>(null);
   const [loadingProactive, setLoadingProactive] = useState(false);
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [answerMode, setAnswerMode] = useState<"extractive" | "polish">("extractive");
+  const answerMode = "extractive" as const;
   const [openTraceMessageId, setOpenTraceMessageId] = useState<string | null>(null);
   const [traceLoading, setTraceLoading] = useState(false);
   const [traceCache, setTraceCache] = useState<Record<string, RetrievalTracePayload>>({});
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const [imageAnalysis, setImageAnalysis] = useState<NovaImageAnalysis | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
+  const [voiceTranscribing, setVoiceTranscribing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const proactiveLocaleRef = useRef<string | null>(null);
   const promptSeedRef = useRef<string | null>(null);
   const actionPollCancelledRef = useRef(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<number | null>(null);
+  const speechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const speechTranscriptRef = useRef("");
+  const speechInterimTranscriptRef = useRef("");
   const requestedSurface = searchParams.get("surface");
   const promptSeed = searchParams.get("prompt")?.trim() ?? "";
   const managerSurface = requestedSurface === "osgb-manager";
@@ -1138,8 +1167,25 @@ export default function SolutionCenterPage() {
   useEffect(() => {
     return () => {
       actionPollCancelledRef.current = true;
+      if (recordingTimerRef.current) {
+        window.clearInterval(recordingTimerRef.current);
+      }
+      if (recordingStreamRef.current) {
+        recordingStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.abort();
+      }
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
 
   // Fetch organization_id from user_profiles
   useEffect(() => {
@@ -1191,20 +1237,213 @@ export default function SolutionCenterPage() {
     textarea.style.height = Math.min(textarea.scrollHeight, 160) + "px";
   }, [input]);
 
+  const clearAttachedImage = useCallback(() => {
+    setImageAnalysis(null);
+    setComposerError(null);
+    setImagePreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    if (imageInputRef.current) {
+      imageInputRef.current.value = "";
+    }
+  }, []);
+
+  const handleImageSelected = useCallback(async (file: File | null) => {
+    if (!file) return;
+
+    setComposerError(null);
+    setImageUploading(true);
+    try {
+      const analysis = await analyzeNovaImage(file);
+      setImageAnalysis(analysis);
+      setImagePreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return URL.createObjectURL(file);
+      });
+    } catch (error) {
+      setComposerError(error instanceof Error ? error.message : "Gorsel Nova icin okunamadi.");
+    } finally {
+      setImageUploading(false);
+    }
+  }, []);
+
+  const transcribeVoiceBlob = useCallback(async (blob: Blob) => {
+    const formData = new FormData();
+    formData.append("file", new File([blob], "nova-voice.webm", { type: blob.type || "audio/webm" }));
+    formData.append("language", locale || "tr");
+
+    const response = await fetch("/api/nova/transcribe", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = (await response.json().catch(() => ({}))) as { transcript?: string; message?: string };
+    if (!response.ok) {
+      throw new Error(payload.message || "Ses metne cevrilemedi.");
+    }
+    return String(payload.transcript || "").trim();
+  }, [locale]);
+
+  const stopRecording = useCallback(() => {
+    if (speechRecognitionRef.current) {
+      speechRecognitionRef.current.stop();
+      return;
+    }
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
+    }
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    setRecording(false);
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    setComposerError(null);
+    const BrowserSpeechRecognition = getBrowserSpeechRecognition();
+    if (BrowserSpeechRecognition) {
+      try {
+        const recognition = new BrowserSpeechRecognition();
+        let speechHadError = false;
+        speechTranscriptRef.current = "";
+        speechInterimTranscriptRef.current = "";
+        recognition.lang = toSpeechRecognitionLocale(locale);
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+        recognition.onresult = (event) => {
+          const finalTranscript = collectSpeechTranscript(event, { finalOnly: true });
+          const anyTranscript = collectSpeechTranscript(event, { finalOnly: false });
+          if (finalTranscript) {
+            speechTranscriptRef.current = [speechTranscriptRef.current, finalTranscript]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+          }
+          if (anyTranscript) {
+            speechInterimTranscriptRef.current = anyTranscript;
+          }
+        };
+        recognition.onerror = (event) => {
+          speechHadError = true;
+          const errorCode = event.error || "speech-error";
+          setComposerError(
+            errorCode === "not-allowed"
+              ? "Mikrofon izni reddedildi."
+              : "Ses anlasilamadi. Lutfen tekrar deneyin.",
+          );
+        };
+        recognition.onend = () => {
+          speechRecognitionRef.current = null;
+          if (recordingTimerRef.current) {
+            window.clearInterval(recordingTimerRef.current);
+            recordingTimerRef.current = null;
+          }
+          setRecording(false);
+          const transcript = (speechTranscriptRef.current || speechInterimTranscriptRef.current).trim();
+          speechTranscriptRef.current = "";
+          speechInterimTranscriptRef.current = "";
+          if (transcript) {
+            setComposerError(null);
+            setInput((current) => (current.trim() ? `${current.trim()}\n${transcript}` : transcript));
+          } else if (!speechHadError) {
+            setComposerError("Ses anlasilamadi. Lutfen biraz daha net tekrar deneyin.");
+          }
+        };
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+        setRecordingElapsed(0);
+        setRecording(true);
+        recordingTimerRef.current = window.setInterval(() => {
+          setRecordingElapsed((current) => current + 1);
+        }, 1000);
+        return;
+      } catch {
+        speechRecognitionRef.current = null;
+      }
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setComposerError("Tarayici ses kaydini desteklemiyor.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+      const recorder = new MediaRecorder(stream);
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      };
+      recorder.onstop = async () => {
+        recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+
+        const blob = new Blob(recordingChunksRef.current, { type: "audio/webm" });
+        recordingChunksRef.current = [];
+        if (blob.size === 0) return;
+
+        setVoiceTranscribing(true);
+        try {
+          const transcript = await transcribeVoiceBlob(blob);
+          if (transcript) {
+            setInput((current) => (current.trim() ? `${current.trim()}\n${transcript}` : transcript));
+          }
+        } catch (error) {
+          setComposerError(error instanceof Error ? error.message : "Sesli mesaj islenemedi.");
+        } finally {
+          setVoiceTranscribing(false);
+        }
+      };
+      recorder.start();
+      recorderRef.current = recorder;
+      setRecordingElapsed(0);
+      setRecording(true);
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingElapsed((current) => current + 1);
+      }, 1000);
+    } catch (error) {
+      setComposerError(
+        error instanceof Error && error.name === "NotAllowedError"
+          ? "Mikrofon izni reddedildi."
+          : error instanceof Error
+            ? error.message
+            : "Mikrofon baslatilamadi.",
+      );
+    }
+  }, [transcribeVoiceBlob]);
+
+  const formatRecordingElapsed = useCallback((seconds: number) => {
+    return `${Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+  }, []);
+
   async function sendMessage(text: string) {
     const query = text.trim();
-    if (!query || loading) return;
+    const composedPrompt = buildNovaPromptWithImage(query, imageAnalysis);
+    if (!composedPrompt || loading || imageUploading || voiceTranscribing) return;
+    const visiblePrompt =
+      query ||
+      (imageAnalysis
+        ? `Gorsel uzerinden ISG yorumu istendi (${imageAnalysis.fileName}).`
+        : "");
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: query,
+      content: visiblePrompt,
       timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
+    setComposerError(null);
 
     try {
       const supabase = createClient();
@@ -1228,35 +1467,24 @@ export default function SolutionCenterPage() {
           ? activeWorkspace.id
           : null;
 
-      const response = await fetch("/api/nova/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: query,
+      const requestMode = resolveNovaRequestMode(composedPrompt);
+      const data = await postNovaAgentRequest(
+        resolveNovaApiEndpoint(composedPrompt),
+        {
+          message: composedPrompt,
           language: locale,
           workspace_id: resolvedWorkspaceId,
           jurisdiction_code: activeWorkspace?.country_code ?? "TR",
           as_of_date: asOfDate,
           answer_mode: answerMode,
-          mode: "agent",
+          mode: requestMode,
           context_surface: "solution_center",
           access_token: session?.access_token ?? null,
           company_workspace_id: companyWorkspaceId,
           current_page: currentPage,
           history,
-        }),
-      });
-
-      const data: NovaAgentResponse = await response.json().catch(() => ({
-        type: "safety_block",
-        answer: ui.solutionCenter.unavailable,
-      }));
-
-      if (!response.ok) {
-        throw { context: new Response(JSON.stringify(data), { status: response.status }) };
-      }
+        },
+      );
 
       // v13 response: { answer, sources, tools_used, session_id, ... }
       const docs = normalizeDocumentBlocks(data.documents);
@@ -1275,8 +1503,10 @@ export default function SolutionCenterPage() {
       }
 
       // Normalize sources — v13 returns {law, article, title}, frontend expects {doc_title, article_number, article_title}
-      const rawSources = Array.isArray(data.sources) ? data.sources : [];
       setMessages((prev) => [...prev, buildAssistantMessageFromAgentResponse(data)]);
+      if (imageAnalysis) {
+        clearAttachedImage();
+      }
     } catch (err) {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -1517,7 +1747,7 @@ export default function SolutionCenterPage() {
             ) : null}
           </div>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               As Of Date
@@ -1533,24 +1763,6 @@ export default function SolutionCenterPage() {
                 "focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring)] focus-visible:outline-none",
               )}
             />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Answer Mode
-            </span>
-            <select
-              value={answerMode}
-              onChange={(e) => setAnswerMode(e.target.value as "extractive" | "polish")}
-              className={cn(
-                "h-11 rounded-xl border px-3 text-sm text-foreground transition-colors transition-shadow",
-                "border-border bg-card shadow-[var(--shadow-soft)]",
-                "hover:border-primary/40",
-                "focus-visible:border-primary focus-visible:shadow-[0_0_0_4px_var(--ring)] focus-visible:outline-none",
-              )}
-            >
-              <option value="extractive">Extractive</option>
-              <option value="polish">Polish</option>
-            </select>
           </label>
           <div className="rounded-xl border border-border bg-secondary/20 px-3 py-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -1611,6 +1823,101 @@ export default function SolutionCenterPage() {
 
       {/* Input area */}
       <div className="sticky bottom-0 border-t border-border bg-background pt-4 pb-2">
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0] ?? null;
+            void handleImageSelected(file);
+          }}
+        />
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading || imageUploading || voiceTranscribing}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            <ImagePlus className="mr-1.5 h-4 w-4" />
+            {imageUploading ? "Gorsel analiz ediliyor..." : "Gorsel ekle"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading || imageUploading || voiceTranscribing}
+            onClick={() => void (recording ? stopRecording() : startRecording())}
+          >
+            {recording ? (
+              <>
+                <Square className="mr-1.5 h-4 w-4" />
+                Kaydi bitir
+              </>
+            ) : (
+              <>
+                <Mic className="mr-1.5 h-4 w-4" />
+                Sesli sor
+              </>
+            )}
+          </Button>
+          {recording ? (
+            <Badge variant="warning">{`Kayit suruyor ${formatRecordingElapsed(recordingElapsed)}`}</Badge>
+          ) : null}
+          {voiceTranscribing ? <Badge variant="neutral">Ses metne cevriliyor...</Badge> : null}
+        </div>
+
+        {imageAnalysis ? (
+          <div className="mb-3 rounded-2xl border border-border bg-card p-3 shadow-[var(--shadow-soft)]">
+            <div className="flex items-start gap-3">
+              {imagePreviewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imagePreviewUrl}
+                  alt={imageAnalysis.fileName}
+                  className="h-16 w-16 rounded-xl object-cover"
+                />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{imageAnalysis.fileName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {imageAnalysis.imageDescription || imageAnalysis.areaSummary || "Gorsel Nova icin hazirlandi."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearAttachedImage}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    aria-label="Gorseli kaldir"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {imageAnalysis.notableRisks.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {imageAnalysis.notableRisks.map((risk) => (
+                      <Badge key={risk} variant="warning" className="max-w-full truncate">
+                        {risk}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {composerError ? (
+          <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-700">
+            {composerError}
+          </div>
+        ) : null}
+
         <div className="flex gap-3">
           <div className="relative flex-1">
             <textarea
@@ -1631,7 +1938,7 @@ export default function SolutionCenterPage() {
           </div>
           <Button
             onClick={() => sendMessage(input)}
-            disabled={!input.trim() || loading}
+            disabled={(!input.trim() && !imageAnalysis) || loading || imageUploading || voiceTranscribing}
             size="lg"
             className="shrink-0 self-end"
           >

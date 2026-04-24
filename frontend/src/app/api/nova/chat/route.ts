@@ -1,7 +1,7 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requirePermission } from "@/lib/supabase/api-auth";
+import { requireAuth, requirePermission } from "@/lib/supabase/api-auth";
 import {
   getAccountContextForUser,
   hasOsgbManagementAccess,
@@ -556,8 +556,17 @@ export async function POST(request: NextRequest) {
     let useInternalNovaAuth = false;
 
     if (!authContext) {
-      const auth = await requirePermission(request, "ai.use");
+      const allowReadOnlyLegalFallback = canUseReadOnlyLegalFallback(payload.message);
+      const auth = allowReadOnlyLegalFallback
+        ? await requireAuth(request)
+        : await requirePermission(request, "ai.use");
       if (!auth.ok) return auth.response;
+
+      if (allowReadOnlyLegalFallback) {
+        effectiveRequestMode = "read";
+        effectiveCompanyWorkspaceId = null;
+        usedReadOnlyLegalFallback = true;
+      }
 
       const { data: refreshData, error: refreshError } =
         await supabase.auth.refreshSession();

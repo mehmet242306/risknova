@@ -21,17 +21,17 @@ export function PageHeader({
   return (
     <section
       className={cn(
-        "rounded-2xl border border-border p-6 shadow-[var(--shadow-card)] sm:p-8",
+        "rounded-2xl border border-border p-4 shadow-[var(--shadow-card)] sm:p-8",
         "bg-card",
         className,
       )}
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-3xl space-y-3">
+        <div className="min-w-0 max-w-3xl space-y-3">
           {eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}
 
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            <h1 className="break-words text-2xl font-semibold tracking-tight text-foreground sm:text-4xl">
               {title}
             </h1>
 
