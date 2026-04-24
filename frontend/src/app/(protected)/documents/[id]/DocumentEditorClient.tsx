@@ -16,7 +16,7 @@ import {
   CheckCircle2, RotateCcw,
   PanelRightOpen, PanelRightClose,
   FileText, Clock, FileEdit, AlertCircle,
-  ZoomIn, Trash2, Share2, PenTool,
+  ZoomIn, Trash2, Share2, PenTool, X, Sparkles,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -104,7 +104,16 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const [saved, setSaved] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showSidebar, setShowSidebar] = useState(true);
+  // Mobilde varsayılan olarak kapalı başlar (tam ekran overlay açıldığında
+  // canvas'ı kapatıyor); desktop (lg+) için mount'ta açılır. Bu sayede
+  // kullanıcı "AI Asistan" butonuna bastığında mobilde overlay slide-over
+  // olarak gelir, masaüstünde sağ panel olarak kalır.
+  const [showSidebar, setShowSidebar] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+      setShowSidebar(true);
+    }
+  }, []);
   const [, setVersions] = useState<DocumentVersionRecord[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -499,7 +508,9 @@ ${content}
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 140px)' }}>
       {/* ── Header Bar ── */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--card-border)] bg-white dark:bg-[#1e293b]">
+      {/* Mobilde: iki satırlı header (üstte breadcrumb+başlık, altta aksiyonlar).
+          Masaüstünde (lg+): tek satır horizontal layout. */}
+      <div className="flex flex-col gap-2 border-b border-[var(--card-border)] bg-white px-3 py-2 dark:bg-[#1e293b] lg:flex-row lg:items-center lg:justify-between lg:px-4">
         {/* Left: breadcrumb */}
         <div className="flex items-center gap-2 min-w-0">
           <button
@@ -528,8 +539,10 @@ ${content}
           />
         </div>
 
-        {/* Right: status + actions */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right: status + actions — mobilde yatay scroll, desktop'ta sabit.
+            [&>*]:shrink-0 → içteki tüm öğeler doğal genişliklerini korur
+            (flex children varsayılan olarak shrink olabiliyor). */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 [&>*]:shrink-0 [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:bg-border/60 lg:shrink-0 lg:overflow-visible lg:pb-0">
           <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${statusCfg.color}`}>
             <StatusIcon size={11} />
             {statusCfg.label}
@@ -654,19 +667,54 @@ ${content}
           <div style={{ height: `${60 * zoom}px` }} />
         </div>
 
-        {/* Sidebar — AI Assistant */}
+        {/* Sidebar — AI Assistant
+            Mobilde: fixed inset-y-0 right-0, tam ekran yüksekliğinde slide-over.
+            Masaüstünde (lg+): normal sağ panel olarak docklu. */}
         {showSidebar && (
-          <aside className="w-[320px] shrink-0 border-l border-[var(--card-border)] bg-white dark:bg-[#1e293b] hidden lg:flex lg:flex-col">
-            <AIAssistantPanel
-              editor={editor}
-              documentTitle={title}
-              groupKey={groupKey}
-              companyName={companyData.official_name || ''}
-              companyData={companyData}
+          <>
+            {/* Mobile backdrop — tıklanınca paneli kapatır */}
+            <div
+              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+              onClick={() => setShowSidebar(false)}
+              aria-hidden="true"
             />
-          </aside>
+            <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col border-l border-[var(--card-border)] bg-white shadow-2xl dark:bg-[#1e293b] lg:static lg:z-auto lg:w-[320px] lg:max-w-none lg:shrink-0 lg:shadow-none">
+              {/* Mobil kapatma butonu — panelin sağ üst köşesinde */}
+              <button
+                type="button"
+                onClick={() => setShowSidebar(false)}
+                className="absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-black/5 dark:hover:bg-white/10 lg:hidden"
+                aria-label="AI Paneli Kapat"
+              >
+                <X size={18} />
+              </button>
+              <div className="flex-1 overflow-y-auto">
+                <AIAssistantPanel
+                  editor={editor}
+                  documentTitle={title}
+                  groupKey={groupKey}
+                  companyName={companyData.official_name || ''}
+                  companyData={companyData}
+                />
+              </div>
+            </aside>
+          </>
         )}
       </div>
+
+      {/* Mobil AI Asistan açma butonu — panel kapalıyken sağ altta floating */}
+      {!showSidebar && (
+        <button
+          type="button"
+          onClick={() => setShowSidebar(true)}
+          className="fixed bottom-20 right-4 z-30 inline-flex h-12 items-center gap-2 rounded-full bg-[var(--gold)] px-4 text-sm font-semibold text-white shadow-lg transition-all hover:brightness-110 active:scale-95 lg:hidden"
+          aria-label="AI Asistan Aç"
+          title="AI Asistan"
+        >
+          <Sparkles size={16} />
+          <span>AI Asistan</span>
+        </button>
+      )}
 
       {/* ── Status Bar ── */}
       <div className="editor-statusbar flex items-center justify-between px-4 py-1.5 text-[11px] text-[var(--text-secondary)]">
