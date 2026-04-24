@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { CompanyProfile } from "../_lib/company-profile";
+import type { CompanyProfile } from "@/lib/supabase/company-profile";
 
 type Props = {
   profile: CompanyProfile | null;

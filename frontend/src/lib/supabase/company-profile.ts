@@ -1,11 +1,11 @@
 // =============================================================================
-// Firma Profil Banner — veri toplama
+// Aktif Firma Profili — paylaşılan fetcher
 // =============================================================================
-// Aktif workspace için company_identities join'i + aktif personel sayısı +
-// departman/lokasyon sayıları. Tek bir kompakt DTO döner.
+// Global header bar'ı ve Raporlar sayfası banner'ı aynı DTO'yu kullanır.
+// company_workspaces → company_identities FK join + personel sayımı.
 // =============================================================================
 
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "./client";
 
 export type CompanyProfile = {
   workspaceId: string;

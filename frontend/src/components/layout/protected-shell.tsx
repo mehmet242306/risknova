@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Brand } from "./brand";
 import { LanguageSelector } from "./language-selector";
 import { WorkspaceSwitcher } from "./workspace-switcher";
+import { ActiveCompanyBar } from "./active-company-bar";
 import { ChatWidget } from "@/components/chat/ChatWidget";
 import { ConsentGate } from "@/components/compliance/ConsentGate";
 import { useI18n } from "@/lib/i18n";
@@ -824,6 +825,9 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
           </div>
         </div>
       </div>
+
+      {/* ── Aktif firma şeridi (header 3. satırı) — sadece workspace seçiliyse ── */}
+      {showWorkspaceSwitcher ? <ActiveCompanyBar /> : null}
 
       {/* ── Main content ── */}
       <main className="mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-6 xl:px-8 2xl:px-10">

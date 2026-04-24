@@ -15,7 +15,7 @@ import {
   type CompanyFileCategoryId,
 } from "./_lib/company-file-collector";
 import { downloadCompanyFileZip } from "./_lib/company-file-generator";
-import { fetchCompanyProfile, type CompanyProfile } from "./_lib/company-profile";
+import { fetchCompanyProfile, type CompanyProfile } from "@/lib/supabase/company-profile";
 import { CompanyOverview } from "./_components/CompanyOverview";
 import { CompanyInfoBanner } from "./_components/CompanyInfoBanner";
 
