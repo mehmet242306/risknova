@@ -106,6 +106,23 @@ type CategoryDefinition = {
 
 type CustomSubcategoryMap = Partial<Record<Exclude<CategoryKey, "all">, string[]>>;
 
+type CategoryTone = {
+  tabActive: string;
+  tabIdle: string;
+  sidebarActive: string;
+  sidebarIdle: string;
+  sidebarBadge: string;
+  panel: string;
+  card: string;
+  cardAccent: string;
+  metaBadge: string;
+  countBadge: string;
+  viewButton: string;
+  downloadButton: string;
+  editButton: string;
+  assignButton: string;
+};
+
 const CATEGORY_DEFINITIONS: CategoryDefinition[] = [
   { key: "all", label: "Tümü", icon: LayoutGrid, subcategories: [] },
   {
@@ -145,6 +162,137 @@ const CATEGORY_DEFINITIONS: CategoryDefinition[] = [
     subcategories: ["Makine Talimatları", "İş Akışı Talimatları", "KKD Talimatları", "Saha Uygulamaları"],
   },
 ];
+
+const CATEGORY_TONES: Record<CategoryKey, CategoryTone> = {
+  all: {
+    tabActive: "border-slate-300 bg-gradient-to-br from-slate-100 via-white to-amber-100 text-slate-950 shadow-[0_18px_45px_rgba(15,23,42,0.14)] dark:border-slate-500/35 dark:from-slate-800 dark:via-slate-900 dark:to-amber-950/50 dark:text-white",
+    tabIdle: "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-slate-400/35 dark:hover:bg-white/10 dark:hover:text-white",
+    sidebarActive: "border-slate-300 bg-gradient-to-r from-slate-100 to-amber-100 text-slate-950 shadow-[0_16px_34px_rgba(15,23,42,0.12)] dark:border-slate-500/35 dark:from-slate-800 dark:to-amber-950/55 dark:text-white",
+    sidebarIdle: "border-slate-200 bg-white/80 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10",
+    sidebarBadge: "border-slate-200 bg-white text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200",
+    panel: "border-slate-200 bg-gradient-to-br from-white via-slate-50 to-amber-50/40 dark:border-white/10 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950",
+    card: "border-slate-200 bg-gradient-to-br from-white via-slate-50 to-amber-50/40 hover:border-slate-300 dark:border-white/10 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:hover:border-slate-400/30",
+    cardAccent: "bg-slate-400 dark:bg-slate-300",
+    metaBadge: "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200",
+    countBadge: "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-200",
+    viewButton: "border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:bg-sky-400/15",
+    downloadButton: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200 dark:hover:bg-emerald-400/15",
+    editButton: "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/15",
+    assignButton: "bg-gradient-to-r from-slate-800 to-amber-700 text-white hover:brightness-110 dark:from-amber-500 dark:to-orange-500 dark:text-slate-950",
+  },
+  documentation: {
+    tabActive: "border-amber-300 bg-gradient-to-br from-amber-200 via-yellow-300 to-orange-300 text-slate-950 shadow-[0_18px_45px_rgba(217,119,6,0.24)] dark:border-amber-300/60 dark:from-amber-500 dark:via-yellow-500 dark:to-orange-500 dark:text-slate-950",
+    tabIdle: "border-amber-200/70 bg-amber-50/80 text-amber-800 hover:border-amber-300 hover:bg-amber-100 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200 dark:hover:bg-amber-400/15",
+    sidebarActive: "border-amber-300 bg-gradient-to-r from-amber-200 via-yellow-200 to-orange-200 text-amber-950 shadow-[0_16px_34px_rgba(217,119,6,0.18)] dark:border-amber-300/40 dark:from-amber-500/25 dark:via-yellow-500/20 dark:to-orange-500/20 dark:text-amber-100",
+    sidebarIdle: "border-amber-200/70 bg-amber-50/80 text-amber-900 hover:border-amber-300 hover:bg-amber-100 dark:border-amber-400/15 dark:bg-amber-400/10 dark:text-amber-100 dark:hover:bg-amber-400/15",
+    sidebarBadge: "border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/15 dark:text-amber-100",
+    panel: "border-amber-200/80 bg-gradient-to-br from-white via-amber-50/60 to-orange-50/40 dark:border-amber-400/15 dark:from-slate-950 dark:via-amber-950/20 dark:to-slate-950",
+    card: "border-amber-200/80 bg-gradient-to-br from-white via-amber-50/55 to-orange-50/40 hover:border-amber-300 dark:border-amber-400/15 dark:from-slate-950 dark:via-amber-950/20 dark:to-slate-950 dark:hover:border-amber-400/30",
+    cardAccent: "bg-gradient-to-b from-amber-400 to-orange-400",
+    metaBadge: "border-amber-200 bg-amber-100/80 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/15 dark:text-amber-100",
+    countBadge: "border-amber-200 bg-amber-100 text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/15 dark:text-amber-100",
+    viewButton: "border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:bg-sky-400/15",
+    downloadButton: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200 dark:hover:bg-emerald-400/15",
+    editButton: "border-amber-300 bg-amber-100 text-amber-900 hover:border-amber-400 hover:bg-amber-200 dark:border-amber-400/25 dark:bg-amber-400/15 dark:text-amber-100 dark:hover:bg-amber-400/20",
+    assignButton: "bg-gradient-to-r from-amber-600 to-orange-500 text-white hover:brightness-110 dark:from-amber-400 dark:to-orange-400 dark:text-slate-950",
+  },
+  education: {
+    tabActive: "border-sky-300 bg-gradient-to-br from-sky-200 via-cyan-200 to-blue-300 text-slate-950 shadow-[0_18px_45px_rgba(14,165,233,0.22)] dark:border-sky-300/50 dark:from-sky-500 dark:via-cyan-500 dark:to-blue-500 dark:text-slate-950",
+    tabIdle: "border-sky-200/70 bg-sky-50/80 text-sky-800 hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:bg-sky-400/15",
+    sidebarActive: "border-sky-300 bg-gradient-to-r from-sky-200 to-blue-200 text-sky-950 shadow-[0_16px_34px_rgba(14,165,233,0.16)] dark:border-sky-300/35 dark:from-sky-500/25 dark:to-blue-500/20 dark:text-sky-100",
+    sidebarIdle: "border-sky-200/70 bg-sky-50/80 text-sky-900 hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/15 dark:bg-sky-400/10 dark:text-sky-100 dark:hover:bg-sky-400/15",
+    sidebarBadge: "border-sky-200 bg-sky-100 text-sky-800 dark:border-sky-400/20 dark:bg-sky-400/15 dark:text-sky-100",
+    panel: "border-sky-200/80 bg-gradient-to-br from-white via-sky-50/60 to-blue-50/40 dark:border-sky-400/15 dark:from-slate-950 dark:via-sky-950/20 dark:to-slate-950",
+    card: "border-sky-200/80 bg-gradient-to-br from-white via-sky-50/55 to-blue-50/40 hover:border-sky-300 dark:border-sky-400/15 dark:from-slate-950 dark:via-sky-950/20 dark:to-slate-950 dark:hover:border-sky-400/30",
+    cardAccent: "bg-gradient-to-b from-sky-400 to-blue-500",
+    metaBadge: "border-sky-200 bg-sky-100/80 text-sky-800 dark:border-sky-400/20 dark:bg-sky-400/15 dark:text-sky-100",
+    countBadge: "border-sky-200 bg-sky-100 text-sky-900 dark:border-sky-400/20 dark:bg-sky-400/15 dark:text-sky-100",
+    viewButton: "border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:bg-sky-400/15",
+    downloadButton: "border-cyan-200 bg-cyan-50 text-cyan-800 hover:border-cyan-300 hover:bg-cyan-100 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200 dark:hover:bg-cyan-400/15",
+    editButton: "border-blue-200 bg-blue-50 text-blue-800 hover:border-blue-300 hover:bg-blue-100 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200 dark:hover:bg-blue-400/15",
+    assignButton: "bg-gradient-to-r from-sky-600 to-blue-600 text-white hover:brightness-110 dark:from-sky-400 dark:to-blue-400 dark:text-slate-950",
+  },
+  assessment: {
+    tabActive: "border-violet-300 bg-gradient-to-br from-violet-200 via-fuchsia-200 to-purple-300 text-slate-950 shadow-[0_18px_45px_rgba(124,58,237,0.22)] dark:border-violet-300/50 dark:from-violet-500 dark:via-fuchsia-500 dark:to-purple-500 dark:text-white",
+    tabIdle: "border-violet-200/70 bg-violet-50/80 text-violet-800 hover:border-violet-300 hover:bg-violet-100 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-200 dark:hover:bg-violet-400/15",
+    sidebarActive: "border-violet-300 bg-gradient-to-r from-violet-200 to-fuchsia-200 text-violet-950 shadow-[0_16px_34px_rgba(124,58,237,0.16)] dark:border-violet-300/35 dark:from-violet-500/25 dark:to-fuchsia-500/20 dark:text-violet-100",
+    sidebarIdle: "border-violet-200/70 bg-violet-50/80 text-violet-900 hover:border-violet-300 hover:bg-violet-100 dark:border-violet-400/15 dark:bg-violet-400/10 dark:text-violet-100 dark:hover:bg-violet-400/15",
+    sidebarBadge: "border-violet-200 bg-violet-100 text-violet-800 dark:border-violet-400/20 dark:bg-violet-400/15 dark:text-violet-100",
+    panel: "border-violet-200/80 bg-gradient-to-br from-white via-violet-50/60 to-fuchsia-50/40 dark:border-violet-400/15 dark:from-slate-950 dark:via-violet-950/20 dark:to-slate-950",
+    card: "border-violet-200/80 bg-gradient-to-br from-white via-violet-50/55 to-fuchsia-50/40 hover:border-violet-300 dark:border-violet-400/15 dark:from-slate-950 dark:via-violet-950/20 dark:to-slate-950 dark:hover:border-violet-400/30",
+    cardAccent: "bg-gradient-to-b from-violet-400 to-fuchsia-500",
+    metaBadge: "border-violet-200 bg-violet-100/80 text-violet-800 dark:border-violet-400/20 dark:bg-violet-400/15 dark:text-violet-100",
+    countBadge: "border-violet-200 bg-violet-100 text-violet-900 dark:border-violet-400/20 dark:bg-violet-400/15 dark:text-violet-100",
+    viewButton: "border-violet-200 bg-violet-50 text-violet-800 hover:border-violet-300 hover:bg-violet-100 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-200 dark:hover:bg-violet-400/15",
+    downloadButton: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:border-fuchsia-300 hover:bg-fuchsia-100 dark:border-fuchsia-400/20 dark:bg-fuchsia-400/10 dark:text-fuchsia-200 dark:hover:bg-fuchsia-400/15",
+    editButton: "border-purple-200 bg-purple-50 text-purple-800 hover:border-purple-300 hover:bg-purple-100 dark:border-purple-400/20 dark:bg-purple-400/10 dark:text-purple-200 dark:hover:bg-purple-400/15",
+    assignButton: "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:brightness-110 dark:from-violet-400 dark:to-fuchsia-400 dark:text-white",
+  },
+  forms: {
+    tabActive: "border-emerald-300 bg-gradient-to-br from-emerald-200 via-teal-200 to-green-300 text-slate-950 shadow-[0_18px_45px_rgba(16,185,129,0.22)] dark:border-emerald-300/50 dark:from-emerald-500 dark:via-teal-500 dark:to-green-500 dark:text-slate-950",
+    tabIdle: "border-emerald-200/70 bg-emerald-50/80 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200 dark:hover:bg-emerald-400/15",
+    sidebarActive: "border-emerald-300 bg-gradient-to-r from-emerald-200 to-teal-200 text-emerald-950 shadow-[0_16px_34px_rgba(16,185,129,0.16)] dark:border-emerald-300/35 dark:from-emerald-500/25 dark:to-teal-500/20 dark:text-emerald-100",
+    sidebarIdle: "border-emerald-200/70 bg-emerald-50/80 text-emerald-900 hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-400/15 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/15",
+    sidebarBadge: "border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-400/15 dark:text-emerald-100",
+    panel: "border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/60 to-teal-50/40 dark:border-emerald-400/15 dark:from-slate-950 dark:via-emerald-950/20 dark:to-slate-950",
+    card: "border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/55 to-teal-50/40 hover:border-emerald-300 dark:border-emerald-400/15 dark:from-slate-950 dark:via-emerald-950/20 dark:to-slate-950 dark:hover:border-emerald-400/30",
+    cardAccent: "bg-gradient-to-b from-emerald-400 to-teal-500",
+    metaBadge: "border-emerald-200 bg-emerald-100/80 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-400/15 dark:text-emerald-100",
+    countBadge: "border-emerald-200 bg-emerald-100 text-emerald-900 dark:border-emerald-400/20 dark:bg-emerald-400/15 dark:text-emerald-100",
+    viewButton: "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-200 dark:hover:bg-emerald-400/15",
+    downloadButton: "border-teal-200 bg-teal-50 text-teal-800 hover:border-teal-300 hover:bg-teal-100 dark:border-teal-400/20 dark:bg-teal-400/10 dark:text-teal-200 dark:hover:bg-teal-400/15",
+    editButton: "border-lime-200 bg-lime-50 text-lime-800 hover:border-lime-300 hover:bg-lime-100 dark:border-lime-400/20 dark:bg-lime-400/10 dark:text-lime-200 dark:hover:bg-lime-400/15",
+    assignButton: "bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:brightness-110 dark:from-emerald-400 dark:to-teal-400 dark:text-slate-950",
+  },
+  emergency: {
+    tabActive: "border-rose-300 bg-gradient-to-br from-rose-200 via-orange-200 to-red-300 text-slate-950 shadow-[0_18px_45px_rgba(225,29,72,0.22)] dark:border-rose-300/50 dark:from-rose-500 dark:via-orange-500 dark:to-red-500 dark:text-white",
+    tabIdle: "border-rose-200/70 bg-rose-50/80 text-rose-800 hover:border-rose-300 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200 dark:hover:bg-rose-400/15",
+    sidebarActive: "border-rose-300 bg-gradient-to-r from-rose-200 to-orange-200 text-rose-950 shadow-[0_16px_34px_rgba(225,29,72,0.16)] dark:border-rose-300/35 dark:from-rose-500/25 dark:to-orange-500/20 dark:text-rose-100",
+    sidebarIdle: "border-rose-200/70 bg-rose-50/80 text-rose-900 hover:border-rose-300 hover:bg-rose-100 dark:border-rose-400/15 dark:bg-rose-400/10 dark:text-rose-100 dark:hover:bg-rose-400/15",
+    sidebarBadge: "border-rose-200 bg-rose-100 text-rose-800 dark:border-rose-400/20 dark:bg-rose-400/15 dark:text-rose-100",
+    panel: "border-rose-200/80 bg-gradient-to-br from-white via-rose-50/60 to-orange-50/40 dark:border-rose-400/15 dark:from-slate-950 dark:via-rose-950/20 dark:to-slate-950",
+    card: "border-rose-200/80 bg-gradient-to-br from-white via-rose-50/55 to-orange-50/40 hover:border-rose-300 dark:border-rose-400/15 dark:from-slate-950 dark:via-rose-950/20 dark:to-slate-950 dark:hover:border-rose-400/30",
+    cardAccent: "bg-gradient-to-b from-rose-400 to-red-500",
+    metaBadge: "border-rose-200 bg-rose-100/80 text-rose-800 dark:border-rose-400/20 dark:bg-rose-400/15 dark:text-rose-100",
+    countBadge: "border-rose-200 bg-rose-100 text-rose-900 dark:border-rose-400/20 dark:bg-rose-400/15 dark:text-rose-100",
+    viewButton: "border-rose-200 bg-rose-50 text-rose-800 hover:border-rose-300 hover:bg-rose-100 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-200 dark:hover:bg-rose-400/15",
+    downloadButton: "border-orange-200 bg-orange-50 text-orange-800 hover:border-orange-300 hover:bg-orange-100 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-200 dark:hover:bg-orange-400/15",
+    editButton: "border-red-200 bg-red-50 text-red-800 hover:border-red-300 hover:bg-red-100 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-200 dark:hover:bg-red-400/15",
+    assignButton: "bg-gradient-to-r from-rose-600 to-red-600 text-white hover:brightness-110 dark:from-rose-400 dark:to-red-400 dark:text-white",
+  },
+  instructions: {
+    tabActive: "border-indigo-300 bg-gradient-to-br from-indigo-200 via-blue-200 to-slate-300 text-slate-950 shadow-[0_18px_45px_rgba(79,70,229,0.2)] dark:border-indigo-300/50 dark:from-indigo-500 dark:via-blue-500 dark:to-slate-500 dark:text-white",
+    tabIdle: "border-indigo-200/70 bg-indigo-50/80 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-200 dark:hover:bg-indigo-400/15",
+    sidebarActive: "border-indigo-300 bg-gradient-to-r from-indigo-200 to-blue-200 text-indigo-950 shadow-[0_16px_34px_rgba(79,70,229,0.16)] dark:border-indigo-300/35 dark:from-indigo-500/25 dark:to-blue-500/20 dark:text-indigo-100",
+    sidebarIdle: "border-indigo-200/70 bg-indigo-50/80 text-indigo-900 hover:border-indigo-300 hover:bg-indigo-100 dark:border-indigo-400/15 dark:bg-indigo-400/10 dark:text-indigo-100 dark:hover:bg-indigo-400/15",
+    sidebarBadge: "border-indigo-200 bg-indigo-100 text-indigo-800 dark:border-indigo-400/20 dark:bg-indigo-400/15 dark:text-indigo-100",
+    panel: "border-indigo-200/80 bg-gradient-to-br from-white via-indigo-50/60 to-blue-50/40 dark:border-indigo-400/15 dark:from-slate-950 dark:via-indigo-950/20 dark:to-slate-950",
+    card: "border-indigo-200/80 bg-gradient-to-br from-white via-indigo-50/55 to-blue-50/40 hover:border-indigo-300 dark:border-indigo-400/15 dark:from-slate-950 dark:via-indigo-950/20 dark:to-slate-950 dark:hover:border-indigo-400/30",
+    cardAccent: "bg-gradient-to-b from-indigo-400 to-blue-500",
+    metaBadge: "border-indigo-200 bg-indigo-100/80 text-indigo-800 dark:border-indigo-400/20 dark:bg-indigo-400/15 dark:text-indigo-100",
+    countBadge: "border-indigo-200 bg-indigo-100 text-indigo-900 dark:border-indigo-400/20 dark:bg-indigo-400/15 dark:text-indigo-100",
+    viewButton: "border-indigo-200 bg-indigo-50 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-200 dark:hover:bg-indigo-400/15",
+    downloadButton: "border-blue-200 bg-blue-50 text-blue-800 hover:border-blue-300 hover:bg-blue-100 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200 dark:hover:bg-blue-400/15",
+    editButton: "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-400/20 dark:bg-slate-400/10 dark:text-slate-200 dark:hover:bg-slate-400/15",
+    assignButton: "bg-gradient-to-r from-indigo-600 to-blue-600 text-white hover:brightness-110 dark:from-indigo-400 dark:to-blue-400 dark:text-white",
+  },
+  legal: {
+    tabActive: "border-teal-300 bg-gradient-to-br from-teal-200 via-cyan-200 to-slate-200 text-slate-950 shadow-[0_18px_45px_rgba(20,184,166,0.2)] dark:border-teal-300/50 dark:from-teal-500 dark:via-cyan-500 dark:to-slate-500 dark:text-slate-950",
+    tabIdle: "border-teal-200/70 bg-teal-50/80 text-teal-800 hover:border-teal-300 hover:bg-teal-100 dark:border-teal-400/20 dark:bg-teal-400/10 dark:text-teal-200 dark:hover:bg-teal-400/15",
+    sidebarActive: "border-teal-300 bg-gradient-to-r from-teal-200 to-cyan-200 text-teal-950 shadow-[0_16px_34px_rgba(20,184,166,0.16)] dark:border-teal-300/35 dark:from-teal-500/25 dark:to-cyan-500/20 dark:text-teal-100",
+    sidebarIdle: "border-teal-200/70 bg-teal-50/80 text-teal-900 hover:border-teal-300 hover:bg-teal-100 dark:border-teal-400/15 dark:bg-teal-400/10 dark:text-teal-100 dark:hover:bg-teal-400/15",
+    sidebarBadge: "border-teal-200 bg-teal-100 text-teal-800 dark:border-teal-400/20 dark:bg-teal-400/15 dark:text-teal-100",
+    panel: "border-teal-200/80 bg-gradient-to-br from-white via-teal-50/60 to-cyan-50/40 dark:border-teal-400/15 dark:from-slate-950 dark:via-teal-950/20 dark:to-slate-950",
+    card: "border-teal-200/80 bg-gradient-to-br from-white via-teal-50/55 to-cyan-50/40 hover:border-teal-300 dark:border-teal-400/15 dark:from-slate-950 dark:via-teal-950/20 dark:to-slate-950 dark:hover:border-teal-400/30",
+    cardAccent: "bg-gradient-to-b from-teal-400 to-cyan-500",
+    metaBadge: "border-teal-200 bg-teal-100/80 text-teal-800 dark:border-teal-400/20 dark:bg-teal-400/15 dark:text-teal-100",
+    countBadge: "border-teal-200 bg-teal-100 text-teal-900 dark:border-teal-400/20 dark:bg-teal-400/15 dark:text-teal-100",
+    viewButton: "border-teal-200 bg-teal-50 text-teal-800 hover:border-teal-300 hover:bg-teal-100 dark:border-teal-400/20 dark:bg-teal-400/10 dark:text-teal-200 dark:hover:bg-teal-400/15",
+    downloadButton: "border-cyan-200 bg-cyan-50 text-cyan-800 hover:border-cyan-300 hover:bg-cyan-100 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-200 dark:hover:bg-cyan-400/15",
+    editButton: "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-400/20 dark:bg-slate-400/10 dark:text-slate-200 dark:hover:bg-slate-400/15",
+    assignButton: "bg-gradient-to-r from-teal-600 to-cyan-600 text-white hover:brightness-110 dark:from-teal-400 dark:to-cyan-400 dark:text-slate-950",
+  },
+};
 
 const MANAGE_ROLE_CODES = new Set([
   "super_admin",
@@ -217,6 +365,10 @@ function normalizeCategory(value: string | null | undefined): Exclude<CategoryKe
 function parseSort(value: string | null): SortKey {
   if (value === "oldest" || value === "az" || value === "za") return value;
   return "newest";
+}
+
+function getCategoryTone(category: CategoryKey | Exclude<CategoryKey, "all">) {
+  return CATEGORY_TONES[category] ?? CATEGORY_TONES.all;
 }
 
 function getSubcategoryOptions(category: CategoryKey) {
@@ -842,6 +994,7 @@ export function IsgLibraryClient() {
   );
 
   const activeCategoryMeta = CATEGORY_DEFINITIONS.find((item) => item.key === category) ?? CATEGORY_DEFINITIONS[0];
+  const activeTone = getCategoryTone(category);
   const selectedCreationCompany = companies.find((company) => company.id === creationCompanyId) ?? null;
   const subcategoryOptions = useMemo(() => {
     if (category === "all") return [];
@@ -1121,6 +1274,7 @@ export function IsgLibraryClient() {
 
   const contentCards = hydratedContents.map((item) => {
     const typeMeta = getContentTypeMeta(item.contentType);
+    const itemTone = getCategoryTone(item.category);
     const TypeIcon = typeMeta.icon;
     const assignedCompanyIds = item.libraryContentId
       ? (savedCompaniesByContent.get(item.libraryContentId) ?? [])
@@ -1142,24 +1296,29 @@ export function IsgLibraryClient() {
     return (
       <Card
         key={item.id}
-        className="overflow-hidden border-border bg-card dark:border-white/10"
+        className={cn(
+          "group relative overflow-hidden border shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_22px_55px_rgba(15,23,42,0.12)] dark:hover:shadow-[0_22px_55px_rgba(0,0,0,0.35)]",
+          itemTone.card,
+        )}
       >
-        <CardHeader className="space-y-4">
+        <span className={cn("absolute inset-y-0 left-0 w-1.5", itemTone.cardAccent)} />
+        <span className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/55 blur-2xl transition-opacity group-hover:opacity-80 dark:bg-white/5" />
+        <CardHeader className="relative space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-background/85 px-3 py-1 text-xs font-semibold text-foreground">
+            <span className={cn("inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold", itemTone.metaBadge)}>
               <TypeIcon size={14} />
               {typeMeta.label}
             </span>
             {item.sourceKind === "template" ? (
-              <span className="inline-flex items-center rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--primary)]">
+              <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold", itemTone.countBadge)}>
                 {item.usageCount ?? 0} kullanım
               </span>
             ) : assignedCompanyIds.length > 0 ? (
-              <span className="inline-flex items-center rounded-full border border-[var(--gold)]/25 bg-[var(--gold)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--primary)]">
+              <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold", itemTone.countBadge)}>
                 {assignedCompanyIds.length} firmada
               </span>
             ) : (
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+              <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold", itemTone.metaBadge)}>
                 {sourceBadge}
               </span>
             )}
@@ -1173,10 +1332,12 @@ export function IsgLibraryClient() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Badge variant="neutral">
+            <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold", itemTone.metaBadge)}>
               {CATEGORY_DEFINITIONS.find((entry) => entry.key === item.category)?.label ?? item.category}
-            </Badge>
-            <Badge variant="neutral">{item.subcategory}</Badge>
+            </span>
+            <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold", itemTone.metaBadge)}>
+              {item.subcategory}
+            </span>
             {item.tags.slice(0, 2).map((tag) => (
               <Badge key={tag} variant="accent">
                 {tag}
@@ -1185,7 +1346,7 @@ export function IsgLibraryClient() {
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-3">
+        <CardContent className="relative space-y-3">
           <div className="flex gap-2">
             <button
               type="button"
@@ -1193,7 +1354,7 @@ export function IsgLibraryClient() {
               className={cn(
                 "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition",
                 item.viewHref || item.sourceKind === "template"
-                  ? "border-border bg-background text-foreground hover:border-[var(--gold)]/35"
+                  ? itemTone.viewButton
                   : "pointer-events-none border-border/60 bg-muted/40 text-muted-foreground",
               )}
               disabled={!item.viewHref && item.sourceKind !== "template"}
@@ -1207,7 +1368,7 @@ export function IsgLibraryClient() {
               className={cn(
                 "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition",
                 item.downloadHref || item.sourceKind === "template"
-                  ? "border-border bg-background text-foreground hover:border-[var(--gold)]/35"
+                  ? itemTone.downloadButton
                   : "pointer-events-none border-border/60 bg-muted/40 text-muted-foreground",
               )}
               disabled={!item.downloadHref && item.sourceKind !== "template"}
@@ -1221,7 +1382,7 @@ export function IsgLibraryClient() {
               className={cn(
                 "inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl border text-sm font-semibold transition",
                 item.sourceKind === "template" && creationCompanyId
-                  ? "border-border bg-background text-foreground hover:border-[var(--gold)]/35"
+                  ? itemTone.editButton
                   : "pointer-events-none border-border/60 bg-muted/40 text-muted-foreground",
               )}
               disabled={item.sourceKind !== "template" || !creationCompanyId}
@@ -1250,7 +1411,7 @@ export function IsgLibraryClient() {
               "inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-sm font-semibold transition",
               companies.length === 0 || isFullyAssigned || !canAssign
                 ? "cursor-not-allowed bg-muted text-muted-foreground"
-                : "bg-[var(--primary)] text-white hover:brightness-110",
+                : itemTone.assignButton,
             )}
           >
             {isFullyAssigned ? <Check size={16} /> : <Building2 size={16} />}
@@ -1351,7 +1512,7 @@ export function IsgLibraryClient() {
               className={cn(
                 "inline-flex h-11 items-center rounded-2xl border px-4 text-sm font-semibold transition",
                 savedOnly
-                  ? "border-[var(--gold)]/35 bg-[var(--gold)]/12 text-[var(--primary)]"
+                  ? "border-[var(--gold)]/35 bg-[var(--gold)]/15 text-[var(--primary)]"
                   : "border-border bg-background/85 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white",
               )}
             >
@@ -1369,6 +1530,7 @@ export function IsgLibraryClient() {
           {CATEGORY_DEFINITIONS.map((item) => {
             const Icon = item.icon;
             const isActive = item.key === category;
+            const tone = getCategoryTone(item.key);
             return (
               <button
                 key={item.key}
@@ -1376,9 +1538,7 @@ export function IsgLibraryClient() {
                 onClick={() => handleCategoryChange(item.key)}
                 className={cn(
                   "inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[1rem] border px-4 py-3 text-[14px] font-semibold transition-all duration-200 sm:px-5",
-                  isActive
-                    ? "border-[var(--gold)] bg-[var(--gold)] text-primary-foreground shadow-[var(--shadow-card)]"
-                    : "border-border bg-card text-muted-foreground hover:border-[var(--gold)]/40 hover:text-foreground",
+                  isActive ? tone.tabActive : tone.tabIdle,
                 )}
               >
                 <Icon size={16} />
@@ -1449,7 +1609,7 @@ export function IsgLibraryClient() {
 
         {category !== "all" ? (
           <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="rounded-[1.5rem] border border-border bg-muted/30 p-3">
+            <div className={cn("rounded-[1.5rem] border p-3 shadow-sm", activeTone.panel)}>
               <div className="mb-3 flex items-center gap-2 px-2">
                 <Filter size={16} className="text-[var(--gold)]" />
                 <span className="text-sm font-semibold text-foreground">Alt Kategoriler</span>
@@ -1461,18 +1621,14 @@ export function IsgLibraryClient() {
                   onClick={() => setSubcategory("")}
                   className={cn(
                     "flex w-full items-center justify-between rounded-2xl border border-transparent px-4 py-3 text-left text-sm transition",
-                    !subcategory
-                      ? "bg-[var(--primary)] text-white shadow-[0_18px_35px_rgba(15,23,42,0.18)]"
-                      : "bg-white/70 text-[#6f4e12] hover:border-[#e3c58f] hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-[#f8ddb0] dark:hover:border-[#6f5320] dark:hover:bg-white/10",
+                    !subcategory ? activeTone.sidebarActive : activeTone.sidebarIdle,
                   )}
                 >
                   <span className="font-medium">Tüm alt kategoriler</span>
                   <span
                     className={cn(
                       "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                      !subcategory
-                        ? "border-white/20 bg-white/15 text-white"
-                        : "border-[#e3c58f] bg-white text-[#9b6f1b] dark:border-[#6f5320] dark:bg-white/10 dark:text-[#f0c36b]",
+                      !subcategory ? "border-white/25 bg-white/20 text-current" : activeTone.sidebarBadge,
                     )}
                   >
                     Tümü
@@ -1489,18 +1645,14 @@ export function IsgLibraryClient() {
                       onClick={() => setSubcategory(item)}
                       className={cn(
                         "flex w-full items-center justify-between rounded-2xl border border-transparent px-4 py-3 text-left text-sm transition",
-                        subcategory === item
-                          ? "bg-[var(--primary)] text-white shadow-[0_18px_35px_rgba(15,23,42,0.18)]"
-                          : "bg-white/70 text-[#6f4e12] hover:border-[#e3c58f] hover:bg-white dark:border-white/5 dark:bg-white/5 dark:text-[#f8ddb0] dark:hover:border-[#6f5320] dark:hover:bg-white/10",
+                        subcategory === item ? activeTone.sidebarActive : activeTone.sidebarIdle,
                       )}
                     >
                       <span className="pr-3 font-medium leading-6">{item}</span>
                       <span
                         className={cn(
                           "rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                          subcategory === item
-                            ? "border-white/20 bg-white/15 text-white"
-                            : badgeMeta.className,
+                          subcategory === item ? "border-white/25 bg-white/20 text-current" : activeTone.sidebarBadge,
                         )}
                       >
                         {badgeMeta.label}
@@ -1517,14 +1669,14 @@ export function IsgLibraryClient() {
                     setNewCategoryName("");
                     setCategoryModalOpen(true);
                   }}
-                  className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-[var(--gold)]/30 bg-[var(--gold)]/12 px-4 text-sm font-semibold text-[var(--primary)] transition hover:border-[var(--gold)]/45 hover:bg-[var(--gold)]/18"
+                  className={cn("inline-flex h-11 w-full items-center justify-center rounded-2xl border px-4 text-sm font-semibold transition", activeTone.editButton)}
                 >
                   Kategori Ekle
                 </button>
               </div>
             </div>
 
-            <div className="rounded-[1.5rem] border border-border bg-card p-4">
+            <div className={cn("rounded-[1.5rem] border p-4 shadow-sm", activeTone.panel)}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--gold)]">
@@ -1534,7 +1686,7 @@ export function IsgLibraryClient() {
                     {subcategory || "Tüm alt kategoriler"}
                   </h2>
                 </div>
-                <span className="inline-flex items-center rounded-full border border-[#e3c58f] bg-white/75 px-3 py-1 text-xs font-semibold text-[#8b6513] dark:border-[#6f5320] dark:bg-white/10 dark:text-[#f0c36b]">
+                <span className={cn("inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold", activeTone.countBadge)}>
                   {filteredContents.length} sonuç
                 </span>
               </div>
