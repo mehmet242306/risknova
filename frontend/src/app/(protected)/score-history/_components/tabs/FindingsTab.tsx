@@ -50,7 +50,7 @@ export function FindingsTab({ state, actions }: Props) {
 
       {selected ? (
         <div className="space-y-4">
-          <div className="rounded-[1.5rem] border border-border bg-card p-5">
+          <div className="rounded-[1.5rem] border border-rose-200/70 bg-gradient-to-br from-white via-rose-50/55 to-orange-50/35 p-5 shadow-sm dark:border-rose-400/15 dark:from-slate-950 dark:via-rose-950/20 dark:to-slate-950">
             <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -93,7 +93,7 @@ export function FindingsTab({ state, actions }: Props) {
             </div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-border bg-card p-5">
+          <div className="rounded-[1.5rem] border border-violet-200/70 bg-gradient-to-br from-white via-violet-50/55 to-amber-50/30 p-5 shadow-sm dark:border-violet-400/15 dark:from-slate-950 dark:via-violet-950/20 dark:to-slate-950">
             <div className="mb-3 flex items-center gap-2">
               <ShieldAlert size={18} className="text-[var(--gold)]" />
               <h4 className="text-base font-semibold text-foreground">Nova bağlantı önerileri</h4>
@@ -159,7 +159,7 @@ export function FindingsTab({ state, actions }: Props) {
           </div>
         </div>
       ) : (
-        <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 rounded-[1.5rem] border border-dashed border-border bg-muted/20 px-8 py-16 text-center">
+        <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 rounded-[1.5rem] border border-dashed border-rose-200/70 bg-rose-50/40 px-8 py-16 text-center dark:border-rose-400/15 dark:bg-rose-950/15">
           <TriangleAlert size={32} className="text-muted-foreground" />
           <p className="text-base font-semibold text-foreground">Henüz tespit yok</p>
           <p className="text-sm text-muted-foreground">

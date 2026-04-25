@@ -78,7 +78,7 @@ export function ClosureTab({ state, actions }: Props) {
       />
 
       {subItem === "check" ? (
-        <div className="rounded-[1.5rem] border border-border bg-card p-5">
+        <div className="rounded-[1.5rem] border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/55 to-teal-50/35 p-5 shadow-sm dark:border-emerald-400/15 dark:from-slate-950 dark:via-emerald-950/20 dark:to-slate-950">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <h3 className="text-lg font-semibold text-foreground">Denetim özeti</h3>
             <Badge variant="neutral">{activeRun.code ?? "Kayıt bekleniyor"}</Badge>
@@ -133,7 +133,7 @@ export function ClosureTab({ state, actions }: Props) {
           </div>
         </div>
       ) : (
-        <div className="rounded-[1.5rem] border border-border bg-card p-5">
+        <div className="rounded-[1.5rem] border border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/55 to-sky-50/35 p-5 shadow-sm dark:border-emerald-400/15 dark:from-slate-950 dark:via-emerald-950/20 dark:to-slate-950">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <FileDown size={18} className="text-[var(--gold)]" />
             <h3 className="text-lg font-semibold text-foreground">Rapor & Paylaşım</h3>

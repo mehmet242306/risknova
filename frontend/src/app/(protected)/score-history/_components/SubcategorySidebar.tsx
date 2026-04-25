@@ -34,7 +34,7 @@ export function SubcategorySidebar({
   emptyLabel = "İçerik bulunmuyor.",
 }: Props) {
   return (
-    <div className="rounded-[1.5rem] border border-border bg-muted/30 p-3">
+    <div className="rounded-[1.5rem] border border-amber-200/70 bg-gradient-to-br from-white via-amber-50/50 to-orange-50/35 p-3 shadow-sm dark:border-amber-400/15 dark:from-slate-950 dark:via-amber-950/20 dark:to-slate-950">
       <div className="mb-3 flex items-center gap-2 px-2">
         <Filter size={16} className="text-[var(--gold)]" />
         <span className="text-sm font-semibold text-foreground">{title}</span>
@@ -42,7 +42,7 @@ export function SubcategorySidebar({
 
       <div className="space-y-2">
         {items.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-background/60 px-4 py-6 text-center text-xs text-muted-foreground">
+          <div className="rounded-2xl border border-dashed border-amber-200/70 bg-white/70 px-4 py-6 text-center text-xs text-muted-foreground dark:border-amber-400/15 dark:bg-white/5">
             {emptyLabel}
           </div>
         ) : (
@@ -84,7 +84,7 @@ export function SubcategorySidebar({
         )}
       </div>
 
-      {footer ? <div className="mt-4 border-t border-[#e3c58f] pt-4">{footer}</div> : null}
+      {footer ? <div className="mt-4 border-t border-amber-200 pt-4 dark:border-amber-400/20">{footer}</div> : null}
     </div>
   );
 }

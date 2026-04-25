@@ -174,7 +174,10 @@ export function FieldInspectionClient() {
         <StatusAlert tone={feedback.tone}>{feedback.message}</StatusAlert>
       ) : null}
 
-      <section className="relative overflow-hidden rounded-[2rem] border border-border/70 bg-card/95 p-4 shadow-[var(--shadow-card)] dark:border-white/10 dark:bg-[rgba(15,23,42,0.82)] sm:p-6">
+      <section className="relative overflow-hidden rounded-[2rem] border border-amber-200/70 bg-gradient-to-br from-white via-amber-50/45 to-sky-50/35 p-4 shadow-[var(--shadow-card)] dark:border-white/10 dark:from-slate-950 dark:via-slate-900 dark:to-amber-950/20 sm:p-6">
+        <span className="pointer-events-none absolute -right-24 -top-24 h-60 w-60 rounded-full bg-amber-300/25 blur-3xl dark:bg-amber-400/10" />
+        <span className="pointer-events-none absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-sky-300/20 blur-3xl dark:bg-sky-400/10" />
+        <div className="relative">
         <CategoryTabs
           active={activeCategory}
           onChange={setActiveCategory}
@@ -208,6 +211,7 @@ export function FieldInspectionClient() {
         {activeCategory === "closure" ? (
           <ClosureTab state={state} actions={actions} />
         ) : null}
+        </div>
       </section>
     </div>
   );

@@ -86,7 +86,7 @@ export function ChecklistsTab({
         }
       />
 
-      <div className="rounded-[1.5rem] border border-border bg-card p-5">
+      <div className="rounded-[1.5rem] border border-sky-200/70 bg-gradient-to-br from-white via-sky-50/55 to-amber-50/35 p-5 shadow-sm dark:border-sky-400/15 dark:from-slate-950 dark:via-sky-950/20 dark:to-slate-950">
         {!activeTemplate ? (
           <EmptyState
             loading={loadingActive || loadingTemplates}
@@ -144,7 +144,7 @@ export function ChecklistsTab({
                   <div
                     key={q.id}
                     className={cn(
-                      "flex items-start gap-3 rounded-xl border border-border/70 bg-muted/20 px-3 py-2.5 text-sm",
+                      "flex items-start gap-3 rounded-xl border border-sky-200/70 bg-white/70 px-3 py-2.5 text-sm transition hover:border-sky-300 hover:bg-sky-50 dark:border-sky-400/15 dark:bg-white/5 dark:hover:bg-sky-400/10",
                     )}
                   >
                     <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--gold)]/15 text-[11px] font-semibold text-[var(--gold)]">

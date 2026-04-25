@@ -154,7 +154,7 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
 
       {subItem === "studio" ? (
         <div className="space-y-4">
-          <div className="rounded-[1.5rem] border border-border bg-card p-5">
+          <div className="rounded-[1.5rem] border border-violet-200/70 bg-gradient-to-br from-white via-violet-50/55 to-fuchsia-50/35 p-5 shadow-sm dark:border-violet-400/15 dark:from-slate-950 dark:via-violet-950/20 dark:to-slate-950">
             <div className="mb-4 flex items-center gap-2">
               <Sparkles size={18} className="text-[var(--gold)]" />
               <h3 className="text-lg font-semibold text-foreground">Checklist Stüdyosu</h3>
@@ -250,7 +250,7 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
           </div>
         </div>
       ) : (
-        <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 rounded-[1.5rem] border border-dashed border-border bg-muted/20 px-8 py-16 text-center">
+        <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 rounded-[1.5rem] border border-dashed border-violet-200/70 bg-violet-50/40 px-8 py-16 text-center dark:border-violet-400/15 dark:bg-violet-950/15">
           <Sparkles size={32} className="text-muted-foreground" />
           <p className="text-base font-semibold text-foreground">Kurumsal hafıza yakında</p>
           <p className="text-sm text-muted-foreground">
@@ -261,4 +261,3 @@ export function NovaTab({ actions, onTemplateCreated }: Props) {
     </div>
   );
 }
-

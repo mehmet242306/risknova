@@ -1,7 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { CATEGORY_DEFINITIONS, type SurfaceCategoryId } from "../_lib/constants";
+import {
+  CATEGORY_DEFINITIONS,
+  getSurfaceTone,
+  type SurfaceCategoryId,
+} from "../_lib/constants";
 
 type Props = {
   active: SurfaceCategoryId;
@@ -16,6 +20,7 @@ export function CategoryTabs({ active, onChange, counts = {} }: Props) {
         const Icon = item.icon;
         const isActive = item.key === active;
         const count = counts[item.key];
+        const tone = getSurfaceTone(item.key);
         return (
           <button
             key={item.key}
@@ -23,9 +28,7 @@ export function CategoryTabs({ active, onChange, counts = {} }: Props) {
             onClick={() => onChange(item.key)}
             className={cn(
               "inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-[1rem] border px-4 py-3 text-[14px] font-semibold transition-all duration-200 sm:px-5",
-              isActive
-                ? "border-[var(--gold)] bg-[var(--gold)] text-primary-foreground shadow-[var(--shadow-card)]"
-                : "border-border bg-card text-muted-foreground hover:border-[var(--gold)]/40 hover:text-foreground",
+              isActive ? tone.tabActive : tone.tabIdle,
             )}
           >
             <Icon size={16} />
@@ -34,9 +37,7 @@ export function CategoryTabs({ active, onChange, counts = {} }: Props) {
               <span
                 className={cn(
                   "ml-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold",
-                  isActive
-                    ? "border-white/30 bg-white/15 text-white"
-                    : "border-border bg-muted text-muted-foreground",
+                  isActive ? tone.countActive : tone.countIdle,
                 )}
               >
                 {count}

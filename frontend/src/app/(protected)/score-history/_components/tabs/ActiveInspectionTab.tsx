@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CheckCircle2, Target } from "lucide-react";
+import { CheckCircle2, Save, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { SubcategorySidebar, type SidebarItem } from "../SubcategorySidebar";
 import { EvidenceWidget } from "../EvidenceWidget";
 import type { SessionState, SessionActions } from "../../_hooks/useInspectionSession";
-import { RESPONSE_COPY } from "../../_lib/constants";
+import { getResponseTone, RESPONSE_COPY } from "../../_lib/constants";
 import type { ResponseStatus } from "@/lib/supabase/inspection-api";
 
 type Props = {
@@ -84,7 +84,25 @@ export function ActiveInspectionTab({ state, actions }: Props) {
   }
 
   return (
-    <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+    <div className="mt-4 space-y-4">
+      <div className="rounded-[1.25rem] border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-sky-50 px-4 py-3 text-sm text-amber-900 shadow-sm dark:border-amber-400/20 dark:from-amber-950/25 dark:via-slate-950 dark:to-sky-950/20 dark:text-amber-100">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/15 dark:text-amber-100">
+            <Save className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Her cevap otomatik kaydedilir.</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              AyrÄ± bir gÃ¶nder butonu yok; seÃ§im, not, fotoÄŸraf ve ses kaydÄ± anÄ±nda denetim oturumuna iÅŸlenir.
+            </p>
+          </div>
+          <span className="rounded-full border border-amber-200 bg-white/80 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-400/20 dark:bg-white/10 dark:text-amber-100">
+            {activeRun.code ?? activeRun.id.slice(0, 8)}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
       <SubcategorySidebar
         title="Bölümler"
         items={sidebarItems}
@@ -117,6 +135,7 @@ export function ActiveInspectionTab({ state, actions }: Props) {
           ))
         )}
       </div>
+    </div>
     </div>
   );
 }
@@ -153,11 +172,20 @@ function QuestionCard({
   const status = answer?.responseStatus;
   const needsDetail = status === "uygunsuz" || status === "kritik";
   const needsNaReason = status === "na";
+  const tone = getResponseTone(status);
+  const statusLabel = status ? RESPONSE_COPY[status].label : "Cevap bekliyor";
 
   return (
-    <div className="rounded-[1.5rem] border border-border bg-card p-5 shadow-[var(--shadow-card)]">
-      <div className="flex items-center gap-2 border-b border-border pb-3 text-xs text-muted-foreground">
-        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--gold)]/15 text-[11px] font-semibold text-[var(--gold)]">
+    <div
+      className={cn(
+        "group relative overflow-hidden rounded-[1.5rem] border p-5 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5",
+        tone.card,
+      )}
+    >
+      <span className={cn("absolute inset-y-0 left-0 w-1.5", tone.accent)} />
+      <span className="pointer-events-none absolute -right-12 -top-12 h-28 w-28 rounded-full bg-white/60 blur-2xl dark:bg-white/5" />
+      <div className="relative flex items-center gap-2 border-b border-border pb-3 text-xs text-muted-foreground">
+        <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-semibold", tone.marker)}>
           {index + 1}
         </span>
         <span>Soru {index + 1} / {total}</span>
@@ -165,9 +193,12 @@ function QuestionCard({
         <span>{question.section}</span>
         <span>·</span>
         <span>{question.category}</span>
+        <span className={cn("ml-auto rounded-full border px-2.5 py-1 text-[11px] font-semibold", tone.info)}>
+          {statusLabel}
+        </span>
       </div>
 
-      <div className="space-y-3 pt-4">
+      <div className="relative space-y-3 pt-4">
         <p className="text-base font-medium leading-7 text-foreground">{question.text}</p>
         {question.ruleHint ? (
           <p className="text-xs leading-5 text-muted-foreground">{question.ruleHint}</p>
@@ -186,7 +217,9 @@ function QuestionCard({
                 className={cn(
                   "inline-flex h-11 items-center justify-center gap-2 rounded-2xl px-3 text-sm font-semibold transition",
                   meta.buttonClassName,
-                  selected ? "ring-2 ring-[var(--gold)] ring-offset-2 ring-offset-background" : "",
+                  selected
+                    ? "scale-[1.02] shadow-[0_14px_30px_rgba(15,23,42,0.12)] ring-2 ring-[var(--gold)] ring-offset-2 ring-offset-background dark:shadow-[0_14px_30px_rgba(0,0,0,0.35)]"
+                    : "",
                 )}
               >
                 {selected ? <CheckCircle2 className="h-4 w-4" /> : null}
