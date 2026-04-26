@@ -4,6 +4,14 @@ import { getDemoAccessState } from "@/lib/platform-admin/demo-access";
 
 const PUBLIC_PATHS = ["/", "/login", "/register", "/forgot-password", "/reset-password"];
 
+// Cron / webhook endpoint'leri — kendi header-based auth'larını yapıyorlar
+// (örn. x-self-healing-key). Middleware bunları auth gating'den muaf tutmalı,
+// yoksa cron user'ı olmadığı için /login'e redirect yiyor ve 307 dönüyor.
+const PUBLIC_API_PREFIXES = [
+  "/api/health",
+  "/api/self-healing/",
+];
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -37,8 +45,19 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/auth");
-  const mustChangePassword = user?.user_metadata?.must_change_password === true;
+  const isPublicApiEndpoint = PUBLIC_API_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix),
+  );
+  const isPublic =
+    PUBLIC_PATHS.includes(pathname) ||
+    pathname.startsWith("/auth") ||
+    isPublicApiEndpoint;
+  const providers = Array.isArray(user?.app_metadata?.providers)
+    ? (user.app_metadata.providers as unknown[]).map((provider) => String(provider))
+    : [];
+  const hasOAuthProvider = providers.some((provider) => provider !== "email");
+  const mustChangePassword =
+    user?.user_metadata?.must_change_password === true && !hasOAuthProvider;
   const demoAccess = getDemoAccessState({
     userMetadata: user?.user_metadata,
     appMetadata: user?.app_metadata,
