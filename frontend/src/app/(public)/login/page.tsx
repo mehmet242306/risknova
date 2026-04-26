@@ -8,11 +8,11 @@ import { login } from "./actions";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; reset?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; reset?: string; passwordUpdated?: string; next?: string }>;
 }) {
   const params = await searchParams;
   const error = params?.error;
-  const reset = params?.reset === "1";
+  const reset = params?.reset === "1" || params?.passwordUpdated === "1";
   const next = params?.next || "/dashboard";
 
   return (

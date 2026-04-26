@@ -442,19 +442,19 @@ export function resolvePostLoginPath(context: AccountContext): string {
     return "/workspace/onboarding";
   }
 
-  if (surface === "osgb-manager") {
-    return "/osgb";
-  }
-
   if (context.accountType === "enterprise") {
     return "/enterprise";
   }
 
-  if (context.accountType === "individual") {
-    if (!context.activeWorkspaceId && (context.workspaceCount ?? 0) === 0) {
-      return "/workspace/onboarding";
-    }
+  if (!context.activeWorkspaceId) {
+    return "/workspace/onboarding";
+  }
 
+  if (surface === "osgb-manager") {
+    return "/osgb";
+  }
+
+  if (context.accountType === "individual") {
     return "/dashboard";
   }
 

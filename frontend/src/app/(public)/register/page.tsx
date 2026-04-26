@@ -25,12 +25,12 @@ export default async function RegisterPage({
     <AuthShell
       eyebrow="Yeni hesap"
       title="RiskNova hesabini olustur"
-      description="Kaydini tamamla, sonra sadece Bireysel, OSGB veya Kurumsal akislardan birini secerek devam et."
+      description="Once hesap turunu, bolgeyi ve dili sec. Bireysel hesaplarda kayit formu hemen acilir; OSGB ve firma yapilarinda gelistirici ile iletisim akisi baslar."
       highlights={[
         {
           title: "Bireysel self-service",
           description:
-            "Tek basina ilerleyen profesyoneller kaydi tamamlayip onboarding ile devam eder.",
+            "Bolge ve dil seciminden sonra kaydi tamamlayip onboarding ile devam eder.",
         },
         {
           title: "OSGB paketleri net",
@@ -79,38 +79,38 @@ export default async function RegisterPage({
         </div>
       ) : null}
 
-      <RegisterAccountTypePreview />
+      <RegisterAccountTypePreview>
+        <SocialLoginButtons mode="register" />
 
-      <SocialLoginButtons mode="register" />
+        <form id="register-individual-form" className="space-y-5">
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            required
+            autoComplete="email"
+            label="E-posta"
+            placeholder="ornek@kurum.com"
+            hint="Kayit sonrasi onboarding akisi ve erisim islemleri bu adres uzerinden yurur."
+          />
 
-      <form className="space-y-5">
-        <Input
-          id="email"
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          label="E-posta"
-          placeholder="ornek@kurum.com"
-          hint="Kayit sonrasi onboarding akisi ve erisim islemleri bu adres uzerinden yurur."
-        />
+          <Input
+            id="password"
+            name="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            label="Sifre"
+            placeholder="En az 8 karakter"
+            hint="Guclu bir sifre belirle. Hesap tipi secimini kayit sonrasi yapacaksin."
+          />
 
-        <Input
-          id="password"
-          name="password"
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          label="Sifre"
-          placeholder="En az 8 karakter"
-          hint="Guclu bir sifre belirle. Hesap tipi secimini kayit sonrasi yapacaksin."
-        />
-
-        <Button type="submit" formAction={signup} className="w-full" size="lg">
-          Hesap Olustur
-        </Button>
-      </form>
+          <Button type="submit" formAction={signup} className="w-full" size="lg">
+            Hesap Olustur
+          </Button>
+        </form>
+      </RegisterAccountTypePreview>
     </AuthShell>
   );
 }

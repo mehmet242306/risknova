@@ -14,6 +14,9 @@ import { resolveAppOriginFromHeaders } from "@/lib/server/app-origin";
 export async function signup(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const accountType = String(formData.get("accountType") ?? "individual").trim();
+  const countryCode = String(formData.get("countryCode") ?? "TR").trim().toUpperCase();
+  const languageCode = String(formData.get("languageCode") ?? "tr").trim().toLowerCase();
 
   if (!email || !password) {
     redirect("/register?error=E-posta ve şifre zorunludur.");
@@ -33,6 +36,11 @@ export async function signup(formData: FormData) {
     password,
     options: {
       emailRedirectTo: `${origin}/auth/confirm?next=/dashboard`,
+      data: {
+        preferred_account_type: accountType === "individual" ? "individual" : null,
+        preferred_country_code: /^[A-Z]{2}$/.test(countryCode) ? countryCode : "TR",
+        preferred_language: /^[a-z]{2}$/.test(languageCode) ? languageCode : "tr",
+      },
     },
   });
 

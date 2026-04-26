@@ -131,6 +131,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
   const [userName, setUserName] = useState('');
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   // Word/char count
   const [wordCount, setWordCount] = useState(0);
@@ -324,11 +325,22 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
     }
   }, [orgId, doc, title, status]);
 
+  const getSaveLocationLabel = useCallback(() => {
+    const currentGroup = getGroupByKey(groupKey);
+
+    return [
+      qMode === "custom" ? "Kisisel dokumanlar" : "Firma dokumanlari",
+      companyData.official_name || null,
+      currentGroup?.title || groupKey || null,
+    ].filter(Boolean).join(" / ");
+  }, [companyData.official_name, groupKey, qMode]);
+
   // Manual save
   const handleSave = useCallback(async () => {
     if (!orgId || !editor) return;
     setSaving(true);
     setSaveError(null);
+    setSaveNotice(null);
     const content = editor.getJSON();
 
     try {
@@ -363,19 +375,25 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
         });
         if (newDoc) {
           setDoc(newDoc);
+          setInitialContent(content);
           const nextParams = new URLSearchParams();
           if (qCompanyId) nextParams.set('companyId', qCompanyId);
           if (fromLibrary) {
             nextParams.set('library', '1');
             nextParams.set('librarySection', librarySection);
           }
-          router.replace(`/documents/${newDoc.id}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`);
+          const nextUrl = `/documents/${newDoc.id}${nextParams.toString() ? `?${nextParams.toString()}` : ''}`;
+          window.history.replaceState(null, '', nextUrl);
         }
       }
       setLastSavedAt(new Date());
       setSaved(true);
+      setSaveNotice(`Kaydedildi: ${getSaveLocationLabel() || title}`);
       setHasUnsavedChanges(false);
-      setTimeout(() => setSaved(false), 2000);
+      setTimeout(() => {
+        setSaved(false);
+        setSaveNotice(null);
+      }, 4500);
     } catch (err) {
       console.error('Save error:', err);
       setSaveError(
@@ -384,8 +402,7 @@ export function DocumentEditorClient({ paramsPromise }: Props) {
     } finally {
       setSaving(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, editor, doc, title, status, groupKey, userId, companyData, router]);
+  }, [orgId, editor, doc, title, status, groupKey, userId, companyData, qCompanyId, fromLibrary, librarySection, workspaceId, qMode, getSaveLocationLabel]);
 
   // Export
   const handleExport = useCallback(async () => {
@@ -506,16 +523,16 @@ ${content}
   }
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 140px)' }}>
+    <div className="flex min-w-0 flex-col overflow-hidden" style={{ height: 'calc(100dvh - 140px)' }}>
       {/* ── Header Bar ── */}
       {/* Mobilde: iki satırlı header (üstte breadcrumb+başlık, altta aksiyonlar).
           Masaüstünde (lg+): tek satır horizontal layout. */}
-      <div className="flex flex-col gap-2 border-b border-[var(--card-border)] bg-white px-3 py-2 dark:bg-[#1e293b] lg:flex-row lg:items-center lg:justify-between lg:px-4">
+      <div className="flex flex-col gap-2 border-b border-[var(--card-border)] bg-[var(--card)] px-3 py-2 shadow-sm shadow-[var(--gold-glow)] lg:flex-row lg:items-center lg:justify-between lg:px-4">
         {/* Left: breadcrumb */}
         <div className="flex items-center gap-2 min-w-0">
           <button
             onClick={() => router.push(fromLibrary ? libraryBackHref : documentsBackHref)}
-            className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-secondary)] shrink-0"
+            className="p-1.5 rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--gold)]/10 hover:text-[var(--gold)] shrink-0"
           >
             <ArrowLeft size={16} />
           </button>
@@ -560,7 +577,7 @@ ${content}
 
           <button
             onClick={() => setShowSidebar(!showSidebar)}
-            className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-secondary)]"
+            className="p-1.5 rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--gold)]/10 hover:text-[var(--gold)]"
             title={showSidebar ? 'AI Paneli Kapat' : 'AI Asistan'}
           >
             {showSidebar ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
@@ -584,14 +601,14 @@ ${content}
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-[var(--card-border)] rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-primary)] disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-[var(--gold)]/35 rounded-md hover:bg-[var(--gold)]/10 transition-colors text-[var(--text-primary)] disabled:opacity-50"
           >
             <Download size={13} />
             {exporting ? '...' : 'Word'}
           </button>
           <button
             onClick={handlePdfExport}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-[var(--card-border)] rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--text-primary)]"
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border border-[var(--gold)]/35 rounded-md hover:bg-[var(--gold)]/10 transition-colors text-[var(--text-primary)]"
           >
             <FileText size={13} />
             PDF
@@ -604,7 +621,7 @@ ${content}
             className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               doc?.is_shared
                 ? 'border-green-300 text-green-600 bg-green-50 dark:bg-green-900/20 dark:border-green-800'
-                : 'border-[var(--card-border)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
+                : 'border-[var(--gold)]/25 text-[var(--text-primary)] hover:border-[var(--gold)]/45 hover:bg-[var(--gold)]/10'
             }`}
           >
             <Share2 size={13} />
@@ -618,7 +635,7 @@ ${content}
             className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium border rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               signatures.length > 0
                 ? 'border-blue-300 text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800'
-                : 'border-[var(--card-border)] text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
+                : 'border-[var(--gold)]/25 text-[var(--text-primary)] hover:border-[var(--gold)]/45 hover:bg-[var(--gold)]/10'
             }`}
           >
             <PenTool size={13} />
@@ -628,7 +645,7 @@ ${content}
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-medium bg-[var(--gold)] text-white rounded-md hover:bg-[var(--gold-hover)] transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold bg-[var(--gold)] text-[var(--primary-foreground)] rounded-md hover:bg-[var(--gold-hover)] transition-colors disabled:opacity-60"
           >
             {saving ? <RotateCcw size={13} className="animate-spin" /> : saved ? <CheckCircle2 size={13} /> : <Save size={13} />}
             {saving ? 'Kaydediliyor...' : saved ? 'Kaydedildi!' : 'Kaydet'}
@@ -646,9 +663,21 @@ ${content}
         </div>
       ) : null}
 
-      <div className="flex flex-1 min-h-0">
+      {saveNotice ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--gold)]/25 bg-[var(--gold)]/10 px-4 py-3 text-sm text-[var(--text-primary)]">
+          <span className="inline-flex items-center gap-2 font-medium">
+            <CheckCircle2 size={16} className="text-[var(--gold)]" />
+            {saveNotice}
+          </span>
+          <span className="text-xs text-[var(--text-secondary)]">
+            Belge acik kaldi; duzenlemeye devam edebilirsiniz.
+          </span>
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 min-w-0 flex-1">
         {/* Canvas — scrollable gray bg with A4 page */}
-        <div className="flex-1 overflow-y-auto editor-canvas">
+        <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden editor-canvas">
           <div
             className="a4-page"
             style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
@@ -678,17 +707,17 @@ ${content}
               onClick={() => setShowSidebar(false)}
               aria-hidden="true"
             />
-            <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col border-l border-[var(--card-border)] bg-white shadow-2xl dark:bg-[#1e293b] lg:static lg:z-auto lg:w-[320px] lg:max-w-none lg:shrink-0 lg:shadow-none">
+            <aside className="fixed inset-y-0 right-0 z-[60] flex h-[100dvh] w-full max-w-sm flex-col border-l border-[var(--card-border)] bg-[var(--card)] shadow-2xl lg:static lg:z-auto lg:h-auto lg:w-[320px] lg:max-w-none lg:shrink-0 lg:shadow-none">
               {/* Mobil kapatma butonu — panelin sağ üst köşesinde */}
               <button
                 type="button"
                 onClick={() => setShowSidebar(false)}
-                className="absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-black/5 dark:hover:bg-white/10 lg:hidden"
+                className="absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--gold)]/10 hover:text-[var(--gold)] lg:hidden"
                 aria-label="AI Paneli Kapat"
               >
                 <X size={18} />
               </button>
-              <div className="flex-1 overflow-y-auto">
+              <div className="min-h-0 flex-1">
                 <AIAssistantPanel
                   editor={editor}
                   documentTitle={title}
@@ -707,7 +736,7 @@ ${content}
         <button
           type="button"
           onClick={() => setShowSidebar(true)}
-          className="fixed bottom-20 right-4 z-30 inline-flex h-12 items-center gap-2 rounded-full bg-[var(--gold)] px-4 text-sm font-semibold text-white shadow-lg transition-all hover:brightness-110 active:scale-95 lg:hidden"
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] right-4 z-[60] inline-flex h-12 items-center gap-2 rounded-full bg-[var(--gold)] px-4 text-sm font-semibold text-white shadow-lg transition-all hover:brightness-110 active:scale-95 lg:hidden"
           aria-label="AI Asistan Aç"
           title="AI Asistan"
         >
@@ -727,7 +756,10 @@ ${content}
         <div className="flex items-center gap-1">
           {saving && <span className="text-[var(--gold)]">Kaydediliyor...</span>}
           {!saving && lastSavedAt && (
-            <span>Son kayıt: {lastSavedAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+            <span>
+              Son kayit: {lastSavedAt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+              {getSaveLocationLabel() ? ` / ${getSaveLocationLabel()}` : ''}
+            </span>
           )}
           {!saving && !lastSavedAt && <span>Henüz kaydedilmedi</span>}
         </div>
@@ -779,4 +811,3 @@ ${content}
     </div>
   );
 }
-

@@ -15,6 +15,8 @@ type CommercialLeadDialogProps = {
   accountType: CommercialInterestType;
   open: boolean;
   onClose: () => void;
+  countryCode?: string;
+  languageCode?: string;
 };
 
 type FormState = {
@@ -50,6 +52,8 @@ export function CommercialLeadDialog({
   accountType,
   open,
   onClose,
+  countryCode,
+  languageCode,
 }: CommercialLeadDialogProps) {
   const copy = useMemo(() => getCommercialLeadCopy(accountType), [accountType]);
   const fieldPrefix = `commercial-${accountType}`;
@@ -107,7 +111,14 @@ export function CommercialLeadDialog({
           estimatedProfessionalCount: toOptionalNumber(
             form.estimatedProfessionalCount,
           ),
-          message: form.message || null,
+          message:
+            [
+              countryCode ? `Bolge/ulke: ${countryCode}` : null,
+              languageCode ? `Dil: ${languageCode}` : null,
+              form.message || null,
+            ]
+              .filter(Boolean)
+              .join("\n\n") || null,
         }),
       });
 
@@ -175,6 +186,20 @@ export function CommercialLeadDialog({
               <p className="max-w-2xl text-sm leading-7 text-white/82">
                 {copy.description}
               </p>
+              {countryCode || languageCode ? (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {countryCode ? (
+                    <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                      Bolge: {countryCode}
+                    </span>
+                  ) : null}
+                  {languageCode ? (
+                    <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                      Dil: {languageCode.toUpperCase()}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

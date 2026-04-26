@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { PublicHeader } from "./public-header";
 import {
@@ -56,28 +57,34 @@ export function AuthShell({
     <main className="app-shell">
       <PublicHeader />
 
-      <section className="page-shell py-8 lg:py-12">
+      <section className="page-shell py-4 sm:py-8 lg:py-12">
         <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <Card className="overflow-hidden border-transparent bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_30%),linear-gradient(135deg,#0F172A_0%,#1E293B_50%,#0F172A_75%)] text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
-            <CardHeader className="gap-4 p-8 sm:p-10">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo/risknova-symbol-only.svg" alt="" className="h-16 w-16 opacity-90" />
+          <Card className="order-2 overflow-hidden border-transparent bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_30%),linear-gradient(135deg,#0F172A_0%,#1E293B_50%,#0F172A_75%)] text-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] lg:order-1">
+            <CardHeader className="gap-4 p-5 sm:p-10">
+              <Image
+                src="/logo/risknova-symbol-only.svg"
+                alt=""
+                width={64}
+                height={64}
+                priority
+                className="h-12 w-12 opacity-90 sm:h-16 sm:w-16"
+              />
               <Badge className="w-fit border-amber-500/20 bg-amber-500/12 text-amber-200">
                 {eyebrow}
               </Badge>
 
               <div className="space-y-3">
-                <CardTitle className="text-3xl leading-tight text-white sm:text-4xl">
+                <CardTitle className="text-2xl leading-tight text-white sm:text-4xl">
                   {title}
                 </CardTitle>
 
-                <CardDescription className="max-w-2xl text-sm leading-7 text-white/90 sm:text-base">
+                <CardDescription className="line-clamp-4 max-w-2xl text-sm leading-6 text-white/90 sm:line-clamp-none sm:text-base sm:leading-7">
                   {description}
                 </CardDescription>
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-8 px-8 pb-8 sm:px-10 sm:pb-10">
+            <CardContent className="space-y-5 px-5 pb-5 sm:space-y-8 sm:px-10 sm:pb-10">
               <div className="grid gap-3 sm:grid-cols-3">
                 {highlights.map((item) => (
                   <div
@@ -90,7 +97,7 @@ export function AuthShell({
                 ))}
               </div>
 
-              <div className="rounded-3xl border border-amber-500/10 bg-black/20 p-5">
+              <div className="rounded-2xl border border-amber-500/10 bg-black/20 p-4 sm:rounded-3xl sm:p-5">
                 {spotlight ?? (
                   <p className="text-sm leading-7 text-white/92">
                     RiskNova, yalnizca bir panel degil; risk analizi, saha
@@ -111,21 +118,21 @@ export function AuthShell({
             </CardContent>
           </Card>
 
-          <Card className="self-stretch">
-            <CardHeader className="p-8 pb-4 sm:p-10 sm:pb-6">
+          <Card className="order-1 self-stretch lg:order-2">
+            <CardHeader className="p-5 pb-4 sm:p-10 sm:pb-6">
               <Badge variant="accent" className="w-fit">
                 Guvenli erisim
               </Badge>
 
               <div className="space-y-2">
                 <CardTitle className="text-2xl sm:text-3xl">{title}</CardTitle>
-                <CardDescription className="max-w-xl text-sm leading-7 sm:text-base">
+                <CardDescription className="line-clamp-3 max-w-xl text-sm leading-6 sm:line-clamp-none sm:text-base sm:leading-7">
                   {description}
                 </CardDescription>
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-6 px-8 pb-8 sm:px-10 sm:pb-10">
+            <CardContent className="space-y-5 px-5 pb-5 sm:space-y-6 sm:px-10 sm:pb-10">
               {children}
 
               <div className="border-t border-border pt-5">{footer}</div>

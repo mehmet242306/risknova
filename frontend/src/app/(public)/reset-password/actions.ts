@@ -6,6 +6,21 @@ import { sendPasswordChangedEmail } from "@/lib/mailer";
 import { resolveAppOriginFromHeaders } from "@/lib/server/app-origin";
 import { createClient } from "@/lib/supabase/server";
 import { validateStrongPassword } from "@/lib/security/server";
+import {
+  getAccountContextForUser,
+  resolvePostLoginPath,
+} from "@/lib/account/account-routing";
+
+async function resolveAfterPasswordUpdatePath(userId: string | null | undefined) {
+  if (!userId) return "/login";
+
+  try {
+    return resolvePostLoginPath(await getAccountContextForUser(userId));
+  } catch (error) {
+    console.warn("[reset-password] post-update routing fallback:", error);
+    return "/workspace/onboarding";
+  }
+}
 
 export async function updatePasswordAction(formData: FormData) {
   const password = String(formData.get("password") ?? "");
@@ -36,22 +51,29 @@ export async function updatePasswordAction(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (user?.email) {
-    const headerStore = await headers();
-    const origin = resolveAppOriginFromHeaders(headerStore);
+    try {
+      const headerStore = await headers();
+      const origin = resolveAppOriginFromHeaders(headerStore);
 
-    await sendPasswordChangedEmail({
-      to: user.email,
-      fullName:
-        String(
-          user.user_metadata?.full_name ??
-            user.user_metadata?.name ??
-            user.email.split("@")[0] ??
-            "Kullanici",
-        ) || "Kullanici",
-      loginUrl: `${origin}/login`,
-      changedAt: new Date().toLocaleString("tr-TR"),
-    });
+      await sendPasswordChangedEmail({
+        to: user.email,
+        fullName:
+          String(
+            user.user_metadata?.full_name ??
+              user.user_metadata?.name ??
+              user.email.split("@")[0] ??
+              "Kullanici",
+          ) || "Kullanici",
+        loginUrl: `${origin}/login`,
+        changedAt: new Date().toLocaleString("tr-TR"),
+      });
+    } catch (mailError) {
+      console.warn("[reset-password] password changed email failed:", mailError);
+    }
   }
 
-  redirect("/login?reset=1");
+  const nextPath = await resolveAfterPasswordUpdatePath(user?.id);
+  const separator = nextPath.includes("?") ? "&" : "?";
+
+  redirect(`${nextPath}${separator}passwordUpdated=1`);
 }

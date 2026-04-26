@@ -71,6 +71,19 @@ describe("resolvePostLoginPath", () => {
     ).toBe("/workspace/onboarding");
   });
 
+  it("routes any customer account without an active country and role workspace to onboarding", () => {
+    expect(
+      resolvePostLoginPath(
+        makeContext({
+          accountType: "osgb",
+          membershipRole: "owner",
+          activeWorkspaceId: null,
+          workspaceCount: 0,
+        }),
+      ),
+    ).toBe("/workspace/onboarding");
+  });
+
   it("routes osgb accounts to the osgb dashboard", () => {
     expect(
       resolvePostLoginPath(

@@ -45,6 +45,7 @@ type DocumentAiResponse = {
   content?: string;
   analysis?: string;
   response?: string;
+  message?: string;
   error?: string;
   degraded?: boolean;
   queuedTaskId?: string | null;
@@ -109,6 +110,66 @@ const IMPROVE_OPTIONS = [
 
 function extractContent(data: DocumentAiResponse) {
   return data.content || data.analysis || data.response || '';
+}
+
+function extractAiMessage(data: DocumentAiResponse, fallbackMessage: string) {
+  return data.message || data.error || fallbackMessage;
+}
+
+function buildClientFallbackDocument({
+  documentTitle,
+  companyName,
+  companyData,
+}: {
+  documentTitle: string;
+  companyName: string;
+  companyData?: CompanyDataForAI;
+}) {
+  const today = new Date().toLocaleDateString('tr-TR');
+  const effectiveCompany = companyName || 'Firma bilgisi eklenecek';
+
+  return [
+    `# ${documentTitle || 'Dokuman Taslagi'}`,
+    '',
+    '## Firma Bilgileri',
+    '',
+    '| Alan | Bilgi |',
+    '| --- | --- |',
+    `| Firma / Kurum | ${effectiveCompany} |`,
+    `| Sektor | ${companyData?.sector || 'Sektor bilgisi eklenecek'} |`,
+    `| Tehlike Sinifi | ${companyData?.hazard_class || 'Tehlike sinifi eklenecek'} |`,
+    `| NACE Kodu | ${companyData?.nace_code || 'NACE bilgisi eklenecek'} |`,
+    `| Calisan Sayisi | ${companyData?.employee_count || 'Calisan sayisi eklenecek'} |`,
+    `| Dokuman Tarihi | ${today} |`,
+    '',
+    '## Amac ve Kapsam',
+    '',
+    `Bu dokuman ${effectiveCompany} icin ISG, operasyon ve kayit sureclerinde kullanilmak uzere hazirlanmistir.`,
+    '',
+    '## Uygulama Esaslari',
+    '',
+    '- Sorumlu kisiler ve onay akisinin belirlenmesi',
+    '- Gerekli kayitlarin RiskNova uzerinde tutulmasi',
+    '- Yasal dayanak ve firma prosedurlerine uygun hareket edilmesi',
+    '- Uygunsuzluklarin ve kritik risklerin gecikmeden raporlanmasi',
+    '',
+    '## Yasal Dayanak',
+    '',
+    '- 6331 sayili Is Sagligi ve Guvenligi Kanunu',
+    '- Ilgili yonetmelikler ve firma ic prosedurleri',
+    '',
+    '## Imza ve Onay',
+    '',
+    '| Taraf | Ad Soyad / Unvan | Imza | Tarih |',
+    '| --- | --- | --- | --- |',
+    `| Hazirlayan | ${companyData?.specialist_name || 'ISG Profesyoneli'} |  | ${today} |`,
+    '| Isveren / Isveren Vekili |  |  |  |',
+    '',
+  ].join('\n');
+}
+
+async function readDocumentAiResponse(response: Response) {
+  return (await response.json().catch(() => ({}))) as DocumentAiResponse;
 }
 
 export function AIAssistantPanel({
@@ -201,27 +262,58 @@ export function AIAssistantPanel({
     const content = extractContent(data);
     setDegraded(Boolean(data.degraded));
     setQueueTaskId(typeof data.queuedTaskId === 'string' ? data.queuedTaskId : null);
-    setResult(
-      content ||
-        (typeof data.error === 'string' && data.error.trim().length > 0 ? data.error : fallbackMessage),
-    );
+    setResult(content || extractAiMessage(data, fallbackMessage));
     return content;
   }, []);
+
+  const applyClientFallback = useCallback(
+    (message: string, autoInsert: boolean) => {
+      const fallbackContent = buildClientFallbackDocument({
+        documentTitle,
+        companyName,
+        companyData,
+      });
+
+      setDegraded(true);
+      setQueueTaskId(null);
+      setResult(`${message}\n\n${fallbackContent}`);
+
+      if (autoInsert) {
+        insertToEditor(fallbackContent);
+      }
+    },
+    [companyData, companyName, documentTitle, insertToEditor],
+  );
+
+  const requestDocumentAi = useCallback(
+    async (prompt: string, signal: AbortSignal) => {
+      const response = await fetch('/api/document-ai', {
+        method: 'POST',
+        credentials: 'include',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, companyName, companyData, documentTitle, groupKey }),
+        signal,
+      });
+
+      return {
+        response,
+        data: await readDocumentAiResponse(response),
+      };
+    },
+    [companyData, companyName, documentTitle, groupKey],
+  );
 
   const generateContent = async (prompt: string, autoInsert = true) => {
     if (loading) return;
 
     setLoading(true);
     resetRunState();
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 75000);
 
     try {
-      const res = await fetch('/api/document-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, companyName, companyData, documentTitle, groupKey }),
-      });
-
-      const data = (await res.json().catch(() => ({}))) as DocumentAiResponse;
+      const { response: res, data } = await requestDocumentAi(prompt, controller.signal);
 
       if (!res.ok) {
         const fallbackContent = applyAiError(
@@ -241,9 +333,19 @@ export function AIAssistantPanel({
       if (autoInsert && content) {
         insertToEditor(content);
       }
-    } catch {
-      setResult('Baglanti hatasi. Internet baglantinizi kontrol edip tekrar deneyin.');
+      if (!content) {
+        applyClientFallback('AI servisi bos yanit verdi. Mobilde islemin yarida kalmamasi icin yerel taslak hazirlandi.', autoInsert);
+      }
+    } catch (error) {
+      const isAbort = error instanceof DOMException && error.name === 'AbortError';
+      applyClientFallback(
+        isAbort
+          ? 'AI istegi zaman asimina ugradi. Mobilde beklemede kalmamasi icin yerel taslak hazirlandi.'
+          : 'Baglanti hatasi olustu. Mobilde islemin bos kalmamasi icin yerel taslak hazirlandi.',
+        autoInsert,
+      );
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -254,17 +356,13 @@ export function AIAssistantPanel({
     setShowImproveDialog(false);
     setLoading(true);
     resetRunState();
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 75000);
 
     const fullPrompt = `${improvePrompt}\n\nIyilestirilecek metin:\n"${savedSelection.text}"`;
 
     try {
-      const res = await fetch('/api/document-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: fullPrompt, companyName, companyData, documentTitle, groupKey }),
-      });
-
-      const data = (await res.json().catch(() => ({}))) as DocumentAiResponse;
+      const { response: res, data } = await requestDocumentAi(fullPrompt, controller.signal);
 
       if (!res.ok) {
         applyAiError(data, 'Hata: AI servisi su anda yanit veremiyor.');
@@ -279,10 +377,18 @@ export function AIAssistantPanel({
       if (content) {
         replaceSelection(content, savedSelection.from, savedSelection.to);
         setInserted(true);
+      } else {
+        setResult('AI servisi bos yanit verdi. Lutfen daha kisa bir metin secip tekrar deneyin.');
       }
-    } catch {
-      setResult('Baglanti hatasi.');
+    } catch (error) {
+      const isAbort = error instanceof DOMException && error.name === 'AbortError';
+      setResult(
+        isAbort
+          ? 'AI istegi zaman asimina ugradi. Lutfen daha kisa bir metin secip tekrar deneyin.'
+          : 'Baglanti hatasi. Lutfen tekrar deneyin.',
+      );
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
       setSavedSelection(null);
     }
@@ -295,8 +401,8 @@ export function AIAssistantPanel({
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-[var(--gold)]/20 px-4 py-3">
+    <div className="flex h-full flex-col bg-[var(--card)] text-[var(--text-primary)]">
+      <div className="border-b border-[var(--gold)]/25 bg-gradient-to-r from-[var(--gold)]/14 to-transparent px-4 py-3">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-[var(--gold)]" />
           <h3 className="text-sm font-bold text-[var(--text-primary)]">AI Asistan</h3>
@@ -314,10 +420,10 @@ export function AIAssistantPanel({
               key={prompt.label}
               onClick={() => void generateContent(prompt.prompt, true)}
               disabled={loading}
-              className={`w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${
+              className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
                 ("primary" in prompt && prompt.primary)
-                  ? 'flex items-center gap-2 bg-[var(--gold)] text-white hover:bg-[var(--gold-hover)]'
-                  : 'flex items-center gap-2 border border-[var(--gold)]/20 text-[var(--text-primary)] hover:border-[var(--gold)]/40 hover:bg-[var(--gold)]/10'
+                  ? 'flex items-center gap-2 bg-[var(--gold)] text-[var(--primary-foreground)] shadow-sm shadow-[var(--gold-glow)] hover:bg-[var(--gold-hover)]'
+                  : 'flex items-center gap-2 border border-[var(--gold)]/30 bg-[var(--gold)]/6 text-[var(--text-primary)] hover:border-[var(--gold)]/60 hover:bg-[var(--gold)]/14'
               }`}
             >
               <Icon size={14} />
@@ -339,12 +445,12 @@ export function AIAssistantPanel({
               }
             }}
             placeholder="Ne uretmemi istersiniz?"
-            className="flex-1 rounded-lg border border-[var(--gold)]/20 bg-white px-2.5 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)] dark:bg-[#0f172a]"
+            className="flex-1 rounded-lg border border-[var(--gold)]/30 bg-[var(--bg-primary)] px-2.5 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
           />
           <button
             onClick={handleCustomPrompt}
             disabled={!customPrompt.trim() || loading}
-            className="shrink-0 rounded-lg bg-[var(--gold)] p-2 text-white transition-colors hover:bg-[var(--gold-hover)] disabled:opacity-40"
+            className="shrink-0 rounded-lg bg-[var(--gold)] p-2 text-[var(--primary-foreground)] transition-colors hover:bg-[var(--gold-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send size={13} />
           </button>
@@ -365,8 +471,8 @@ export function AIAssistantPanel({
           disabled={loading}
           className={`w-full rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:opacity-50 ${
             savedSelection
-              ? 'flex items-center gap-2 border-[var(--gold)]/40 bg-[var(--gold)]/5 text-[var(--gold)]'
-              : 'flex items-center gap-2 border-[var(--gold)]/20 text-[var(--text-secondary)] hover:border-[var(--gold)]/40 hover:text-[var(--gold)]'
+              ? 'flex items-center gap-2 border-[var(--gold)]/60 bg-[var(--gold)]/12 text-[var(--gold)]'
+              : 'flex items-center gap-2 border-[var(--gold)]/30 bg-[var(--gold)]/5 text-[var(--text-secondary)] hover:border-[var(--gold)]/60 hover:text-[var(--gold)]'
           }`}
         >
           <Wand2 size={13} />
@@ -382,15 +488,20 @@ export function AIAssistantPanel({
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-8">
+          <div className="rounded-xl border border-[var(--gold)]/25 bg-[var(--gold)]/8 px-3 py-6">
+            <div className="flex items-center justify-center gap-2">
             <RotateCcw size={16} className="animate-spin text-[var(--gold)]" />
             <span className="text-sm text-[var(--text-secondary)]">Icerik olusturuluyor...</span>
+            </div>
+            <p className="mt-2 text-center text-[11px] leading-5 text-[var(--text-secondary)]">
+              Mobilde baglanti uzarsa sistem beklemede kalmaz; otomatik yerel taslak hazirlar.
+            </p>
           </div>
         ) : null}
 
         {!loading && !result ? (
           <div className="py-8 text-center">
-            <Sparkles size={28} className="mx-auto mb-3 text-[var(--gold)]/30" />
+            <Sparkles size={28} className="mx-auto mb-3 text-[var(--gold)]/55" />
             <p className="text-xs text-[var(--text-secondary)]">
               Yukaridaki butonlardan birini tiklayarak
               <br />
@@ -431,8 +542,8 @@ export function AIAssistantPanel({
                 inserted
                   ? 'border-green-200 bg-green-50 dark:border-green-800/30 dark:bg-green-900/10'
                   : degraded
-                    ? 'border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-950/20'
-                    : 'border-[var(--gold)]/15 bg-[var(--gold)]/5'
+                    ? 'border-[var(--gold)]/40 bg-[var(--gold)]/10'
+                    : 'border-[var(--gold)]/30 bg-[var(--gold)]/8'
               }`}
             >
               {result}
@@ -450,7 +561,7 @@ export function AIAssistantPanel({
             {!inserted ? (
               <button
                 onClick={() => insertToEditor(result)}
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gold)] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--gold-hover)]"
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--gold)] px-3 py-2 text-xs font-semibold text-[var(--primary-foreground)] transition-colors hover:bg-[var(--gold-hover)]"
               >
                 <FileText size={14} />
                 {degraded ? 'Yerel Taslagi Editore Ekle' : 'Editore Ekle'}

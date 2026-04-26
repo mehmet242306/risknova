@@ -329,7 +329,13 @@ function goToWorkspaceLabel(
     : "Bu alani aktif yap ve git";
 }
 
-export function WorkspaceOnboardingClient({ nextPath }: { nextPath?: string }) {
+export function WorkspaceOnboardingClient({
+  nextPath,
+  initialMessage,
+}: {
+  nextPath?: string;
+  initialMessage?: string;
+}) {
   const router = useRouter();
   const demoTemplate = useMemo(() => createDemoWorkspaceProfile(), []);
   const [accountLoading, setAccountLoading] = useState(true);
@@ -362,7 +368,9 @@ export function WorkspaceOnboardingClient({ nextPath }: { nextPath?: string }) {
     estimatedEmployeeCount: "",
     estimatedLocationCount: "",
   });
-  const [message, setMessage] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ tone: "success" | "danger" | "info"; text: string } | null>(
+    initialMessage ? { tone: "success", text: initialMessage } : null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -370,7 +378,7 @@ export function WorkspaceOnboardingClient({ nextPath }: { nextPath?: string }) {
     async function loadData() {
       setAccountLoading(true);
       setLoading(true);
-      setMessage(null);
+      setMessage(initialMessage ? { tone: "success", text: initialMessage } : null);
 
       try {
         const accountResponse = await fetch("/api/account/context", {
@@ -442,7 +450,7 @@ export function WorkspaceOnboardingClient({ nextPath }: { nextPath?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [initialMessage, router]);
 
   const memberships = payload?.memberships ?? [];
   const workspaceLimit = accountUsage?.maxActiveWorkspaces ?? null;

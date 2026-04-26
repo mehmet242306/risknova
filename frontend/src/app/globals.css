@@ -70,11 +70,18 @@
   --tab-bar-border-bottom: #B8860B;
 
   --gold: #C89B5B;
+  --gold-hover: #B8873F;
   --gold-light: #E7CDA3;
   --gold-glow: rgba(200, 155, 91, 0.18);
   --navy-deep: #020617;
   --navy-dark: #0F172A;
   --navy-mid: #1E293B;
+
+  --bg-primary: var(--card);
+  --bg-secondary: var(--secondary);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --card-border: var(--border);
 
   --hz-safe: #22C55E;
   --hz-warn: #F59E0B;
@@ -147,11 +154,18 @@
   --tab-bar-border-bottom: #8B6914;
 
   --gold: #D5B17A;
+  --gold-hover: #E2C18E;
   --gold-light: #E8D0A6;
   --gold-glow: rgba(213, 177, 122, 0.16);
   --navy-deep: #07101E;
   --navy-dark: #09111F;
   --navy-mid: #111A2B;
+
+  --bg-primary: var(--card);
+  --bg-secondary: var(--secondary);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--muted-foreground);
+  --card-border: var(--border);
 
   --hz-safe: #4ADE80;
   --hz-warn: #FB923C;
@@ -446,12 +460,16 @@ body,
 
 /* Canvas: gray background behind the page */
 .editor-canvas {
-  background: #F0F1F3;
+  background:
+    radial-gradient(circle at top right, rgba(200, 155, 91, 0.14), transparent 24rem),
+    #F0F1F3;
   position: relative;
   z-index: 1;
 }
 .dark .editor-canvas {
-  background: #111827;
+  background:
+    radial-gradient(circle at top right, rgba(213, 177, 122, 0.14), transparent 26rem),
+    #09111F;
 }
 
 /* A4 page simulation */
@@ -466,18 +484,37 @@ body,
   position: relative;
 }
 .dark .a4-page {
-  background: #1e293b;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.2);
+  background: #162237;
+  border: 1px solid rgba(213, 177, 122, 0.14);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 18px 48px rgba(0,0,0,0.28);
 }
 
 /* Responsive: mobile/tablet */
 @media (max-width: 900px) {
+  .editor-canvas {
+    padding-inline: 8px;
+  }
+
   .a4-page {
     width: 100%;
+    max-width: calc(100vw - 16px);
     min-height: auto;
-    margin: 12px;
-    padding: 40px 24px;
+    margin: 8px auto 16px;
+    padding: clamp(20px, 6vw, 40px) clamp(14px, 4.5vw, 24px);
     border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .a4-page .tiptap {
+    min-height: calc(100dvh - 320px);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .a4-page .tiptap table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
   }
 }
 
@@ -616,10 +653,12 @@ body,
   border-bottom: 1px solid #e5e7eb;
   position: relative;
   z-index: 30;
+  max-width: 100%;
+  scrollbar-width: thin;
 }
 .dark .editor-toolbar {
-  background: #1e293b;
-  border-bottom-color: #334155;
+  background: #152035;
+  border-bottom-color: rgba(213, 177, 122, 0.14);
 }
 /* Fix dark mode for native select/option */
 .editor-toolbar select {
@@ -627,7 +666,7 @@ body,
   color: #0f172a;
 }
 .dark .editor-toolbar select {
-  background: #1e293b;
+  background: #152035;
   color: #e2e8f0;
 }
 .editor-toolbar select option {
@@ -636,8 +675,22 @@ body,
   padding: 4px 8px;
 }
 .dark .editor-toolbar select option {
-  background: #1e293b;
+  background: #152035;
   color: #e2e8f0;
+}
+
+@media (max-width: 900px) {
+  .editor-toolbar {
+    gap: 2px;
+    padding-inline: 8px;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .editor-toolbar button,
+  .editor-toolbar select {
+    flex: 0 0 auto;
+  }
 }
 
 /* Status bar */
@@ -646,8 +699,8 @@ body,
   border-top: 1px solid #e5e7eb;
 }
 .dark .editor-statusbar {
-  background: #0f172a;
-  border-top-color: #334155;
+  background: #0B1322;
+  border-top-color: rgba(213, 177, 122, 0.14);
 }
 
 /* Color picker grid */
