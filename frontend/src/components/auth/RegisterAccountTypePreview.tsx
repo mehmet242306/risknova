@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  BriefcaseBusiness,
+  ArrowLeft,
   Building2,
   CheckCircle2,
   Globe2,
@@ -17,41 +17,43 @@ import { type CommercialInterestType } from "@/lib/account/register-offers";
 import { locales, type Locale } from "@/i18n/routing";
 
 type AccountType = "individual" | "osgb" | "enterprise";
+type WizardStep = "account" | "country" | "language" | "role";
 
 type RegisterAccountTypePreviewProps = {
   children: ReactNode;
 };
 
-type Option<T extends string> = {
+type Choice<T extends string> = {
   value: T;
   title: string;
   description: string;
+  icon?: typeof UserRound;
 };
 
-const accountCards: Array<Option<AccountType> & { icon: typeof UserRound }> = [
+const accountChoices: Array<Choice<AccountType>> = [
   {
     value: "individual",
     title: "Bireysel profesyonel",
-    description: "Uzman, hekim, DSP, denetci veya tekil calisma alani ile basla.",
+    description: "Uzman, hekim, DSP veya denetci olarak kendi calisma alaninla basla.",
     icon: UserRound,
   },
   {
     value: "osgb",
     title: "OSGB",
-    description: "Firma portfoyu, ekip, gorevlendirme ve hizmet surecleri icin.",
+    description: "Firma portfoyu, ekip ve gorevlendirme surecleri icin kurulum talebi olustur.",
     icon: Building2,
   },
   {
     value: "enterprise",
     title: "Firma / Kurumsal",
-    description: "Cok lokasyonlu, ozel mevzuat ihtiyacli veya kurumsal yapi.",
+    description: "Cok lokasyonlu veya ozel mevzuat ihtiyacli kurumsal yapi icin ilerle.",
     icon: Globe2,
   },
 ];
 
-const countryOptions = [
-  { value: "TR", title: "Turkiye", description: "Turkiye mevzuati, ISG rolleri ve Turkce varsayilan." },
-  { value: "AZ", title: "Azerbaycan", description: "Azerbaycan bolgesi ve Azerbaycanca dil tercihi." },
+const countryChoices = [
+  { value: "TR", title: "Turkiye", description: "Turkiye mevzuati ve Turkce varsayilan." },
+  { value: "AZ", title: "Azerbaycan", description: "Azerbaycan bolgesi ve Azerbaycanca varsayilan." },
   { value: "US", title: "United States", description: "US operasyonlari ve English varsayilan." },
   { value: "GB", title: "United Kingdom", description: "UK operasyonlari ve English varsayilan." },
   { value: "DE", title: "Deutschland", description: "Almanya bolgesi ve Deutsch varsayilan." },
@@ -101,7 +103,7 @@ const countryDefaultLanguage: Record<string, Locale> = {
   ID: "id",
 };
 
-const roleOptions = [
+const roleChoices = [
   {
     value: "safety_professional",
     title: "ISG uzmani",
@@ -129,69 +131,70 @@ const roleOptions = [
   },
 ] as const;
 
-function SelectionCard<T extends string>({
-  option,
-  active,
-  onSelect,
-  icon: Icon,
-}: {
-  option: Option<T>;
-  active: boolean;
-  onSelect: () => void;
-  icon?: typeof UserRound;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`w-full rounded-2xl border p-3 text-left transition-colors ${
-        active
-          ? "border-[var(--gold)] bg-[var(--gold)]/10 ring-1 ring-[var(--gold)]/25"
-          : "border-border bg-card hover:border-[var(--gold)]/40 hover:bg-[var(--gold)]/5"
-      }`}
-    >
-      <span className="flex items-start gap-3">
-        {Icon ? (
-          <span
-            className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-              active ? "bg-[var(--gold)] text-white" : "bg-muted text-muted-foreground"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-          </span>
-        ) : null}
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            {option.title}
-            {active ? <CheckCircle2 className="h-4 w-4 text-[var(--gold)]" /> : null}
-          </span>
-          <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-            {option.description}
-          </span>
-        </span>
-      </span>
-    </button>
-  );
+const stepOrder: WizardStep[] = ["account", "country", "language", "role"];
+
+const stepCopy: Record<WizardStep, { eyebrow: string; title: string; description: string }> = {
+  account: {
+    eyebrow: "1 / 4",
+    title: "Hangi hesap turuyle basliyorsun?",
+    description: "Bu cevap kayit sonrasi acilacak akisi belirler.",
+  },
+  country: {
+    eyebrow: "2 / 4",
+    title: "Calisma alaninin ulkesi hangisi?",
+    description: "Mevzuat, RAG kapsami ve varsayilan workspace bu secime gore kurulur.",
+  },
+  language: {
+    eyebrow: "3 / 4",
+    title: "Arayuz ve belge dili ne olsun?",
+    description: "Simdilik tum sayfalar cevrilmemis olsa da tercih hesap kaydina yazilir.",
+  },
+  role: {
+    eyebrow: "4 / 4",
+    title: "Ilk rolun ne olacak?",
+    description: "Bu rol onboarding tarafinda ilk calisma alaninin temelini olusturur.",
+  },
+};
+
+function choiceButtonClass(active: boolean) {
+  return `w-full rounded-2xl border p-4 text-left transition-colors ${
+    active
+      ? "border-[var(--gold)] bg-[var(--gold)]/10 ring-1 ring-[var(--gold)]/25"
+      : "border-border bg-card hover:border-[var(--gold)]/40 hover:bg-[var(--gold)]/5"
+  }`;
 }
 
 export function RegisterAccountTypePreview({ children }: RegisterAccountTypePreviewProps) {
-  const [accountType, setAccountType] = useState<AccountType>("individual");
-  const [countryCode, setCountryCode] = useState("TR");
-  const [languageCode, setLanguageCode] = useState<Locale>("tr");
-  const [roleKey, setRoleKey] = useState<(typeof roleOptions)[number]["value"]>(
-    "safety_professional",
-  );
+  const [step, setStep] = useState<WizardStep>("account");
+  const [wizardOpen, setWizardOpen] = useState(true);
+  const [completed, setCompleted] = useState(false);
+  const [accountType, setAccountType] = useState<AccountType | null>(null);
+  const [countryCode, setCountryCode] = useState<string | null>(null);
+  const [languageCode, setLanguageCode] = useState<Locale | null>(null);
+  const [roleKey, setRoleKey] = useState<(typeof roleChoices)[number]["value"] | null>(null);
   const [activeLeadType, setActiveLeadType] =
     useState<CommercialInterestType | null>(null);
 
-  const selectedAccount = useMemo(
-    () => accountCards.find((item) => item.value === accountType) ?? accountCards[0],
-    [accountType],
+  const stepIndex = stepOrder.indexOf(step);
+  const selectedAccount = accountChoices.find((item) => item.value === accountType) ?? null;
+  const selectedCountry = countryChoices.find((item) => item.value === countryCode) ?? null;
+  const selectedLanguage = languageCode ? languageLabels[languageCode] : null;
+  const selectedRole = roleChoices.find((item) => item.value === roleKey) ?? null;
+
+  const summary = useMemo(
+    () =>
+      [
+        selectedAccount?.title,
+        selectedCountry?.title,
+        selectedLanguage,
+        selectedRole?.title,
+      ].filter(Boolean),
+    [selectedAccount, selectedCountry, selectedLanguage, selectedRole],
   );
-  const selectedCountry = countryOptions.find((item) => item.value === countryCode) ?? countryOptions[0];
-  const selectedRole = roleOptions.find((item) => item.value === roleKey) ?? roleOptions[0];
 
   useEffect(() => {
+    if (!accountType || !countryCode || !languageCode || !roleKey) return;
+
     window.localStorage.setItem(
       "risknova-register-context",
       JSON.stringify({
@@ -203,144 +206,256 @@ export function RegisterAccountTypePreview({ children }: RegisterAccountTypePrev
     );
   }, [accountType, countryCode, languageCode, roleKey]);
 
-  function handleCountryChange(nextCountry: string) {
-    setCountryCode(nextCountry);
-    setLanguageCode(countryDefaultLanguage[nextCountry] ?? "en");
+  function advance(nextStep: WizardStep) {
+    window.setTimeout(() => setStep(nextStep), 120);
+  }
+
+  function finish(nextRole: (typeof roleChoices)[number]["value"]) {
+    setRoleKey(nextRole);
+    setCompleted(true);
+    setWizardOpen(false);
+  }
+
+  function goBack() {
+    const previous = stepOrder[Math.max(stepIndex - 1, 0)];
+    setStep(previous);
+  }
+
+  function restartWizard() {
+    setWizardOpen(true);
+    setCompleted(false);
+    setStep("account");
+  }
+
+  function renderStep() {
+    if (step === "account") {
+      return accountChoices.map((item) => {
+        const Icon = item.icon ?? UserRound;
+        const active = item.value === accountType;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => {
+              setAccountType(item.value);
+              advance("country");
+            }}
+            className={choiceButtonClass(active)}
+          >
+            <span className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--gold)]/12 text-[var(--gold)]">
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  {item.title}
+                  {active ? <CheckCircle2 className="h-4 w-4 text-[var(--gold)]" /> : null}
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  {item.description}
+                </span>
+              </span>
+            </span>
+          </button>
+        );
+      });
+    }
+
+    if (step === "country") {
+      return countryChoices.map((item) => {
+        const active = item.value === countryCode;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            onClick={() => {
+              setCountryCode(item.value);
+              setLanguageCode(countryDefaultLanguage[item.value] ?? "en");
+              advance("language");
+            }}
+            className={choiceButtonClass(active)}
+          >
+            <span className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--gold)]/12 text-[var(--gold)]">
+                <MapPin className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  {item.title}
+                  {active ? <CheckCircle2 className="h-4 w-4 text-[var(--gold)]" /> : null}
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  {item.description}
+                </span>
+              </span>
+            </span>
+          </button>
+        );
+      });
+    }
+
+    if (step === "language") {
+      return locales.map((locale) => {
+        const active = locale === languageCode;
+        return (
+          <button
+            key={locale}
+            type="button"
+            onClick={() => {
+              setLanguageCode(locale);
+              advance("role");
+            }}
+            className={choiceButtonClass(active)}
+          >
+            <span className="flex items-center gap-3">
+              <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--gold)]/12 text-[var(--gold)]">
+                <Languages className="h-5 w-5" />
+              </span>
+              <span className="text-sm font-semibold text-foreground">
+                {languageLabels[locale]}
+              </span>
+              {active ? <CheckCircle2 className="ml-auto h-4 w-4 text-[var(--gold)]" /> : null}
+            </span>
+          </button>
+        );
+      });
+    }
+
+    return roleChoices.map((item) => {
+      const active = item.value === roleKey;
+      return (
+        <button
+          key={item.value}
+          type="button"
+          onClick={() => finish(item.value)}
+          className={choiceButtonClass(active)}
+        >
+          <span className="flex items-start gap-3">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--gold)]/12 text-[var(--gold)]">
+              <UserRound className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                {item.title}
+                {active ? <CheckCircle2 className="h-4 w-4 text-[var(--gold)]" /> : null}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                {item.description}
+              </span>
+            </span>
+          </span>
+        </button>
+      );
+    });
   }
 
   return (
     <>
-      <div className="space-y-5 rounded-3xl border border-[var(--gold)]/20 bg-[var(--gold)]/5 p-3 sm:p-4">
-        <div className="flex items-start gap-3">
-          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[var(--gold)]" />
-          <div>
-            <div className="text-sm font-semibold text-foreground">
-              Baslangic calisma alani bilgileri
+      {wizardOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/70 px-3 py-5 backdrop-blur-sm sm:items-center sm:px-6">
+          <div className="w-full max-w-xl rounded-3xl border border-[var(--gold)]/25 bg-background shadow-[0_30px_90px_rgba(0,0,0,0.35)]">
+            <div className="border-b border-border px-5 py-4 sm:px-6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--gold)]">
+                  <ShieldCheck className="h-4 w-4" />
+                  {stepCopy[step].eyebrow}
+                </div>
+                {stepIndex > 0 ? (
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground"
+                    aria-label="Onceki soru"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <h2 className="text-2xl font-semibold leading-tight text-foreground">
+                  {stepCopy[step].title}
+                </h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {stepCopy[step].description}
+                </p>
+              </div>
+
+              <div className="mt-4 grid grid-cols-4 gap-2">
+                {stepOrder.map((item, index) => (
+                  <span
+                    key={item}
+                    className={`h-1.5 rounded-full ${
+                      index <= stepIndex ? "bg-[var(--gold)]" : "bg-border"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Bu secimler workspace, mevzuat/RAG kapsami, varsayilan dil ve ilk rol icin temel veri olarak kaydedilir.
-            </p>
+
+            <div className="max-h-[58vh] space-y-2 overflow-y-auto px-5 py-4 sm:px-6">
+              {renderStep()}
+            </div>
           </div>
         </div>
+      ) : null}
 
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <BriefcaseBusiness className="h-4 w-4 text-[var(--gold)]" />
-            Hesap turu
-          </div>
-          <div className="grid gap-2">
-            {accountCards.map((item) => (
-              <SelectionCard
-                key={item.value}
-                option={item}
-                icon={item.icon}
-                active={item.value === accountType}
-                onSelect={() => setAccountType(item.value)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <MapPin className="h-4 w-4 text-[var(--gold)]" />
-            Ulke / bolge
-          </div>
-          <div className="grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-            {countryOptions.map((item) => (
-              <SelectionCard
-                key={item.value}
-                option={item}
-                active={item.value === countryCode}
-                onSelect={() => handleCountryChange(item.value)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <Languages className="h-4 w-4 text-[var(--gold)]" />
-            Dil
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {locales.map((locale) => (
-              <button
-                key={locale}
-                type="button"
-                onClick={() => setLanguageCode(locale)}
-                className={`h-11 rounded-xl border px-3 text-sm font-semibold transition-colors ${
-                  locale === languageCode
-                    ? "border-[var(--gold)] bg-[var(--gold)]/12 text-foreground"
-                    : "border-border bg-card text-muted-foreground hover:border-[var(--gold)]/40"
-                }`}
-              >
-                {languageLabels[locale]}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            <UserRound className="h-4 w-4 text-[var(--gold)]" />
-            Ilk rol
-          </div>
-          <div className="grid gap-2">
-            {roleOptions.map((item) => (
-              <SelectionCard
-                key={item.value}
-                option={item}
-                active={item.value === roleKey}
-                onSelect={() => setRoleKey(item.value)}
-              />
-            ))}
-          </div>
-        </section>
-
-        <div className="rounded-2xl border border-[var(--gold)]/20 bg-card/75 px-3 py-2 text-xs leading-5 text-muted-foreground">
-          Secim: <span className="font-semibold text-foreground">{selectedAccount.title}</span>
-          {" / "}
-          <span className="font-semibold text-foreground">{selectedCountry.title}</span>
-          {" / "}
-          <span className="font-semibold text-foreground">{languageLabels[languageCode]}</span>
-          {" / "}
-          <span className="font-semibold text-foreground">{selectedRole.title}</span>
-        </div>
-      </div>
-
-      {accountType === "individual" ? (
+      {completed && accountType && countryCode && languageCode && roleKey ? (
         <div className="space-y-5">
-          <input form="register-individual-form" type="hidden" name="accountType" value="individual" />
-          <input form="register-individual-form" type="hidden" name="countryCode" value={countryCode} />
-          <input form="register-individual-form" type="hidden" name="languageCode" value={languageCode} />
-          <input form="register-individual-form" type="hidden" name="roleKey" value={roleKey} />
-          {children}
+          <div className="rounded-2xl border border-[var(--gold)]/25 bg-[var(--gold)]/8 px-4 py-3 text-sm leading-6 text-muted-foreground">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-foreground">Kayit yolu hazir</div>
+                <div className="mt-1">{summary.join(" / ")}</div>
+              </div>
+              <button
+                type="button"
+                onClick={restartWizard}
+                className="shrink-0 text-xs font-semibold text-[var(--gold)] underline underline-offset-4"
+              >
+                Degistir
+              </button>
+            </div>
+          </div>
+
+          {accountType === "individual" ? (
+            <>
+              <input form="register-individual-form" type="hidden" name="accountType" value="individual" />
+              <input form="register-individual-form" type="hidden" name="countryCode" value={countryCode} />
+              <input form="register-individual-form" type="hidden" name="languageCode" value={languageCode} />
+              <input form="register-individual-form" type="hidden" name="roleKey" value={roleKey} />
+              {children}
+            </>
+          ) : (
+            <div className="rounded-3xl border border-[var(--gold)]/25 bg-card p-4 shadow-[var(--shadow-soft)]">
+              <div className="text-sm font-semibold text-foreground">
+                {accountType === "osgb" ? "OSGB icin kurulum gorusmesi" : "Firma / kurumsal kurulum gorusmesi"}
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Secilen ulke, dil ve rol bilgisiyle gelistirici ekibe kisa bir talep birakabilirsiniz.
+              </p>
+              <Button
+                type="button"
+                className="mt-4 w-full"
+                onClick={() => setActiveLeadType(accountType === "osgb" ? "osgb" : "enterprise")}
+              >
+                Gelistirici ile iletisime gec
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="rounded-3xl border border-[var(--gold)]/25 bg-card p-4 shadow-[var(--shadow-soft)]">
-          <div className="text-sm font-semibold text-foreground">
-            {accountType === "osgb" ? "OSGB icin kurulum gorusmesi" : "Firma / kurumsal kurulum gorusmesi"}
-          </div>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Secilen ulke, dil ve rol bilgisiyle gelistirici ekibe kisa bir talep birakabilirsiniz.
-          </p>
-          <Button
-            type="button"
-            className="mt-4 w-full"
-            onClick={() => setActiveLeadType(accountType === "osgb" ? "osgb" : "enterprise")}
-          >
-            Gelistirici ile iletisime gec
-          </Button>
-        </div>
+        <Button type="button" className="w-full" onClick={() => setWizardOpen(true)}>
+          Kayit sorularini baslat
+        </Button>
       )}
 
       <CommercialLeadDialog
         accountType={activeLeadType ?? "enterprise"}
         open={activeLeadType !== null}
         onClose={() => setActiveLeadType(null)}
-        countryCode={countryCode}
-        languageCode={languageCode}
+        countryCode={countryCode ?? "TR"}
+        languageCode={languageCode ?? "tr"}
       />
     </>
   );

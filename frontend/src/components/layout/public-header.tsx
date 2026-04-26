@@ -21,8 +21,7 @@ export function PublicHeader() {
     <header className="sticky top-0 z-30 w-full overflow-x-clip border-b border-white/[0.08] bg-[var(--navy-deep)]/95 backdrop-blur-xl">
       <div className="mx-auto w-full max-w-[1480px] px-3 py-3 sm:px-4 lg:px-8 lg:py-4 2xl:px-10">
         <div className="flex min-w-0 items-center justify-between gap-2 lg:gap-4">
-          <Brand href="/" iconOnly inverted className="shrink-0 lg:hidden" />
-          <Brand href="/" inverted className="hidden min-w-0 lg:inline-flex" />
+          <Brand href="/" iconOnly inverted className="shrink-0" />
 
           <div className="flex min-w-0 max-w-[calc(100vw-72px)] shrink-0 items-center justify-end gap-1.5 overflow-hidden sm:gap-2 lg:max-w-none lg:gap-3">
             <nav className="hidden items-center gap-6 lg:flex">

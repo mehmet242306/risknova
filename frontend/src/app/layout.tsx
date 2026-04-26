@@ -1,4 +1,5 @@
 ﻿import type { Metadata } from "next";
+import type { Viewport } from "next";
 import type { ReactNode } from "react";
 import { Inter, Playfair_Display } from "next/font/google";
 import { getLocale, getMessages } from "next-intl/server";
@@ -30,6 +31,11 @@ export const metadata: Metadata = {
     icon: "/logo/risknova-favicon-64.svg",
     apple: "/logo/risknova-app-icon-512.svg",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 /**
