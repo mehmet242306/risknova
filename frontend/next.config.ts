@@ -36,6 +36,23 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname, ".."),
   },
 
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "@tiptap/react",
+      "@tiptap/starter-kit",
+      "next-intl",
+      "date-fns",
+    ],
+  },
+
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "*.supabase.co" },
+      { protocol: "https", hostname: "*.supabase.in" },
+    ],
+  },
+
   async headers() {
     return [
       {

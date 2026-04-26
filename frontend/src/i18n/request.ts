@@ -3,11 +3,12 @@ import { getRequestConfig } from "next-intl/server";
 import { defaultLocale, isLocale, LOCALE_COOKIE, type Locale } from "./routing";
 
 /**
- * Locales that currently ship full JSON message files.
- * Other locales from `routing.ts` are accepted for cookie storage but
- * fall back to the default locale's messages until translations ship.
+ * Phase 2 status (2026-04-25):
+ *   - tr/en: native translations
+ *   - ar/ru/de/fr/es/zh/ja/ko/hi/az/id: bootstrapped from en.json, awaiting
+ *     professional translation. Replace each file with a real translation
+ *     as it ships.
  */
-const loadableLocales: Locale[] = ["tr", "en"];
 
 async function readLocaleFromRequest(): Promise<Locale> {
   const cookieStore = await cookies();
@@ -23,8 +24,7 @@ async function readLocaleFromRequest(): Promise<Locale> {
 }
 
 async function loadMessages(locale: Locale) {
-  const target = loadableLocales.includes(locale) ? locale : defaultLocale;
-  return (await import(`../../messages/${target}.json`)).default;
+  return (await import(`../../messages/${locale}.json`)).default;
 }
 
 export default getRequestConfig(async () => {

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Building2, ChevronRight, Shield, Users } from "lucide-react";
@@ -80,10 +81,11 @@ export function ActiveCompanyBar() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5 text-[13px]">
           {/* Logo / avatar */}
           {profile.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <Image
               src={profile.logoUrl}
               alt=""
+              width={28}
+              height={28}
               className="h-7 w-7 shrink-0 rounded-md border border-border object-cover"
             />
           ) : (

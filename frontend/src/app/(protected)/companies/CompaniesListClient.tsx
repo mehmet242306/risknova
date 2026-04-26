@@ -1,4 +1,5 @@
 ﻿"use client";
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -258,8 +259,13 @@ export function CompaniesListClient() {
                       {/* Logo / initials — premium */}
                       {co.logo_url ? (
                         <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border/60 bg-white shadow-sm dark:bg-white/10">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={co.logo_url} alt={co.name} className="h-full w-full object-contain p-1.5" />
+                          <Image
+                            src={co.logo_url}
+                            alt={co.name}
+                            width={56}
+                            height={56}
+                            className="h-full w-full object-contain p-1.5"
+                          />
                         </div>
                       ) : (
                         <PremiumIconBadge icon={Building2} tone={(co.hazardClass === "Çok Tehlikeli" ? "orange" : co.hazardClass === "Tehlikeli" ? "amber" : co.hazardClass === "Az Tehlikeli" ? "emerald" : "cobalt") as PremiumIconTone} size="lg" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { toDataURL } from "qrcode";
 import { useTranslations } from "next-intl";
 import { useI18n, SUPPORTED_LOCALES, type Locale } from "@/lib/i18n";
@@ -933,10 +934,11 @@ export default function ProfileClient() {
             <div className="relative shrink-0">
               <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-card text-2xl font-bold text-primary shadow-xl dark:border-white/10">
                 {profile?.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={profile.avatar_url}
                     alt={displayName}
+                    width={96}
+                    height={96}
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -1299,10 +1301,12 @@ export default function ProfileClient() {
                     <div className="mt-5 space-y-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
                       <div className="flex flex-col gap-4 md:flex-row">
                         <div className="flex w-full max-w-[220px] items-center justify-center rounded-2xl border border-border bg-white p-3">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
+                          <Image
                             src={mfaEnrollment.qrImageSrc}
                             alt="MFA QR kodu"
+                            width={176}
+                            height={176}
+                            unoptimized
                             className="h-44 w-44"
                           />
                         </div>

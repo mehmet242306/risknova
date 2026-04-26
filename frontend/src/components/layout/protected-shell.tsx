@@ -34,7 +34,12 @@ import {
   type NotificationRow,
 } from "@/lib/supabase/notification-api";
 
-type ProtectedShellProps = { children: ReactNode };
+type ProtectedShellProps = {
+  children: ReactNode;
+  initialAccountContext?: AccountContextPayload | null;
+  initialIsAdmin?: boolean | null;
+  initialHasActiveWorkspace?: boolean;
+};
 
 type ShellAccountContext = AccountContextPayload;
 
@@ -344,16 +349,27 @@ function HeaderSignOutButton() {
 /* ------------------------------------------------------------------ */
 /* Shell                                                               */
 /* ------------------------------------------------------------------ */
-export function ProtectedShell({ children }: ProtectedShellProps) {
+export function ProtectedShell({
+  children,
+  initialAccountContext = null,
+  initialIsAdmin = null,
+  initialHasActiveWorkspace = false,
+}: ProtectedShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useI18n();
-  const isAdmin = useIsAdmin();
-  const [accountContext, setAccountContext] = useState<ShellAccountContext | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [workspaceReady, setWorkspaceReady] = useState(false);
-  const [hasActiveWorkspace, setHasActiveWorkspace] = useState(false);
+  const isAdmin = useIsAdmin(initialIsAdmin);
+  const [accountContext, setAccountContext] = useState<ShellAccountContext | null>(
+    initialAccountContext,
+  );
+  const [authReady, setAuthReady] = useState(initialAccountContext !== null);
+  const [workspaceReady, setWorkspaceReady] = useState(initialAccountContext !== null);
+  const [hasActiveWorkspace, setHasActiveWorkspace] = useState(initialHasActiveWorkspace);
   const isFullscreenWorkspaceOnboarding = pathname.startsWith("/workspace/onboarding");
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   const accountSurface = resolveClientAccountSurface(accountContext);
   const isPlatformAdminShell =
@@ -408,13 +424,11 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
     const supabase = createClient();
 
     if (!supabase) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      router.replace(`/login?next=${encodeURIComponent(pathnameRef.current)}`);
       return;
     }
 
     const authClient = supabase;
-
-    setAuthReady(false);
 
     async function ensureAuthenticated() {
       const {
@@ -424,7 +438,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
       if (cancelled) return;
 
       if (!user) {
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+        router.replace(`/login?next=${encodeURIComponent(pathnameRef.current)}`);
         return;
       }
 
@@ -439,7 +453,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
         assuranceData.currentLevel !== "aal2"
       ) {
         router.replace(
-          `/auth/mfa-challenge?next=${encodeURIComponent(pathname)}`
+          `/auth/mfa-challenge?next=${encodeURIComponent(pathnameRef.current)}`,
         );
         return;
       }
@@ -463,18 +477,22 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
       setAuthReady(true);
     }
 
-    void ensureAuthenticated();
+    // İlk yüklemede SSR data geldiyse client-side fetch atla.
+    // Subscription auth event'lerinde re-validate yine çalışır.
+    if (initialAccountContext === null) {
+      setAuthReady(false);
+      void ensureAuthenticated();
+    }
 
     const {
       data: { subscription },
     } = authClient.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_OUT") {
-        router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+        router.replace(`/login?next=${encodeURIComponent(pathnameRef.current)}`);
         return;
       }
 
       if (
-        event === "INITIAL_SESSION" ||
         event === "SIGNED_IN" ||
         event === "TOKEN_REFRESHED" ||
         event === "MFA_CHALLENGE_VERIFIED"
@@ -487,7 +505,8 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [pathname, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -495,7 +514,14 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
     const shouldCheckWorkspace =
       accountSurface === "standard" && accountContext?.accountType === "individual";
     const requiresWorkspaceContext =
-      shouldCheckWorkspace && !isWorkspaceOptionalPath(pathname);
+      shouldCheckWorkspace && !isWorkspaceOptionalPath(pathnameRef.current);
+
+    // SSR'dan workspace bilgisi geldiyse ve aktifse — fetch atla.
+    if (initialAccountContext !== null && initialHasActiveWorkspace && shouldCheckWorkspace) {
+      setHasActiveWorkspace(true);
+      setWorkspaceReady(true);
+      return;
+    }
 
     async function ensureWorkspaceContext() {
       if (!authReady) return;
@@ -601,7 +627,7 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
         return;
       }
 
-      router.replace(`/workspace/onboarding?next=${encodeURIComponent(pathname)}`);
+      router.replace(`/workspace/onboarding?next=${encodeURIComponent(pathnameRef.current)}`);
     }
 
     void ensureWorkspaceContext();
@@ -609,7 +635,9 @@ export function ProtectedShell({ children }: ProtectedShellProps) {
     return () => {
       cancelled = true;
     };
-  }, [accountContext?.accountType, accountSurface, authReady, pathname, router]);
+    // pathname dep kaldırıldı — workspace check her sayfa geçişinde tekrarlanmasın.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountContext?.accountType, accountSurface, authReady]);
 
   if (!authReady || !workspaceReady) {
     return (

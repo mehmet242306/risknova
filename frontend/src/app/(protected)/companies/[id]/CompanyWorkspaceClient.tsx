@@ -1,4 +1,5 @@
 ﻿"use client";
+import NextImage from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/use-persisted-state";
@@ -11,6 +12,7 @@ import { CompanyManagementActions } from "@/components/companies/CompanyManageme
 import { PersonnelManagementPanel } from "@/components/companies/PersonnelManagementPanel";
 import { fetchCompaniesFromSupabase, saveCompanyToSupabase, archiveCompanyInSupabase, deleteCompanyInSupabase, uploadCompanyLogo } from "@/lib/supabase/company-api";
 import { computeCompanyRiskScores } from "@/lib/supabase/risk-assessment-api";
+import { fetchWorkspacePersonnelStats } from "@/lib/supabase/personnel-api";
 import { type WTab, StructureTab, RiskTab, TrackingTab, HistoryTab } from "@/components/companies/WorkspaceTabs";
 import { TeamManagementTab } from "@/components/companies/TeamManagementTab";
 import { OrganizationPanel } from "@/components/companies/OrganizationPanel";
@@ -200,6 +202,23 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
   // Hero üst şeridindeki risk rozetinde kullanılıyor.
   const risk = useMemo(() => (company ? getOverallRiskState(company) : null), [company]);
 
+  // Hero stat kartları — canlı DB'den (cached metadata.employeeCount yerine).
+  const [liveStats, setLiveStats] = useState<{
+    active: number;
+    distinctDepartments: number;
+    distinctLocations: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!company?.id) return;
+    let cancelled = false;
+    (async () => {
+      const stats = await fetchWorkspacePersonnelStats(company.id);
+      if (!cancelled && stats) setLiveStats(stats);
+    })();
+    return () => { cancelled = true; };
+  }, [company?.id]);
+
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -214,8 +233,19 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
     </div>
   );
 
-  const lc = company.locations.filter(Boolean).length;
-  const dc = company.departments.filter(Boolean).length;
+  // Lokasyon/Bölüm sayısı: önce Yerleşke tabında yapılandırılmış liste, yoksa
+  // personel kayıtlarından türetilen distinct değerler (daha büyük olanı al).
+  const lc = Math.max(
+    company.locations.filter(Boolean).length,
+    liveStats?.distinctLocations ?? 0,
+  );
+  const dc = Math.max(
+    company.departments.filter(Boolean).length,
+    liveStats?.distinctDepartments ?? 0,
+  );
+  // Çalışan sayısı: canlı personel tablosundan (cached metadata.employeeCount
+  // senkron olmayabiliyor — özellikle toplu içe aktarım sonrası).
+  const employeeCount = liveStats?.active ?? company.employeeCount;
 
   return (
     <div className="space-y-0">
@@ -233,8 +263,13 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
             <div className="relative shrink-0">
               <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl border border-border bg-secondary text-sm font-bold text-muted-foreground shadow-sm">
                 {company.logo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={company.logo_url} alt={company.name} className="h-full w-full object-contain p-1" />
+                  <NextImage
+                    src={company.logo_url}
+                    alt={company.name}
+                    width={56}
+                    height={56}
+                    className="h-full w-full object-contain p-1"
+                  />
                 ) : (
                   <span>{(company.shortName || company.name).slice(0, 2).toUpperCase()}</span>
                 )}
@@ -289,7 +324,7 @@ export function CompanyWorkspaceClient({ companyId }: { companyId: string }) {
         {/* Mini stat cards — premium */}
         <div className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-6">
           {[
-            { l: "\u00C7al\u0131\u015Fan", v: company.employeeCount, warn: false },
+            { l: "\u00C7al\u0131\u015Fan", v: employeeCount, warn: false },
             { l: "Lokasyon", v: lc, warn: false },
             { l: "B\u00F6l\u00FCm", v: dc, warn: false },
             { l: "A\u00E7\u0131k Aksiyon", v: company.openActions, warn: false },

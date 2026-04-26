@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
-import { SharedDocumentView } from './SharedDocumentView';
+import { SharedDocumentLoader } from './SharedDocumentLoader';
 
 interface Props {
   params: Promise<{ token: string }>;
@@ -49,7 +49,7 @@ export default async function SharedDocumentPage({ params }: Props) {
   }
 
   return (
-    <SharedDocumentView
+    <SharedDocumentLoader
       title={doc.title}
       contentJson={doc.content_json}
       companyName={companyName}

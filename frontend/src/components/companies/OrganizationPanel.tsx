@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { InviteProfessionalModal } from "./InviteProfessionalModal";
 import { countGranted, type Permissions } from "@/lib/company-share-registry";
@@ -93,7 +94,15 @@ function fmtDate(dateStr: string): string {
 /* ── Avatar ── */
 function Avatar({ name, url }: { name: string | null; url: string | null }) {
   if (url)
-    return <img src={url} alt={name ?? ""} className="h-10 w-10 rounded-full object-cover ring-2 ring-border" />;
+    return (
+      <Image
+        src={url}
+        alt={name ?? ""}
+        width={40}
+        height={40}
+        className="h-10 w-10 rounded-full object-cover ring-2 ring-border"
+      />
+    );
   return (
     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary ring-2 ring-border">
       {initials(name)}

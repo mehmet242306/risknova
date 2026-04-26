@@ -1,9 +1,29 @@
 "use client";
 
-import { jsPDF } from "jspdf";
-import JSZip from "jszip";
-import { saveAs } from "file-saver";
+import type { jsPDF as JsPDFType } from "jspdf";
+import type JSZipType from "jszip";
 import type { CompanyFileCategory, CompanyFileItem } from "./company-file-collector";
+
+type JsPDF = JsPDFType;
+
+let JsPDFCtor: typeof JsPDFType | null = null;
+let JSZipCtor: typeof JSZipType | null = null;
+let saveAsFn: ((blob: Blob, name: string) => void) | null = null;
+
+async function ensurePdfLibs(): Promise<void> {
+  if (!JsPDFCtor) {
+    const mod = await import("jspdf");
+    JsPDFCtor = mod.jsPDF;
+  }
+  if (!JSZipCtor) {
+    const mod = await import("jszip");
+    JSZipCtor = mod.default;
+  }
+  if (!saveAsFn) {
+    const mod = await import("file-saver");
+    saveAsFn = mod.saveAs;
+  }
+}
 
 // =============================================================================
 // Firma Dosyası — PDF + ZIP üretici (client-side)
@@ -21,12 +41,12 @@ export type CompanyFileContext = {
   generatedAt: Date;
 };
 
-function asA4() {
+function asA4(): JsPDF {
   // jsPDF A4: 210 x 297 mm, 72 dpi -> biz mm kullanıyoruz
-  return new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  return new JsPDFCtor!({ unit: "mm", format: "a4", orientation: "portrait" });
 }
 
-function addHeader(doc: jsPDF, title: string, subtitle?: string) {
+function addHeader(doc: JsPDF, title: string, subtitle?: string) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.text(title, 15, 20);
@@ -41,7 +61,7 @@ function addHeader(doc: jsPDF, title: string, subtitle?: string) {
   doc.line(15, 32, 195, 32);
 }
 
-function addFooter(doc: jsPDF, ctx: CompanyFileContext) {
+function addFooter(doc: JsPDF, ctx: CompanyFileContext) {
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -63,7 +83,7 @@ function formatDate(iso?: string | null): string {
   }
 }
 
-function wrapText(doc: jsPDF, text: string, maxWidth: number): string[] {
+function wrapText(doc: JsPDF, text: string, maxWidth: number): string[] {
   return doc.splitTextToSize(text, maxWidth) as string[];
 }
 
@@ -247,8 +267,9 @@ export async function downloadCompanyFileZip(options: {
   includePerItemPdf: boolean;
   context: CompanyFileContext;
 }): Promise<void> {
+  await ensurePdfLibs();
   const selected = options.categories.filter((c) => options.selectedIds.has(c.id));
-  const zip = new JSZip();
+  const zip = new JSZipCtor!();
 
   // Genel özet PDF'i
   const summary = buildSummaryPdf(selected, options.context);
@@ -287,5 +308,5 @@ uyarınca saklama ve paylaşım kurallarına uyun.
 
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
   const filename = `firma-dosyasi-${slugify(options.context.companyName)}-${options.context.generatedAt.toISOString().slice(0, 10)}.zip`;
-  saveAs(blob, filename);
+  saveAsFn!(blob, filename);
 }

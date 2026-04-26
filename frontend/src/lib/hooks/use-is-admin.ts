@@ -40,10 +40,13 @@ function isCompatRpcError(error: { message?: string } | null | undefined) {
  * Not: Bu hook sadece UI gating içindir. Güvenlik kritik tüm işlemler
  * backend'de `requireSuperAdmin` ile doğrulanır (Parça B).
  */
-export function useIsAdmin(): boolean | null {
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+export function useIsAdmin(initialValue: boolean | null = null): boolean | null {
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(initialValue);
 
   useEffect(() => {
+    // SSR'dan initial değer geldiyse client-side RPC çağrısını atla.
+    if (initialValue !== null) return;
+
     let cancelled = false;
 
     (async () => {
@@ -100,7 +103,7 @@ export function useIsAdmin(): boolean | null {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialValue]);
 
   return isAdmin;
 }
