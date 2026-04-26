@@ -12,17 +12,14 @@ jobs:
       APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
       SELF_HEALING_CRON_SECRET: ${{ secrets.SELF_HEALING_CRON_SECRET }}
     steps:
-      - name: Validate required secrets
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$APP_BASE_URL" || { echo "::error::Missing APP_BASE_URL"; exit 1; }
-          test -n "$SELF_HEALING_CRON_SECRET" || { echo "::error::Missing SELF_HEALING_CRON_SECRET"; exit 1; }
-
       - name: Process queued tasks
         shell: bash
         run: |
           set -euo pipefail
+          if [ -z "${APP_BASE_URL:-}" ] || [ -z "${SELF_HEALING_CRON_SECRET:-}" ]; then
+            echo "::notice title=Self-healing queue skipped::APP_BASE_URL veya SELF_HEALING_CRON_SECRET tanimli degil."
+            exit 0
+          fi
           curl -fsS -X POST "${APP_BASE_URL%/}/api/self-healing/queue/process" \
             -H "Content-Type: application/json" \
             -H "x-self-healing-key: ${SELF_HEALING_CRON_SECRET}" \
