@@ -11,6 +11,7 @@ import {
   MapPin,
   ShieldCheck,
   UserRound,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommercialLeadDialog } from "@/components/auth/CommercialLeadDialog";
@@ -217,9 +218,17 @@ export function RegisterAccountTypePreview({ children }: RegisterAccountTypePrev
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setWizardOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [wizardOpen]);
 
@@ -377,16 +386,26 @@ export function RegisterAccountTypePreview({ children }: RegisterAccountTypePrev
                   <ShieldCheck className="h-4 w-4" />
                   {stepCopy[step].eyebrow}
                 </div>
-                {stepIndex > 0 ? (
+                <div className="flex items-center gap-2">
+                  {stepIndex > 0 ? (
+                    <button
+                      type="button"
+                      onClick={goBack}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground"
+                      aria-label="Onceki soru"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={goBack}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground"
-                    aria-label="Onceki soru"
+                    onClick={() => setWizardOpen(false)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground hover:border-[var(--gold)]/50 hover:text-foreground"
+                    aria-label="Kayit penceresini kapat"
                   >
-                    <ArrowLeft className="h-4 w-4" />
+                    <X className="h-4 w-4" />
                   </button>
-                ) : null}
+                </div>
               </div>
 
               <div className="mt-4 space-y-2">
